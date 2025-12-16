@@ -18,11 +18,14 @@ This directory contains build scripts to create OS-specific system tray agents.
 ```bash
 cd agent-tray/build
 ./pyinstaller-mac.sh    # Build .app bundle
+./sign-mac.sh           # Sign & notarize (requires Apple Developer account)
 ./zip-mac.sh            # Create macos.zip
 ./pkgbuild-mac.sh       # Optional: create .pkg installer
 ```
 
 Output: `dist/macos.zip`, `dist/KuaminiAgentTray-1.0.0.pkg`
+
+**Note:** For distribution, signing is required. See "Code Signing" section below.
 
 ### Linux
 
@@ -39,10 +42,13 @@ Output: `dist/linux.zip`
 ```powershell
 cd agent-tray\build
 .\pyinstaller-win.ps1   # Build EXE bundle
+.\sign-win.ps1          # Sign the executable (requires Authenticode certificate)
 .\zip-win.ps1           # Create windows.zip
 ```
 
 Output: `dist\windows.zip`
+
+**Note:** For distribution, signing is required. See "Code Signing" section below.
 
 Optional: Use Inno Setup with `inno-setup-template.iss` to create a full installer.
 
@@ -65,13 +71,73 @@ This will build macOS and Linux bundles if run on the respective platforms.
 3. After deploy, the bundles are served statically at `/tray/{macos|linux|windows}.zip`
 4. Installer scripts auto-download from these static URLs
 
-## Code Signing (Optional)
+## Code Signing (Required for Distribution)
 
-To avoid OS warnings:
+**Without code signing, users will see security warnings and may be blocked from installing.**
 
-- macOS: Sign with `codesign --sign "Developer ID Application: YourName" dist/KuaminiAgentTray.app`
-- Windows: Sign with `signtool` using an Authenticode certificate
-- Linux: GPG-sign your packages (optional)
+### macOS Code Signing & Notarization
+
+**Prerequisites:**
+1. Apple Developer account ($99/year)
+2. Developer ID Application certificate installed
+3. App-specific password for notarization
+
+**Setup:**
+```bash
+# 1. Download certificate from Apple Developer portal
+# 2. Install in Keychain (double-click .cer file)
+# 3. Store notarization credentials
+xcrun notarytool store-credentials "notarytool-profile" \
+  --apple-id "your@email.com" \
+  --team-id "YOUR_TEAM_ID" \
+  --password "app-specific-password"
+```
+
+**Build & Sign:**
+```bash
+cd agent-tray/build
+./pyinstaller-mac.sh      # Build the app
+./sign-mac.sh             # Sign and notarize (takes 5-10 minutes)
+./zip-mac.sh              # Package signed app
+```
+
+**Environment Variables (optional):**
+- `SIGNING_IDENTITY`: Specific certificate name (auto-detected if not set)
+- `NOTARY_PROFILE`: Keychain profile name (defaults to "notarytool-profile")
+
+### Windows Code Signing
+
+**Prerequisites:**
+1. Authenticode certificate (.pfx file or EV certificate)
+2. Windows SDK installed (for SignTool)
+
+**Setup:**
+```powershell
+# Option 1: Using .pfx file
+$env:CERTIFICATE_PATH = "C:\path\to\certificate.pfx"
+$env:CERTIFICATE_PASSWORD = "your-password"
+
+# Option 2: Using certificate from store
+# List your certificates:
+Get-ChildItem -Path Cert:\CurrentUser\My -CodeSigningCert
+# Use the thumbprint:
+$env:CERTIFICATE_THUMBPRINT = "SHA1_THUMBPRINT_HERE"
+```
+
+**Build & Sign:**
+```powershell
+cd agent-tray\build
+.\pyinstaller-win.ps1     # Build the app
+.\sign-win.ps1            # Sign the executable
+.\zip-win.ps1             # Package signed app
+```
+
+### Linux
+
+Linux doesn't require code signing, but you can GPG-sign your packages for verification:
+```bash
+gpg --detach-sign --armor dist/linux.zip
+```
 
 ## Directory Structure
 
@@ -98,3 +164,23 @@ build/
 - **PyInstaller errors**: Ensure all dependencies in `requirements.txt` are installed
 - **Permission denied**: Make scripts executable with `chmod +x *.sh`
 - **Windows build issues**: Run PowerShell as Administrator
+
+### Code Signing Issues
+
+**macOS:**
+- **"No identity found"**: Ensure Developer ID certificate is installed in Keychain
+  - Check: `security find-identity -v -p codesigning`
+- **Notarization timeout**: Usually takes 5-10 minutes. Check status:
+  - `xcrun notarytool history --keychain-profile notarytool-profile`
+- **"Invalid entitlements"**: Ensure `entitlements.plist` is present in build directory
+- **Gatekeeper still blocks**: Clear quarantine flag:
+  - `xattr -cr dist/KuaminiAgentTray.app`
+
+**Windows:**
+- **"SignTool not found"**: Install Windows SDK from Microsoft
+- **"No certificate specified"**: Set `CERTIFICATE_PATH` or `CERTIFICATE_THUMBPRINT` environment variables
+- **SmartScreen warning persists**: Ensure timestamp server is reached (requires internet)
+- **Invalid timestamp**: Try alternative timestamp servers:
+  - `http://timestamp.digicert.com`
+  - `http://timestamp.sectigo.com`
+  - `http://timestamp.comodoca.com`
