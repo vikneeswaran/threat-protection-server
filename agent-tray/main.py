@@ -1,9 +1,13 @@
 import json
 import os
+import sys
 import threading
 import time
 import webbrowser
+import logging
+import subprocess
 from pathlib import Path
+from typing import Tuple
 
 import psutil
 import pystray
@@ -12,6 +16,34 @@ from PIL import Image, ImageDraw
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 DEFAULT_HEARTBEAT_INTERVAL = 60
+
+
+def get_log_path() -> Path:
+    try:
+        if sys.platform == "darwin":
+            base = Path.home() / "Library" / "Logs" / "KuaminiAgentTray"
+        elif os.name == "nt":
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "KuaminiAgentTray"
+        else:
+            base = Path.home() / ".local" / "share" / "KuaminiAgentTray"
+        base.mkdir(parents=True, exist_ok=True)
+        return base / "agent.log"
+    except Exception:
+        # fallback to current directory
+        return Path("agent.log")
+
+
+def setup_logging():
+    log_path = get_log_path()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(log_path, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
+    logging.info("Logging initialized at %s", log_path)
 
 
 def load_config():
@@ -37,7 +69,7 @@ def make_icon(status_color=(46, 204, 113)):
     return img
 
 
-def get_network_info():
+def get_network_info() -> Tuple[str | None, str | None]:
     ip = None
     mac = None
     for iface, addrs in psutil.net_if_addrs().items():
@@ -74,7 +106,7 @@ def heartbeat(config):
         "status": "online",
         "system_info": {
             "os": "macos" if sys.platform == "darwin" else ("windows" if os.name == "nt" else "linux"),
-            "hostname": os.uname().nodename,
+            "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME") or "unknown",
             "ip": ip,
             "mac": mac,
         },
@@ -88,6 +120,8 @@ def heartbeat(config):
 
 
 def tray_main():
+    setup_logging()
+    logging.info("Starting Kuamini Agent Tray")
     config = load_config()
     status = {"text": "Idle", "color": (46, 204, 113)}
     icon = pystray.Icon("KuaminiThreatProtectAgent")
@@ -99,17 +133,22 @@ def tray_main():
         status["color"] = color
         icon.icon = make_icon(color)
         icon.title = f"Kuamini Agent — {text}"
+        logging.info("Status changed: %s", text)
 
     def do_register(icon_, item):
         ok, res = register(config)
+        logging.info("Register result: ok=%s, res=%s", ok, res)
         set_status("Registered" if ok else "Register failed", (46, 204, 113) if ok else (231, 76, 60))
 
     def do_heartbeat(icon_, item):
         ok, res = heartbeat(config)
+        logging.info("Heartbeat result: ok=%s, res=%s", ok, res)
         set_status("Online" if ok else "Heartbeat failed", (46, 204, 113) if ok else (231, 76, 60))
 
     def open_console(icon_, item):
-        webbrowser.open(config.get("console_url", "https://kuaminisystems.com/securityAgent"))
+        url = config.get("console_url", "https://kuaminisystems.com/securityAgent")
+        logging.info("Opening console: %s", url)
+        webbrowser.open(url)
 
     def quit_app(icon_, item):
         stop_event.set()
@@ -123,8 +162,8 @@ def tray_main():
             stop_event.wait(interval)
 
     icon.menu = pystray.Menu(
-        pystray.MenuItem(lambda: f"Agent: {config.get('agent_id', 'unknown')}" , None, enabled=False),
-        pystray.MenuItem(lambda: f"Status: {status['text']}", None, enabled=False),
+        pystray.MenuItem(lambda item: f"Agent: {config.get('agent_id', 'unknown')}", None, enabled=False),
+        pystray.MenuItem(lambda item: f"Status: {status['text']}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Register now", do_register),
         pystray.MenuItem("Send heartbeat", do_heartbeat),
@@ -136,13 +175,30 @@ def tray_main():
     set_status("Starting")
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     icon.icon = make_icon(status["color"])
-    icon.run()
+    try:
+        icon.run()
+    except Exception as e:
+        logging.exception("Tray icon run failed: %s", e)
+        if sys.platform == "darwin":
+            try:
+                subprocess.run([
+                    "osascript",
+                    "-e",
+                    'display alert "Kuamini Agent" message "The tray failed to start. See log file for details."',
+                ], check=False)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
-    import sys
-
     try:
         tray_main()
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        # Ensure unexpected exceptions are logged
+        try:
+            setup_logging()
+            logging.exception("Fatal error: %s", e)
+        except Exception:
+            pass

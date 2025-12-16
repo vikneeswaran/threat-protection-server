@@ -15,6 +15,7 @@ pkgbuild \
   --version 1.0.0 \
   --install-location /Applications/KuaminiAgentTray.app \
   --component dist/$APP_NAME \
+  --scripts build/scripts \
   dist/$PKG_NAME
 
 echo "Built pkg: dist/$PKG_NAME"
