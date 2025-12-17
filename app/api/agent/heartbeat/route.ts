@@ -13,25 +13,42 @@ export async function POST(request: NextRequest) {
     // Create admin client to bypass RLS
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-    // Update endpoint status
-    const { data: endpoint, error: updateError } = await supabaseAdmin
+    // First, try to find endpoint by agent_id
+    let endpoint: any = null
+    let findError: any = null
+
+    const { data: foundByAgentId, error: findByAgentError } = await supabaseAdmin
       .from("endpoints")
-      .update({
-        status: status || "online",
-        last_seen: new Date().toISOString(),
-        system_info: system_info || {},
-      })
-      .eq("agent_id", agent_id)
+      .select("id")
       .eq("account_id", account_id)
-      .select("id, policies:endpoint_policies(policy:policies(*))")
+      .eq("agent_id", agent_id)
       .maybeSingle()
 
-    if (updateError) {
-      console.error("Failed to update endpoint:", updateError)
-      return NextResponse.json({ error: "Failed to update endpoint" }, { status: 500 })
+    if (findByAgentError) {
+      console.error("Error finding endpoint by agent_id:", findByAgentError)
+      return NextResponse.json({ error: "Failed to find endpoint" }, { status: 500 })
     }
 
-    if (!endpoint) {
+    if (foundByAgentId) {
+      // Found by agent_id, update directly
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from("endpoints")
+        .update({
+          status: status || "online",
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq("id", foundByAgentId.id)
+        .select("id, policies:endpoint_policies(policy:policies(*))")
+        .single()
+
+      if (updateError) {
+        console.error("Failed to update endpoint:", updateError)
+        return NextResponse.json({ error: "Failed to update endpoint" }, { status: 500 })
+      }
+
+      endpoint = updated
+    } else {
+      // Endpoint not found by agent_id
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
