@@ -13,7 +13,7 @@ fi
 pkgbuild \
   --identifier com.kuamini.agenttray \
   --version 1.0.0 \
-  --install-location /Applications/KuaminiAgentTray.app \
+  --install-location /Applications \
   --component dist/$APP_NAME \
   --scripts build/scripts \
   dist/$PKG_NAME
