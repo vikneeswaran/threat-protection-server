@@ -59,42 +59,144 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 function generateMacOSUninstaller(baseUrl: string, endpointId: string | null, agentId: string | null): string {
-  const idParam = endpointId ? `endpoint_id=${endpointId}` : agentId ? `agent_id=${agentId}` : ""
+  const deregisterUrl = baseUrl.replace("/securityAgent/api/agent", "/api/agent")
   return `#!/bin/bash
-# KuaminiThreatProtectAgent Uninstaller for macOS
-# This script will stop and remove the Kuamini agent from your system
+set -euo pipefail
 
-set -e
+# Kuamini Agent Cleaner for macOS
+# Removes all agent files and deregisters from console
 
-echo "=========================================="
-echo "KuaminiThreatProtectAgent Uninstaller"
-echo "=========================================="
+echo "🧹 Kuamini Agent Cleaner for macOS"
+echo "===================================="
 
-# Check for root
+# Check if running as root
 if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root (use sudo)"
+    echo "❌ Please run with sudo"
     exit 1
 fi
 
-echo "[1/4] Stopping agent service..."
-launchctl unload /Library/LaunchDaemons/com.kuamini.agent.plist 2>/dev/null || true
+# Get the actual user (handle both sudo and direct root)
+if [ -n "\${SUDO_USER:-}" ]; then
+    ACTUAL_USER="$SUDO_USER"
+    ACTUAL_UID=$(id -u "$SUDO_USER")
+else
+    ACTUAL_USER=$(whoami)
+    ACTUAL_UID=$(id -u)
+fi
 
-echo "[2/4] Removing agent files..."
-rm -rf /usr/local/kuamini
-rm -rf /etc/kuamini
-rm -rf /var/log/kuamini
-rm -f /Library/LaunchDaemons/com.kuamini.agent.plist
+ACTUAL_HOME=$(eval echo ~$ACTUAL_USER)
+CONFIG_FILE="$ACTUAL_HOME/.kuamini/config.json"
+API_BASE="${deregisterUrl}"
+${agentId ? `AGENT_ID="${agentId}"` : 'AGENT_ID=""'}
 
-echo "[3/4] Deregistering from console..."
-# Optional: call uninstall API if endpoint/agent ID is known
-${idParam ? `curl -s -X POST "${baseUrl}/uninstall?${idParam}" || true` : "echo 'Skipping API deregistration (no endpoint/agent ID provided)'"}
-
-echo "[4/4] Cleanup complete!"
+echo "👤 Running as root, actual user: $ACTUAL_USER"
 echo ""
-echo "=========================================="
-echo "Uninstall Complete!"
-echo "The Kuamini agent has been removed."
-echo "=========================================="
+
+# Extract agent_id from config if not provided
+if [ -z "$AGENT_ID" ] && [ -f "$CONFIG_FILE" ]; then
+    echo "📖 Reading config from $CONFIG_FILE"
+    
+    if command -v jq &> /dev/null; then
+        AGENT_ID=$(jq -r '.agent_id // empty' "$CONFIG_FILE" 2>/dev/null || echo "")
+    else
+        AGENT_ID=$(grep -o '"agent_id":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'"' -f4 || echo "")
+    fi
+    
+    if [ -n "$AGENT_ID" ]; then
+        echo "✅ Found agent_id: $AGENT_ID"
+    else
+        echo "⚠️  Warning: Could not find agent_id in config"
+    fi
+else
+    echo "ℹ️  Using provided agent_id: $AGENT_ID"
+fi
+
+echo ""
+
+# Deregister endpoint from console
+if [ -n "$AGENT_ID" ]; then
+    echo "📡 Deregistering endpoint from console..."
+    DEREGISTER_URL="$API_BASE/deregister"
+    
+    # Export CA certs for curl
+    /usr/bin/security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain > /tmp/cacert.pem 2>/dev/null || true
+    
+    if [ -f /tmp/cacert.pem ]; then
+        /usr/bin/curl -sf --cacert /tmp/cacert.pem -X POST \
+            "$DEREGISTER_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\\"agent_id\\":\\"$AGENT_ID\\"}" 2>/dev/null && echo "✅ Endpoint deregistered successfully" || echo "⚠️  Warning: Could not deregister endpoint"
+        rm -f /tmp/cacert.pem
+    else
+        /usr/bin/curl -k -sf -X POST \
+            "$DEREGISTER_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\\"agent_id\\":\\"$AGENT_ID\\"}" 2>/dev/null && echo "✅ Endpoint deregistered successfully" || echo "⚠️  Warning: Could not deregister endpoint"
+    fi
+    echo ""
+fi
+
+# Kill the agent process
+echo "🛑 Stopping agent process..."
+if pgrep -f "KuaminiAgentTray" > /dev/null; then
+    killall -9 KuaminiAgentTray 2>/dev/null || true
+    sleep 1
+    echo "✅ Agent process terminated"
+fi
+
+# Stop and unload LaunchAgent
+echo "🛑 Unloading LaunchAgent..."
+LAUNCH_PLIST="$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.agenttray.plist"
+if launchctl list | grep -q com.kuamini.agenttray; then
+    sudo -u "$ACTUAL_USER" launchctl bootout "gui/$ACTUAL_UID" com.kuamini.agenttray 2>/dev/null || \
+    launchctl bootout "gui/$ACTUAL_UID" com.kuamini.agenttray 2>/dev/null || \
+    sudo -u "$ACTUAL_USER" launchctl bootout "gui/$ACTUAL_UID" "$LAUNCH_PLIST" 2>/dev/null || \
+    launchctl remove com.kuamini.agenttray 2>/dev/null || true
+    echo "✅ LaunchAgent unloaded"
+fi
+
+# Remove LaunchAgent plist
+if [ -f "$LAUNCH_PLIST" ]; then
+    rm -f "$LAUNCH_PLIST"
+    echo "✅ Removed LaunchAgent plist"
+fi
+
+echo ""
+
+# Remove application
+echo "🗑️  Removing application..."
+if [ -d "/Applications/KuaminiAgentTray.app" ]; then
+    rm -rf "/Applications/KuaminiAgentTray.app"
+    echo "✅ Removed /Applications/KuaminiAgentTray.app"
+fi
+
+# Remove config directory
+echo "🗑️  Removing configuration..."
+if [ -d "$ACTUAL_HOME/.kuamini" ]; then
+    rm -rf "$ACTUAL_HOME/.kuamini"
+    echo "✅ Removed $ACTUAL_HOME/.kuamini"
+fi
+
+# Remove LaunchDaemon if present (legacy)
+if [ -f "/Library/LaunchDaemons/com.kuamini.agenttray.plist" ]; then
+    rm -f "/Library/LaunchDaemons/com.kuamini.agenttray.plist"
+    echo "✅ Removed LaunchDaemon plist"
+fi
+
+# Remove from login items
+LOGIN_ITEMS_DIR="$ACTUAL_HOME/Library/Application Support/com.apple.sharedfilelist"
+if [ -d "$LOGIN_ITEMS_DIR" ]; then
+    find "$LOGIN_ITEMS_DIR" -type f -exec sed -i '' '/KuaminiAgentTray/d' {} \\; 2>/dev/null || true
+    echo "✅ Removed from login items"
+fi
+
+# Refresh Dock
+killall Dock 2>/dev/null || true
+
+echo ""
+echo "✅ Kuamini Agent successfully removed!"
+echo "🎉 License released and endpoint deregistered"
+echo ""
 `
 }
 
@@ -143,50 +245,126 @@ echo "=========================================="
 }
 
 function generateWindowsUninstaller(baseUrl: string, endpointId: string | null, agentId: string | null): string {
-  const idParam = endpointId ? `endpoint_id=${endpointId}` : agentId ? `agent_id=${agentId}` : ""
-  return `# KuaminiThreatProtectAgent Uninstaller for Windows
-# This script will stop and remove the Kuamini agent from your system
+  const deregisterUrl = baseUrl.replace("/securityAgent/api/agent", "/api/agent")
+  return `# Kuamini Agent Cleaner for Windows
+# Removes all agent files and deregisters from console
+# Run as Administrator in PowerShell
 
-$ErrorActionPreference = "Stop"
+#Requires -RunAsAdministrator
 
-Write-Host "=========================================="
-Write-Host "KuaminiThreatProtectAgent Uninstaller"
-Write-Host "=========================================="
+Write-Host "🧹 Kuamini Agent Cleaner for Windows" -ForegroundColor Green
+Write-Host "=====================================" -ForegroundColor Green
 
-# Check for admin
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Host "Please run as Administrator"
-    exit 1
+$configDir = "$env:APPDATA\\Kuamini"
+$configFile = "$configDir\\config.json"
+$installDir = "$env:ProgramFiles\\Kuamini\\AgentTray"
+$apiBase = "${deregisterUrl}"
+${agentId ? `$agentId = "${agentId}"` : '$agentId = $null'}
+
+# Extract agent_id from config if not provided
+if (-not $agentId -and (Test-Path $configFile)) {
+    Write-Host "📖 Reading config from $configFile"
+    try {
+        $config = Get-Content $configFile -Raw | ConvertFrom-Json
+        $agentId = $config.agent_id
+        
+        if ($agentId) {
+            Write-Host "✅ Found agent_id: $agentId"
+        } else {
+            Write-Host "⚠️  Warning: Could not find agent_id in config" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "⚠️  Warning: Could not parse config file" -ForegroundColor Yellow
+    }
+} elseif ($agentId) {
+    Write-Host "ℹ️  Using provided agent_id: $agentId"
 }
 
-Write-Host "[1/4] Stopping and removing scheduled task..."
-try {
-    Unregister-ScheduledTask -TaskName "KuaminiThreatProtectAgent" -Confirm:$false -ErrorAction SilentlyContinue
-} catch {
-    Write-Host "Task not found or already removed"
-}
-
-Write-Host "[2/4] Removing agent files..."
-Remove-Item -Recurse -Force "C:\\Program Files\\Kuamini" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "C:\\ProgramData\\Kuamini" -ErrorAction SilentlyContinue
-
-Write-Host "[3/4] Deregistering from console..."
-${
-  idParam
-    ? `try {
-    Invoke-RestMethod -Uri "${baseUrl}/uninstall?${idParam}" -Method Post -ErrorAction SilentlyContinue
-} catch {
-    Write-Host "API deregistration skipped"
-}`
-    : "Write-Host 'Skipping API deregistration (no endpoint/agent ID provided)'"
-}
-
-Write-Host "[4/4] Cleanup complete!"
 Write-Host ""
-Write-Host "=========================================="
-Write-Host "Uninstall Complete!"
-Write-Host "The Kuamini agent has been removed."
-Write-Host "=========================================="
+
+# Deregister endpoint from console
+if ($agentId) {
+    Write-Host "📡 Deregistering endpoint from console..."
+    try {
+        $deregUrl = "$apiBase/deregister"
+        $body = @{ agent_id = $agentId } | ConvertTo-Json
+        
+        $response = Invoke-WebRequest -Uri $deregUrl -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
+        Write-Host "✅ Endpoint deregistered successfully" -ForegroundColor Green
+    } catch {
+        Write-Host "⚠️  Warning: Could not deregister endpoint (may already be removed)" -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
+
+# Stop scheduled task
+Write-Host "🛑 Stopping agent..."
+try {
+    Stop-Process -Name "KuaminiAgentTray" -Force -ErrorAction SilentlyContinue
+    Write-Host "✅ Agent process stopped"
+} catch {
+    Write-Host "⚠️  Agent not running"
+}
+
+# Remove scheduled task
+Write-Host "🗑️  Removing scheduled task..."
+try {
+    Unregister-ScheduledTask -TaskName "KuaminiAgentTray" -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "✅ Scheduled task removed"
+} catch {
+    Write-Host "⚠️  Scheduled task not found"
+}
+
+# Remove installation directory
+Write-Host "🗑️  Removing application files..."
+if (Test-Path $installDir) {
+    try {
+        Remove-Item -Path $installDir -Recurse -Force
+        Write-Host "✅ Removed $installDir"
+    } catch {
+        Write-Host "⚠️  Could not remove $installDir (may be in use)" -ForegroundColor Yellow
+    }
+}
+
+# Remove config directory
+Write-Host "🗑️  Removing configuration..."
+if (Test-Path $configDir) {
+    try {
+        Remove-Item -Path $configDir -Recurse -Force
+        Write-Host "✅ Removed $configDir"
+    } catch {
+        Write-Host "⚠️  Could not remove $configDir" -ForegroundColor Yellow
+    }
+}
+
+# Remove from Program Files if alternate location was used
+$altInstallDir = "$env:ProgramFiles\\Kuamini"
+if (Test-Path $altInstallDir) {
+    try {
+        Remove-Item -Path $altInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "✅ Removed alternate installation directory"
+    } catch {
+        Write-Host "⚠️  Could not remove alternate directory" -ForegroundColor Yellow
+    }
+}
+
+# Remove desktop shortcut if present
+$desktopShortcut = "$env:Public\\Desktop\\Kuamini Agent Tray.lnk"
+if (Test-Path $desktopShortcut) {
+    Remove-Item $desktopShortcut -Force
+    Write-Host "✅ Removed desktop shortcut"
+}
+
+# Remove Start Menu shortcuts
+$startMenuPath = "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Kuamini"
+if (Test-Path $startMenuPath) {
+    Remove-Item $startMenuPath -Recurse -Force
+    Write-Host "✅ Removed Start Menu shortcuts"
+}
+
+Write-Host ""
+Write-Host "✅ Kuamini Agent successfully removed!" -ForegroundColor Green
+Write-Host "🎉 License released and endpoint deregistered" -ForegroundColor Green
+Write-Host ""
 `
 }
