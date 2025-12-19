@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
     // Generate custom installer based on platform
     switch (platform) {
       case "macos":
-        return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId)
+        return await serveMacOSInstaller(registrationToken, accountId)
       case "windows":
         return await generateWindowsInstaller(agentTrayDistPath, registrationToken, accountId)
       case "linux":
@@ -97,6 +97,25 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error generating installer:", error)
     return NextResponse.json({ error: "Failed to generate installer" }, { status: 500 })
+  }
+}
+
+async function serveMacOSInstaller(token: string, accountId: string) {
+  try {
+    // Serve the pre-built base PKG from public/tray/
+    // The postinstall script will download account-specific config using the token
+    const publicPath = path.join(process.cwd(), "public", "tray", "KuaminiAgentTray-1.0.0.pkg")
+    const pkgData = await fs.readFile(publicPath)
+
+    return new NextResponse(pkgData, {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="KuaminiAgentTray-${accountId.slice(0, 8)}.pkg"`,
+      },
+    })
+  } catch (error) {
+    console.error("Error serving macOS installer:", error)
+    throw error
   }
 }
 
