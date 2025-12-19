@@ -87,6 +87,17 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
     }
   }
 
+  const downloadUninstaller = (platform: string) => {
+    const uninstallerUrl = `/securityAgent/api/agent/uninstall/download/${platform}`
+    const a = document.createElement("a")
+    a.href = uninstallerUrl
+    a.download = `uninstall-kuamini-agent-${platform}${platform === "windows" ? ".ps1" : ".sh"}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    toast.success("Uninstaller downloaded!")
+  }
+
   const availableLicenses = account.total_licenses - account.used_licenses
 
   const installers = [
@@ -222,6 +233,16 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
                         Download Installer
                       </>
                     )}
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadUninstaller(installer.id)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Uninstaller
                   </Button>
                 </div>
               </CardHeader>
