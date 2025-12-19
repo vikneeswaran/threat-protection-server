@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify account access
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
@@ -49,20 +49,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has access to this account
-    const { data: membership } = await supabase
-      .from("account_members")
-      .select("*")
-      .eq("account_id", accountId)
-      .eq("user_id", user.id)
-      .single()
+    const isOwner = account.owner_id === user.id
+    const isSuperAdmin = profile.role === "super_admin"
 
-    if (!membership && account.owner_id !== user.id) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 })
+    let membershipOk = false
+    if (!isOwner && !isSuperAdmin) {
+      const { data: membership } = await supabase
+        .from("account_members")
+        .select("id")
+        .eq("account_id", accountId)
+        .eq("user_id", user.id)
+        .maybeSingle()
+
+      membershipOk = Boolean(membership)
     }
 
-    // Check available licenses
-    if (account.used_licenses >= account.total_licenses) {
-      return NextResponse.json({ error: "No available licenses. Please upgrade your plan." }, { status: 403 })
+    if (!(isOwner || isSuperAdmin || membershipOk)) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     // Generate registration token
