@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Download, Monitor, Apple, Terminal, Copy, CheckCircle, Info, Server } from "lucide-react"
+import { Download, Monitor, Apple, Terminal, Copy, CheckCircle, Info, Server, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import type { Profile, Account } from "@/lib/types/database"
 
@@ -20,6 +20,7 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
   const router = useRouter()
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState("")
+  const [downloadingInstaller, setDownloadingInstaller] = useState<string | null>(null)
 
   useEffect(() => {
     setBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com")
@@ -44,6 +45,48 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
     router.push(`/securityAgent/installers/script/${os}?token=${registrationToken}`)
   }
 
+  const downloadInstaller = async (platform: string) => {
+    try {
+      setDownloadingInstaller(platform)
+      toast.info(`Generating ${platform} installer...`)
+
+      const response = await fetch(
+        `/api/agent/installers/download?platform=${platform}&accountId=${account.id}`,
+        {
+          method: "GET",
+        },
+      )
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to download installer")
+      }
+
+      // Get filename from Content-Disposition header
+      const contentDisposition = response.headers.get("Content-Disposition")
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/)
+      const filename = filenameMatch ? filenameMatch[1] : `kuamini-agent-${platform}`
+
+      // Download the file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success(`Installer downloaded successfully!`)
+    } catch (error) {
+      console.error("Download error:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to download installer")
+    } finally {
+      setDownloadingInstaller(null)
+    }
+  }
+
   const availableLicenses = account.total_licenses - account.used_licenses
 
   const installers = [
@@ -52,31 +95,34 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
       name: "Windows",
       icon: Monitor,
       version: "1.0.0",
-      size: "~5 KB",
+      size: "~12 MB",
+      fileType: "PowerShell Script (.ps1)",
       requirements: "Windows 10/11, Server 2016+, PowerShell 5.1+",
-      filename: "install-kuamini-agent.ps1",
+      filename: "Install-KuaminiAgent.ps1",
       description:
-        "PowerShell installer script that sets up the agent as a Windows Scheduled Task with automatic startup.",
+        "PowerShell installer script that automatically downloads and installs the agent as a Windows Scheduled Task with automatic startup. Pre-configured for your account.",
     },
     {
       id: "macos",
       name: "macOS",
       icon: Apple,
       version: "1.0.0",
-      size: "~4 KB",
+      size: "~15 MB",
+      fileType: "PKG Installer (.pkg)",
       requirements: "macOS 11 (Big Sur) or later",
-      filename: "install-kuamini-agent.sh",
-      description: "Shell script that installs the agent as a LaunchDaemon for persistent protection.",
+      filename: "KuaminiAgentTray.pkg",
+      description: "macOS installer package that automatically installs and configures the agent as a LaunchAgent with your account credentials embedded.",
     },
     {
       id: "linux",
       name: "Linux",
       icon: Terminal,
       version: "1.0.0",
-      size: "~4 KB",
+      size: "~8 MB",
+      fileType: "Shell Script (.sh)",
       requirements: "Ubuntu 20.04+, RHEL 8+, Debian 10+, systemd",
       filename: "install-kuamini-agent.sh",
-      description: "Shell script that installs the agent as a systemd service for continuous monitoring.",
+      description: "Shell script that installs the agent as a systemd service for continuous monitoring. Pre-configured for automatic registration.",
     },
   ]
 
@@ -160,37 +206,69 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
                       <CardDescription>{installer.description}</CardDescription>
                     </div>
                   </div>
-                  <Button size="lg" disabled={availableLicenses <= 0} onClick={() => openScriptPage(installer.id)}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Get Installer Script
+                  <Button 
+                    size="lg" 
+                    disabled={availableLicenses <= 0 || downloadingInstaller === installer.id} 
+                    onClick={() => downloadInstaller(installer.id)}
+                  >
+                    {downloadingInstaller === installer.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Installer
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-4">
                   <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">Script Size</p>
+                    <p className="text-sm text-muted-foreground">File Type</p>
+                    <p className="font-medium">{installer.fileType}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">File Size</p>
                     <p className="font-medium">{installer.size}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Requirements</p>
-                    <p className="font-medium">{installer.requirements}</p>
+                    <p className="font-medium text-xs">{installer.requirements}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Filename</p>
-                    <p className="font-mono text-sm">{installer.filename}</p>
+                    <p className="font-mono text-xs break-all">{installer.filename}</p>
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <h4 className="font-medium">Quick Installation Steps</h4>
                   <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                    <li>Click "Get Installer Script" button above</li>
-                    <li>On the script page, click "Download Script" or "Copy Script"</li>
-                    <li>Run the script with administrator/root privileges on your endpoint</li>
-                    <li>The agent will automatically register with this account</li>
+                    <li>Click "Download Installer" button above</li>
+                    <li>The installer will be customized with your account credentials</li>
+                    <li>
+                      Run the installer with administrator/root privileges on your endpoint
+                      {installer.id === "macos" && " (double-click the PKG file)"}
+                      {installer.id === "windows" && " (right-click → Run as Administrator)"}
+                      {installer.id === "linux" && " (sudo bash install-kuamini-agent.sh)"}
+                    </li>
+                    <li>The agent will automatically register with your account</li>
+                    <li>Check the endpoints list to verify registration</li>
                   </ol>
                 </div>
+
+                <Alert>
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertTitle>Pre-configured Installer</AlertTitle>
+                  <AlertDescription>
+                    This installer is customized for <strong>{account.name}</strong>. The agent will automatically
+                    register to your account when installed. No manual configuration required!
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           </TabsContent>
@@ -199,12 +277,15 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Registration Token</CardTitle>
+          <CardTitle className="text-lg">Alternative: Manual Installation</CardTitle>
           <CardDescription>
-            This token is unique to your account and is used to associate installed agents with your account
+            For advanced users who want to customize the installation or deploy via configuration management tools
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            If you prefer to deploy using scripts or configuration management tools, you can use the registration token below:
+          </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-muted p-3 rounded-lg text-sm font-mono break-all">{registrationToken}</code>
             <Button variant="outline" size="icon" onClick={() => copyToClipboard(registrationToken, "token")}>
@@ -215,49 +296,8 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
               )}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Note: This token contains your account information and should be kept secure.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">System Tray Agent Downloads</CardTitle>
-          <CardDescription>
-            Download prebuilt tray agent bundles for manual installation or custom deployment
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Apple className="h-5 w-5" />
-                <span className="font-medium">macOS Tray</span>
-              </div>
-              <Button variant="outline" size="sm" asChild>
-                <a href="/tray/macos.zip" download>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download macos.zip
-                </a>
-              </Button>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Monitor className="h-5 w-5" />
-                <span className="font-medium">Windows Tray</span>
-              </div>
-              <Button variant="outline" size="sm" asChild>
-                <a href="/tray/windows.zip" download>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download windows.zip
-                </a>
-              </Button>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4">
-            Note: macOS and Windows tray bundles are provided here. Linux installs can continue using the script-only
-            flow; no native tray bundle is required for Linux.
+          <p className="text-xs text-muted-foreground">
+            Configure the agent with this token in the config.json file or pass it as an environment variable: REGISTRATION_TOKEN
           </p>
         </CardContent>
       </Card>

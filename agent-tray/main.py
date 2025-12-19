@@ -19,23 +19,45 @@ DEFAULT_HEARTBEAT_INTERVAL = 60
 
 
 def get_config_path() -> Path:
-    """Find config.json in multiple locations for PyInstaller compatibility."""
-    # 1. Next to the executable (for .app bundle: Contents/MacOS/config.json)
+    """Find config.json in multiple locations for PyInstaller compatibility and pre-configured installers."""
+    # 1. Bundled config in app Resources folder (for pre-configured installers)
     if getattr(sys, 'frozen', False):
         # Running as compiled executable
         exe_dir = Path(sys.executable).parent
+        
+        # Check for bundled config in Resources folder (macOS .app structure)
+        resources_dir = exe_dir.parent / "Resources"
+        bundled_config = resources_dir / "config.json"
+        if bundled_config.exists():
+            logging.info("Found bundled config at: %s", bundled_config)
+            # Copy to user directory if not exists
+            user_config = Path.home() / ".kuamini" / "config.json"
+            if not user_config.exists():
+                user_config.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(bundled_config, user_config)
+                logging.info("Copied bundled config to user directory: %s", user_config)
+            return user_config
+        
+        # Check next to executable
         candidate = exe_dir / "config.json"
         if candidate.exists():
             return candidate
     
-    # 2. Next to the script (for development)
+    # 2. User data directory (~/.kuamini/config.json)
+    user_config = Path.home() / ".kuamini" / "config.json"
+    if user_config.exists():
+        return user_config
+    
+    # 3. Next to the script (for development)
     script_dir = Path(__file__).parent
     candidate = script_dir / "config.json"
     if candidate.exists():
         return candidate
     
-    # 3. Fallback: use script dir for development
-    return script_dir / "config.json"
+    # 4. Fallback: use user dir for new config
+    user_config.parent.mkdir(parents=True, exist_ok=True)
+    return user_config
 
 
 def get_log_path() -> Path:
