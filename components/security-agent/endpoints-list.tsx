@@ -179,6 +179,15 @@ export function EndpointsList({ endpoints, userRole }: EndpointsListProps) {
                             View Details
                           </Link>
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            navigator.clipboard.writeText(endpoint.agent_id || "")
+                            alert(`Agent ID copied: ${endpoint.agent_id}`)
+                          }}
+                        >
+                          <Monitor className="h-4 w-4 mr-2" />
+                          Copy Agent ID
+                        </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link href={`/securityAgent/endpoints/${endpoint.id}/policies`}>
                             <FileText className="h-4 w-4 mr-2" />
