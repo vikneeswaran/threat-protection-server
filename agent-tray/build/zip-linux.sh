@@ -8,5 +8,5 @@ if [ ! -d "dist/KuaminiSecurityClient" ]; then
 fi
 
 cd dist
-tar -czf linux.tar.gz KuaminiSecurityClient
+zip -r linux.zip KuaminiSecurityClient
 echo "Created: dist/linux.zip"
