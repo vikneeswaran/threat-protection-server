@@ -25,12 +25,12 @@ jobs:
         shell: pwsh
         run: |
           Set-Location agent-tray
-          pyinstaller --noconfirm --onedir --windowed --name KuaminiAgentTray main.py
+          pyinstaller --noconfirm --onedir --windowed --name KuaminiSecurityClient main.py
 
       - name: Create windows.zip payload
         shell: pwsh
         run: |
-          Compress-Archive -Path "agent-tray/dist/KuaminiAgentTray/*" -DestinationPath "agent-tray/dist/windows.zip"
+          Compress-Archive -Path "agent-tray/dist/KuaminiSecurityClient/*" -DestinationPath "agent-tray/dist/windows.zip"
 
       - name: Install Inno Setup
         shell: pwsh
@@ -47,4 +47,4 @@ jobs:
           path: |
             agent-tray/dist/windows.zip
             agent-tray/build/Output/*.exe
-            agent-tray/dist/KuaminiAgentTray/**/*
+            agent-tray/dist/KuaminiSecurityClient/**/*

@@ -63,7 +63,7 @@ jobs:
       - name: Zip Windows bundle
         run: |
           cd agent-tray/dist
-          Compress-Archive -Path "KuaminiAgentTray" -DestinationPath "windows.zip" -Force
+          Compress-Archive -Path "KuaminiSecurityClient" -DestinationPath "windows.zip" -Force
         shell: pwsh
       
       - name: Upload Windows artifact
