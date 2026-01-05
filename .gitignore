@@ -41,6 +41,7 @@ agent-tray/.venv/
 agent-tray/__pycache__/
 agent-tray/*.pyc
 agent-tray/.env
+agent-tray/build/KuaminiSecurityClient/
 agent-tray/build/KuaminiAgentTray/
 agent-tray/dist/
 

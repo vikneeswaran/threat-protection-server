@@ -1,8 +1,127 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import crypto from "crypto"
+
+const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
+const TOKEN_TTL_SECONDS = Number(process.env.INSTALLER_TOKEN_TTL_SECONDS ?? 7 * 24 * 60 * 60)
+const RATE_LIMIT_WINDOW_MS = Number(process.env.INSTALLER_RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000)
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.INSTALLER_RATE_LIMIT_MAX ?? 60) // allow more for agents
+
+const rateLimitBuckets = new Map<string, number[]>()
+
+function base64UrlDecode(input: string) {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4)
+  return Buffer.from(normalized, "base64")
+}
+
+function getClientIp(request: NextRequest) {
+  const forwarded = request.headers.get("x-forwarded-for")
+  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown"
+  return request.ip || "unknown"
+}
+
+function isRateLimited(key: string) {
+  const now = Date.now()
+  const windowStart = now - RATE_LIMIT_WINDOW_MS
+  const bucket = rateLimitBuckets.get(key) ?? []
+  const recent = bucket.filter((ts) => ts >= windowStart)
+
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    rateLimitBuckets.set(key, recent)
+    return true
+  }
+
+  recent.push(now)
+  rateLimitBuckets.set(key, recent)
+  return false
+}
+
+function verifySignedToken(token: string) {
+  if (!TOKEN_SECRET) {
+    throw new Error("Installer token secret not configured")
+  }
+
+  const parts = token.split(".")
+  if (parts.length !== 2) {
+    throw new Error("Invalid token format")
+  }
+
+  const [payloadPart, signaturePart] = parts
+  const expectedSig = crypto.createHmac("sha256", TOKEN_SECRET).update(payloadPart).digest()
+  const providedSig = base64UrlDecode(signaturePart)
+
+  if (!crypto.timingSafeEqual(expectedSig, providedSig)) {
+    throw new Error("Invalid token signature")
+  }
+
+  const payloadJson = base64UrlDecode(payloadPart).toString("utf-8")
+  const payload = JSON.parse(payloadJson)
+
+  if (!payload.accountId) {
+    throw new Error("Invalid token: missing accountId")
+  }
+
+  const now = Date.now()
+  if (payload.exp && typeof payload.exp === "number" && now > payload.exp) {
+    throw new Error("Token expired")
+  }
+
+  if (!payload.exp) {
+    // Backstop expiry if older format without exp is used
+    const issued = typeof payload.timestamp === "number" ? payload.timestamp : now
+    if (now - issued > TOKEN_TTL_SECONDS * 1000) {
+      throw new Error("Token expired")
+    }
+  }
+
+  return payload as {
+    accountId: string
+    subAccountId?: string | null
+    accountName?: string
+    generatedBy?: string
+  }
+}
+
+async function safeAuditLog(params: {
+  action: string
+  entityType: string
+  entityId: string
+  accountId: string
+  ip?: string
+  userAgent?: string | null
+  details?: Record<string, unknown>
+}) {
+  try {
+    const admin = createAdminClient()
+    await admin.from("audit_logs").insert({
+      account_id: params.accountId,
+      user_id: null,
+      action: params.action,
+      entity_type: params.entityType,
+      entity_id: params.entityId,
+      details: params.details ?? null,
+      ip_address: params.ip ?? null,
+      user_agent: params.userAgent ?? null,
+    })
+  } catch (error) {
+    console.warn("Failed to write audit log", error)
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
+    if (!TOKEN_SECRET) {
+      return NextResponse.json({ error: "Installer token secret not configured" }, { status: 500 })
+    }
+
+    const clientIp = getClientIp(request)
+    const rateKey = `${clientIp}:config`
+
+    if (isRateLimited(rateKey)) {
+      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
+    }
+
     const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
     const token = searchParams.get("token")
@@ -14,18 +133,15 @@ export async function GET(request: NextRequest) {
     // Decode and validate the token
     let accountId: string
     let subAccountId: string | null = null
-    
+    let generatedBy: string | undefined
+
     try {
-      const decoded = Buffer.from(token, "base64").toString("utf-8")
-      const tokenData = JSON.parse(decoded)
-      accountId = tokenData.accountId
-      subAccountId = tokenData.subAccountId || null
-      
-      if (!accountId) {
-        throw new Error("Invalid token: missing accountId")
-      }
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token format" }, { status: 400 })
+      const payload = verifySignedToken(token)
+      accountId = payload.accountId
+      subAccountId = payload.subAccountId || null
+      generatedBy = payload.generatedBy
+    } catch (error: any) {
+      return NextResponse.json({ error: error?.message || "Invalid token" }, { status: 400 })
     }
 
     // Verify the account exists
@@ -49,6 +165,16 @@ export async function GET(request: NextRequest) {
       console_url: `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}/securityAgent`,
       heartbeat_interval: 300,
     }
+
+    void safeAuditLog({
+      action: "installer_config_served",
+      entityType: "config",
+      entityId: accountId,
+      accountId,
+      ip: clientIp,
+      userAgent: request.headers.get("user-agent"),
+      details: { subAccountId, generatedBy },
+    })
 
     return NextResponse.json(config, {
       headers: {

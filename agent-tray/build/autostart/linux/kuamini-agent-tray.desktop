@@ -1,5 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Kuamini Agent Tray
-Exec=/opt/kuamini/tray/kuamini-agent-tray
-X-GNOME-Autostart-enabled=true

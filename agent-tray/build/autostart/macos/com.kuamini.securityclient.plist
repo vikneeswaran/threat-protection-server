@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.kuamini.agenttray</string>
+    <string>com.kuamini.securityclient</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/KuaminiAgentTray.app/Contents/MacOS/KuaminiAgentTray</string>
+        <string>/Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

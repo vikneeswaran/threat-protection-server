@@ -8,6 +8,6 @@ python -m venv .venv
 pip install --upgrade pip
 pip install -r requirements.txt pyinstaller
 
-pyinstaller --noconfirm --onedir --windowed --name KuaminiAgentTray main.py
+pyinstaller --noconfirm --onedir --windowed --name KuaminiSecurityClient main.py
 
-Write-Host "Built: dist\KuaminiAgentTray"
+Write-Host "Built: dist\KuaminiSecurityClient"

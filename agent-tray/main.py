@@ -63,11 +63,11 @@ def get_config_path() -> Path:
 def get_log_path() -> Path:
     try:
         if sys.platform == "darwin":
-            base = Path.home() / "Library" / "Logs" / "KuaminiAgentTray"
+            base = Path.home() / "Library" / "Logs" / "KuaminiSecurityClient"
         elif os.name == "nt":
-            base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "KuaminiAgentTray"
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "KuaminiSecurityClient"
         else:
-            base = Path.home() / ".local" / "share" / "KuaminiAgentTray"
+            base = Path.home() / ".local" / "share" / "KuaminiSecurityClient"
         base.mkdir(parents=True, exist_ok=True)
         return base / "agent.log"
     except Exception:

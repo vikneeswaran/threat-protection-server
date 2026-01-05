@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import crypto from "crypto"
 import fs from "fs/promises"
 import path from "path"
 import { exec } from "child_process"
@@ -8,13 +10,131 @@ import os from "os"
 
 const execAsync = promisify(exec)
 
+// Token and rate-limit settings (tunable via env)
+const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
+const TOKEN_TTL_SECONDS = Number(process.env.INSTALLER_TOKEN_TTL_SECONDS ?? 7 * 24 * 60 * 60) // default 7d
+const RATE_LIMIT_WINDOW_MS = Number(process.env.INSTALLER_RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000) // default 10m
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.INSTALLER_RATE_LIMIT_MAX ?? 30)
+
+// In-memory rate-limit buckets (per IP); best-effort for serverless
+const rateLimitBuckets = new Map<string, number[]>()
+
+// Simple checksum cache keyed by absolute path
+const checksumCache = new Map<string, { mtimeMs: number; hash: string }>()
+
+function base64Url(input: Buffer | string) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+}
+
+function signPayload(payload: Record<string, unknown>) {
+  if (!TOKEN_SECRET) {
+    throw new Error("Missing INSTALLER_TOKEN_SECRET")
+  }
+
+  const payloadJson = JSON.stringify(payload)
+  const payloadB64 = base64Url(payloadJson)
+  const signature = crypto.createHmac("sha256", TOKEN_SECRET).update(payloadB64).digest()
+  const signatureB64 = base64Url(signature)
+  return `${payloadB64}.${signatureB64}`
+}
+
+function getClientIp(request: NextRequest) {
+  const forwarded = request.headers.get("x-forwarded-for")
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() || "unknown"
+  }
+  return request.ip || "unknown"
+}
+
+function isRateLimited(key: string) {
+  const now = Date.now()
+  const windowStart = now - RATE_LIMIT_WINDOW_MS
+  const bucket = rateLimitBuckets.get(key) ?? []
+  const recent = bucket.filter((ts) => ts >= windowStart)
+
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    rateLimitBuckets.set(key, recent)
+    return true
+  }
+
+  recent.push(now)
+  rateLimitBuckets.set(key, recent)
+  return false
+}
+
+async function getFileSha256(filePath: string) {
+  const stat = await fs.stat(filePath)
+  const cached = checksumCache.get(filePath)
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    return cached.hash
+  }
+
+  const fileBuffer = await fs.readFile(filePath)
+  const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex")
+  checksumCache.set(filePath, { mtimeMs: stat.mtimeMs, hash })
+  return hash
+}
+
+async function safeAuditLog(params: {
+  action: string
+  entityType: string
+  entityId: string
+  accountId: string
+  userId?: string
+  ip?: string
+  userAgent?: string | null
+  details?: Record<string, unknown>
+}) {
+  try {
+    const admin = createAdminClient()
+    await admin.from("audit_logs").insert({
+      account_id: params.accountId,
+      user_id: params.userId ?? null,
+      action: params.action,
+      entity_type: params.entityType,
+      entity_id: params.entityId,
+      details: params.details ?? null,
+      ip_address: params.ip ?? null,
+      user_agent: params.userAgent ?? null,
+    })
+  } catch (error) {
+    console.warn("Failed to write audit log", error)
+  }
+}
+
+async function resolveBundlePath(candidates: string[]) {
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate)
+      return candidate
+    } catch {
+      // keep trying
+    }
+  }
+  throw new Error(`Bundle not found. Tried: ${candidates.join(", ")}`)
+}
+
 export async function GET(request: NextRequest) {
   try {
+    if (!TOKEN_SECRET) {
+      return NextResponse.json({ error: "Installer token secret not configured" }, { status: 500 })
+    }
+
     const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
     const platform = searchParams.get("platform") // macos, windows, linux
     const accountId = searchParams.get("accountId")
     const subAccountId = searchParams.get("subAccountId")
+    const clientIp = getClientIp(request)
+    const rateKey = `${clientIp}:${platform ?? "unknown"}:download`
+
+    if (isRateLimited(rateKey)) {
+      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
+    }
 
     // Validate parameters
     if (!platform || !accountId) {
@@ -69,15 +189,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate registration token
-    const registrationToken = Buffer.from(
-      JSON.stringify({
-        accountId: accountId,
-        subAccountId: subAccountId || null,
-        accountName: account.name,
-        timestamp: Date.now(),
-        generatedBy: user.id,
-      }),
-    ).toString("base64")
+    const now = Date.now()
+    const registrationToken = signPayload({
+      accountId: accountId,
+      subAccountId: subAccountId || null,
+      accountName: account.name,
+      iat: now,
+      exp: now + TOKEN_TTL_SECONDS * 1000,
+      generatedBy: user.id,
+    })
 
     // Get the path to agent-tray dist folder
     const projectRoot = process.cwd()
@@ -86,11 +206,11 @@ export async function GET(request: NextRequest) {
     // Generate custom installer based on platform
     switch (platform) {
       case "macos":
-        return await serveMacOSInstaller(registrationToken, accountId)
+        return await serveMacOSInstaller(registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "windows":
-        return await generateWindowsInstaller(agentTrayDistPath, registrationToken, accountId)
+        return await generateWindowsInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "linux":
-        return await generateLinuxInstaller(agentTrayDistPath, registrationToken, accountId)
+        return await generateLinuxInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       default:
         return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
     }
@@ -100,17 +220,34 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function serveMacOSInstaller(token: string, accountId: string) {
+async function serveMacOSInstaller(token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
     // Serve the pre-built base PKG from public/tray/
     // The postinstall script will download account-specific config using the token
-    const publicPath = path.join(process.cwd(), "public", "tray", "KuaminiAgentTray-1.0.0.pkg")
+    const publicPath = await resolveBundlePath([
+      path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-1.0.0.pkg"),
+      path.join(process.cwd(), "public", "tray", "macos.pkg"),
+    ])
+
     const pkgData = await fs.readFile(publicPath)
+    const sha256 = await getFileSha256(publicPath)
+
+    // Fire-and-forget audit log (no blocking on response)
+    void safeAuditLog({
+      action: "installer_download",
+      entityType: "installer",
+      entityId: accountId,
+      accountId,
+      ip: clientIp,
+      userAgent,
+      details: { platform: "macos", sha256 },
+    })
 
     return new NextResponse(pkgData, {
       headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="KuaminiAgentTray-${accountId.slice(0, 8)}.pkg"`,
+        "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg"`,
+        "X-Checksum-SHA256": sha256,
       },
     })
   } catch (error) {
@@ -154,15 +291,24 @@ async function generateMacOSInstaller(distPath: string, token: string, accountId
   }
 }
 
-async function generateWindowsInstaller(distPath: string, token: string, accountId: string) {
+async function generateWindowsInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
+    const bundlePath = await resolveBundlePath([
+      path.join(process.cwd(), "public", "tray", "windows.zip"),
+      path.join(process.cwd(), "public", "tray", "windows.exe.zip"),
+    ])
+    const bundleFileName = path.basename(bundlePath)
+    const bundleHash = await getFileSha256(bundlePath)
+    const bundleIsZip = bundleFileName.toLowerCase().endsWith(".zip")
+
     // For Windows, we'll create a self-extracting archive with embedded config
     // This is a simplified approach - in production you'd want to use WiX or Inno Setup
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
 
     // Create config.json
     const config = {
-      api_base_url: process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com",
+      api_base_url: apiBase,
       registration_token: token,
       auto_register: true,
     }
@@ -177,10 +323,12 @@ async function generateWindowsInstaller(distPath: string, token: string, account
 
 $ErrorActionPreference = "Stop"
 
+  $expectedHash = "${bundleHash}"
+
 Write-Host "Installing Kuamini Threat Protection Agent..." -ForegroundColor Green
 
 # Create installation directory
-$installDir = "$env:ProgramFiles\\Kuamini\\AgentTray"
+$installDir = "$env:ProgramFiles\\Kuamini\\SecurityClient"
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
 # Create config directory
@@ -189,7 +337,7 @@ New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 
 # Write config file
 $config = @{
-    api_base_url = "${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}"
+  api_base_url = "${apiBase}"
     registration_token = "${token}"
     auto_register = $true
 }
@@ -197,9 +345,15 @@ $config | ConvertTo-Json | Out-File -FilePath "$configDir\\config.json" -Encodin
 
 # Download agent binary
 Write-Host "Downloading agent binary..." -ForegroundColor Yellow
-$agentUrl = "${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}/tray/windows.zip"
+$agentUrl = "${apiBase}/tray/${bundleFileName}"
 $zipPath = "$env:TEMP\\kuamini-agent.zip"
 Invoke-WebRequest -Uri $agentUrl -OutFile $zipPath
+
+# Verify checksum
+$hash = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLower()
+if ($hash -ne $expectedHash.ToLower()) {
+  throw "Checksum mismatch for downloaded agent bundle. Expected $expectedHash but got $hash."
+}
 
 # Extract agent
 Write-Host "Extracting agent..." -ForegroundColor Yellow
@@ -208,19 +362,19 @@ Remove-Item $zipPath
 
 # Create scheduled task for auto-start
 Write-Host "Configuring auto-start..." -ForegroundColor Yellow
-$action = New-ScheduledTaskAction -Execute "$installDir\\KuaminiAgentTray.exe"
+$action = New-ScheduledTaskAction -Execute "$installDir\\KuaminiSecurityClient.exe"
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
-Register-ScheduledTask -TaskName "KuaminiAgentTray" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
+Register-ScheduledTask -TaskName "KuaminiSecurityClient" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
 
 # Start the agent
 Write-Host "Starting agent..." -ForegroundColor Yellow
-Start-Process "$installDir\\KuaminiAgentTray.exe"
+Start-Process "$installDir\\KuaminiSecurityClient.exe"
 
-Write-Host "Installation complete! The Kuamini agent is now running and will start automatically at login." -ForegroundColor Green
-Write-Host "Check the system tray for the Kuamini icon." -ForegroundColor Cyan
+Write-Host "Installation complete! The Kuamini Security Client is now running and will start automatically at login." -ForegroundColor Green
+Write-Host "Check the system tray for the Kuamini Security Client icon." -ForegroundColor Cyan
 `
 
     await fs.writeFile(path.join(tempDir, "install.ps1"), installerScript)
@@ -231,10 +385,21 @@ Write-Host "Check the system tray for the Kuamini icon." -ForegroundColor Cyan
     // Clean up
     await fs.rm(tempDir, { recursive: true, force: true })
 
+    void safeAuditLog({
+      action: "installer_download",
+      entityType: "installer",
+      entityId: accountId,
+      accountId,
+      ip: clientIp,
+      userAgent,
+      details: { platform: "windows", sha256: bundleHash },
+    })
+
     return new NextResponse(scriptData, {
       headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="Install-KuaminiAgent-${accountId.slice(0, 8)}.ps1"`,
+        "Content-Disposition": `attachment; filename="Install-KuaminiSecurityClient-${accountId.slice(0, 8)}.ps1"`,
+        "X-Checksum-SHA256": bundleHash,
       },
     })
   } catch (error) {
@@ -243,8 +408,16 @@ Write-Host "Check the system tray for the Kuamini icon." -ForegroundColor Cyan
   }
 }
 
-async function generateLinuxInstaller(distPath: string, token: string, accountId: string) {
+async function generateLinuxInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
+    const bundlePath = await resolveBundlePath([
+      path.join(process.cwd(), "public", "tray", "linux.tar.gz"),
+      path.join(process.cwd(), "public", "tray", "linux.zip"),
+    ])
+    const bundleFileName = path.basename(bundlePath)
+    const bundleHash = await getFileSha256(bundlePath)
+
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
 
     // Create bash installer script with embedded config
@@ -253,6 +426,10 @@ async function generateLinuxInstaller(distPath: string, token: string, accountId
 # Auto-configured for account: ${accountId}
 
 set -e
+
+EXPECTED_HASH="${bundleHash}"
+BUNDLE_IS_ZIP=${bundleIsZip ? 1 : 0}
+TMP_BUNDLE=$(mktemp)
 
 echo "Installing Kuamini Threat Protection Agent..."
 
@@ -263,7 +440,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Create installation directory
-INSTALL_DIR="/opt/kuamini/agenttray"
+INSTALL_DIR="/opt/kuamini/securityclient"
 mkdir -p "$INSTALL_DIR"
 
 # Create config directory
@@ -273,7 +450,7 @@ mkdir -p "$CONFIG_DIR"
 # Write config file
 cat > "$CONFIG_DIR/config.json" << 'EOF'
 {
-  "api_base_url": "${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}",
+  "api_base_url": "${apiBase}",
   "registration_token": "${token}",
   "auto_register": true
 }
@@ -281,18 +458,33 @@ EOF
 
 # Download agent binary
 echo "Downloading agent binary..."
-AGENT_URL="${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}/tray/linux.tar.gz"
-curl -sSL "$AGENT_URL" | tar -xz -C "$INSTALL_DIR"
+AGENT_URL="${apiBase}/tray/${bundleFileName}"
+curl -sSL "$AGENT_URL" -o "$TMP_BUNDLE"
+
+# Verify checksum
+ACTUAL_HASH=$(sha256sum "$TMP_BUNDLE" | awk '{print $1}')
+if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+    echo "Checksum mismatch for downloaded agent bundle. Expected $EXPECTED_HASH but got $ACTUAL_HASH" >&2
+    rm -f "$TMP_BUNDLE"
+    exit 1
+fi
+
+if [ "$BUNDLE_IS_ZIP" -eq 1 ]; then
+  unzip -o "$TMP_BUNDLE" -d "$INSTALL_DIR"
+else
+  tar -xz -C "$INSTALL_DIR" -f "$TMP_BUNDLE"
+fi
+rm -f "$TMP_BUNDLE"
 
 # Create systemd service
-cat > /etc/systemd/system/kuamini-agent.service << 'EOF'
+cat > /etc/systemd/system/kuamini-security-client.service << 'EOF'
 [Unit]
-Description=Kuamini Threat Protection Agent
+Description=Kuamini Security Client
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/kuamini/agenttray/KuaminiAgentTray
+ExecStart=/opt/kuamini/securityclient/KuaminiSecurityClient
 Restart=always
 RestartSec=10
 User=root
@@ -303,11 +495,11 @@ EOF
 
 # Reload systemd and enable service
 systemctl daemon-reload
-systemctl enable kuamini-agent.service
-systemctl start kuamini-agent.service
+systemctl enable kuamini-security-client.service
+systemctl start kuamini-security-client.service
 
-echo "Installation complete! The Kuamini agent is now running."
-echo "Check status with: systemctl status kuamini-agent"
+echo "Installation complete! The Kuamini Security Client is now running."
+echo "Check status with: systemctl status kuamini-security-client"
 `
 
     await fs.writeFile(path.join(tempDir, "install.sh"), installerScript)
@@ -318,10 +510,21 @@ echo "Check status with: systemctl status kuamini-agent"
     // Clean up
     await fs.rm(tempDir, { recursive: true, force: true })
 
+    void safeAuditLog({
+      action: "installer_download",
+      entityType: "installer",
+      entityId: accountId,
+      accountId,
+      ip: clientIp,
+      userAgent,
+      details: { platform: "linux", sha256: bundleHash },
+    })
+
     return new NextResponse(scriptData, {
       headers: {
         "Content-Type": "application/x-sh",
-        "Content-Disposition": `attachment; filename="install-kuamini-agent-${accountId.slice(0, 8)}.sh"`,
+        "Content-Disposition": `attachment; filename="install-kuamini-security-client-${accountId.slice(0, 8)}.sh"`,
+        "X-Checksum-SHA256": bundleHash,
       },
     })
   } catch (error) {

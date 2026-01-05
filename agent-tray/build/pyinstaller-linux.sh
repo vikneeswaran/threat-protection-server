@@ -11,7 +11,7 @@ pyinstaller \
   --noconfirm \
   --onedir \
   --windowed \
-  --name kuamini-agent-tray \
+  --name KuaminiSecurityClient \
   main.py
 
-echo "Built: dist/kuamini-agent-tray"
+echo "Built: dist/KuaminiSecurityClient"

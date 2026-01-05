@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Kuamini Agent Tray</Description>
+    <Description>Kuamini Security Client</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -36,7 +36,7 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>C:\Program Files\Kuamini\Tray\KuaminiAgentTray.exe</Command>
+      <Command>C:\Program Files\Kuamini\SecurityClient\KuaminiSecurityClient.exe</Command>
     </Exec>
   </Actions>
 </Task>

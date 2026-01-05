@@ -1,0 +1,60 @@
+#!/bin/bash
+set -euo pipefail
+
+# Set explicit PATH for macOS installer environment
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Config directory
+CONFIG_DIR="$HOME/.kuamini"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+
+# Create config directory if it doesn't exist
+mkdir -p "$CONFIG_DIR"
+
+# If KUAMINI_INSTALL_URL is set, download the config
+if [ -n "${KUAMINI_INSTALL_URL:-}" ]; then
+    echo "Downloading config from: $KUAMINI_INSTALL_URL"
+    
+    # Export system CA certificates for curl
+    /usr/bin/security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain > /tmp/cacert.pem
+    
+    # Download config.json
+    /usr/bin/curl --cacert /tmp/cacert.pem -f -o "$CONFIG_FILE" "$KUAMINI_INSTALL_URL" || {
+        echo "Failed to download config from $KUAMINI_INSTALL_URL"
+        rm -f /tmp/cacert.pem
+        exit 1
+    }
+    
+    # Cleanup
+    rm -f /tmp/cacert.pem
+    
+    echo "Config downloaded successfully to $CONFIG_FILE"
+else
+    echo "KUAMINI_INSTALL_URL not set, skipping config download"
+fi
+
+# Set permissions
+chmod 755 "$CONFIG_DIR"
+chmod 644 "$CONFIG_FILE" 2>/dev/null || true
+
+# Bootstrap LaunchAgent for the current user
+PLIST_SRC="/Applications/KuaminiSecurityClient.app/Contents/MacOS/com.kuamini.securityclient.plist"
+PLIST_DST="$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
+
+if [ -f "$PLIST_SRC" ]; then
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cp "$PLIST_SRC" "$PLIST_DST"
+    chmod 644 "$PLIST_DST"
+    
+    # Load the LaunchAgent
+    /bin/launchctl bootstrap "gui/$(id -u)" "$PLIST_DST" 2>/dev/null || {
+        echo "Warning: Failed to bootstrap LaunchAgent. You may need to load it manually."
+    }
+    
+    echo "LaunchAgent installed and loaded"
+else
+    echo "Warning: LaunchAgent plist not found at $PLIST_SRC"
+fi
+
+echo "Installation complete!"
+exit 0

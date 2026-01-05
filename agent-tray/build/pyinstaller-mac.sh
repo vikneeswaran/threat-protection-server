@@ -7,8 +7,8 @@ python3 -m PyInstaller \
   --noconfirm \
   --onedir \
   --windowed \
-  --name KuaminiAgentTray \
-  --osx-bundle-identifier com.kuamini.agenttray \
+  --name KuaminiSecurityClient \
+  --osx-bundle-identifier com.kuamini.securityclient \
   main.py
 
-echo "Built: dist/KuaminiAgentTray.app"
+echo "Built: dist/KuaminiSecurityClient.app"
