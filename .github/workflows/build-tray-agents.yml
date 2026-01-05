@@ -105,6 +105,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -120,6 +122,15 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+
+          git fetch origin main
+          git checkout main
+          git pull --rebase origin main
+
           git add public/tray/*.zip
-          git diff --staged --quiet || git commit -m "Auto-build: Update tray agent bundles"
-          git push
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-build: Update tray agent bundles"
+            git push origin main
+          fi
