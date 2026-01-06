@@ -259,7 +259,7 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
 async function generateMacOSInstaller(distPath: string, token: string, accountId: string) {
   try {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
-    const outputPkg = path.join(tempDir, `KuaminiAgentTray-${accountId.slice(0, 8)}.pkg`)
+    const outputPkg = path.join(tempDir, `KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg`)
     
     // Use the shell script to generate custom PKG
     const scriptPath = path.join(process.cwd(), "agent-tray", "build", "generate-custom-pkg.sh")
@@ -282,7 +282,7 @@ async function generateMacOSInstaller(distPath: string, token: string, accountId
     return new NextResponse(pkgData, {
       headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="KuaminiAgentTray-${accountId.slice(0, 8)}.pkg"`,
+        "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg"`,
       },
     })
   } catch (error) {
