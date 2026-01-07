@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
     // Generate custom installer based on platform
     switch (platform) {
       case "macos":
-        return await serveMacOSInstaller(registrationToken, accountId, clientIp, request.headers.get("user-agent"))
+        return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "windows":
         return await generateWindowsInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "linux":
@@ -256,7 +256,7 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
   }
 }
 
-async function generateMacOSInstaller(distPath: string, token: string, accountId: string) {
+async function generateMacOSInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
     const outputPkg = path.join(tempDir, `KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg`)
@@ -274,15 +274,28 @@ async function generateMacOSInstaller(distPath: string, token: string, accountId
 
     // Read the generated PKG
     const pkgData = await fs.readFile(outputPkg)
+    const sha256 = await getFileSha256(outputPkg)
 
     // Clean up temp directory
     await fs.rm(tempDir, { recursive: true, force: true })
+
+    // Fire-and-forget audit log
+    void safeAuditLog({
+      action: "installer_download",
+      entityType: "installer",
+      entityId: accountId,
+      accountId,
+      ip: clientIp,
+      userAgent,
+      details: { platform: "macos", sha256 },
+    })
 
     // Return the PKG file
     return new NextResponse(pkgData, {
       headers: {
         "Content-Type": "application/octet-stream",
         "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg"`,
+        "X-Checksum-SHA256": sha256,
       },
     })
   } catch (error) {
