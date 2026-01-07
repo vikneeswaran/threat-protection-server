@@ -20,19 +20,21 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
   const router = useRouter()
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState("")
+  const [registrationToken, setRegistrationToken] = useState("")
   const [downloadingInstaller, setDownloadingInstaller] = useState<string | null>(null)
 
   useEffect(() => {
     setBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com")
-  }, [])
-
-  const registrationToken = Buffer.from(
-    JSON.stringify({
-      accountId: account.id,
-      accountName: account.name,
-      timestamp: Date.now(),
-    }),
-  ).toString("base64")
+    // Generate token only once on client side to avoid hydration mismatch
+    const token = Buffer.from(
+      JSON.stringify({
+        accountId: account.id,
+        accountName: account.name,
+        timestamp: Date.now(),
+      }),
+    ).toString("base64")
+    setRegistrationToken(token)
+  }, [account.id, account.name])
 
   const copyToClipboard = async (text: string, commandType: string) => {
     await navigator.clipboard.writeText(text)
