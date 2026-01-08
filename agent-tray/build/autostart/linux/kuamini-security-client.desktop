@@ -1,5 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Kuamini Security Client
-Exec=/opt/kuamini/securityclient/KuaminiSecurityClient
-X-GNOME-Autostart-enabled=true

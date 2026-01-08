@@ -303,6 +303,18 @@ def tray_main():
     )
 
     set_status("Starting")
+    
+    # Auto-register on startup if configured and registration_token is available
+    if config.get("auto_register") and config.get("registration_token"):
+        set_status("Registering...")
+        ok, res = register(config)
+        if ok:
+            logging.info("Auto-registration successful: %s", res)
+            set_status("Registered, preparing heartbeat")
+        else:
+            logging.warning("Auto-registration failed: %s", res)
+            set_status("Registration failed, retrying on heartbeat")
+    
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     icon.icon = make_icon(status["color"])
     try:

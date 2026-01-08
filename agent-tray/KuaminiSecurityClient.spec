@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('build/autostart/macos/com.kuamini.securityclient.plist', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
