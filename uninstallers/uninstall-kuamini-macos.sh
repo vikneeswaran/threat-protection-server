@@ -10,9 +10,13 @@ echo ""
 
 # Check if running as user (not root)
 if [ "$EUID" -eq 0 ]; then 
-   echo "⚠️  Please run as normal user (not sudo)"
-   exit 1
+    echo "⚠️  Please run as normal user (not sudo)"
+    exit 1
 fi
+
+# Tool paths (avoid "command not found" on sudo env)
+LAUNCHCTL="/bin/launchctl"
+PKGUTIL="/usr/sbin/pkgutil"
 
 # API base URL (default to production, can override)
 API_BASE="${API_BASE:-https://kuaminisystems.com/api/agent}"
@@ -57,22 +61,25 @@ echo "🛑 Stopping agent..."
 CURRENT_UID=$(id -u)
 
 # Proactively bootout and disable LaunchAgents (new and old labels)
-launchctl bootout "gui/$CURRENT_UID" com.kuamini.securityclient 2>/dev/null || true
-launchctl bootout "gui/$CURRENT_UID" com.kuamini.agenttray 2>/dev/null || true
-launchctl bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
-launchctl bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
+$LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.securityclient >/dev/null 2>&1 || true
+$LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.agenttray >/dev/null 2>&1 || true
+$LAUNCHCTL bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
+$LAUNCHCTL bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
 
 # Best-effort system locations (older installs)
-sudo launchctl bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
-sudo launchctl bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
+sudo $LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
+sudo $LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
 
 # Disable to prevent immediate relaunch by launchd if a plist lingers
-launchctl disable "gui/$CURRENT_UID"/com.kuamini.securityclient 2>/dev/null || true
-launchctl disable "gui/$CURRENT_UID"/com.kuamini.agenttray 2>/dev/null || true
+$LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
+$LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
+sudo $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
+sudo $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
 
 # Kill any running processes
 pkill -f "KuaminiSecurityClient" 2>/dev/null || true
 pkill -f "KuaminiAgentTray" 2>/dev/null || true
+pkill -f "KuaminiAgent" 2>/dev/null || true
 
 sleep 1
 
@@ -92,6 +99,7 @@ sudo rm -f "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || tr
 
 # Remove config and data
 rm -rf ~/.kuamini
+rm -rf /tmp/kuamini-* 2>/dev/null || true
 
 # Remove logs
 rm -rf ~/Library/Logs/KuaminiSecurityClient
@@ -110,10 +118,12 @@ rm -rf ~/Library/Caches/com.kuamini.securityclient
 rm -rf ~/Library/Caches/com.kuamini.agenttray
 
 # Forget package receipts
-sudo pkgutil --forget com.kuamini.securityclient 2>/dev/null || true
-sudo pkgutil --forget com.kuamini.agenttray 2>/dev/null || true
+sudo $PKGUTIL --forget com.kuamini.securityclient >/dev/null 2>&1 || true
+sudo $PKGUTIL --forget com.kuamini.agenttray >/dev/null 2>&1 || true
 
 echo ""
 echo "✅ Kuamini Security Client has been completely removed"
 echo "   All configuration, logs, and caches have been deleted"
 echo ""
+echo "If you still see a tray icon, log out and back in, or run:"
+echo "  $LAUNCHCTL print gui/$CURRENT_UID | egrep 'com\\.kuamini'"
