@@ -18,18 +18,27 @@ fi
 LAUNCHCTL="/bin/launchctl"
 PKGUTIL="/usr/sbin/pkgutil"
 
-# API base URL (default to production, can override)
-API_BASE="${API_BASE:-https://kuaminisystems.com/api/agent}"
-
-# Read agent_id from config if it exists
+# Read agent_id and api_base from config if it exists
 AGENT_ID=""
+API_BASE=""
 CONFIG_FILE="$HOME/.kuamini/config.json"
 if [ -f "$CONFIG_FILE" ]; then
-    echo "📋 Found config file, reading agent_id..."
+    echo "📋 Found config file, reading agent configuration..."
     AGENT_ID=$(grep -o '"agent_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    API_BASE=$(grep -o '"api_base"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    
     if [ -n "$AGENT_ID" ]; then
         echo "✓ Agent ID: $AGENT_ID"
     fi
+    if [ -n "$API_BASE" ]; then
+        echo "✓ API Base: $API_BASE"
+    fi
+fi
+
+# Fallback to environment variable or production URL if not found in config
+if [ -z "$API_BASE" ]; then
+    API_BASE="${API_BASE:-https://kuaminisystems.com/api/agent}"
+    echo "ℹ️  Using default API: $API_BASE"
 fi
 
 # Deregister from console
@@ -85,11 +94,11 @@ sleep 1
 
 echo "🗑️  Removing files..."
 
-# Remove applications (both old and new names)
-rm -rf /Applications/KuaminiSecurityClient.app
-rm -rf /Applications/KuaminiAgentTray.app
-rm -rf ~/Applications/KuaminiSecurityClient.app
-rm -rf ~/Applications/KuaminiAgentTray.app
+# Remove applications (both old and new names) - use sudo for apps installed by PKG
+sudo rm -rf /Applications/KuaminiSecurityClient.app 2>/dev/null || true
+sudo rm -rf /Applications/KuaminiAgentTray.app 2>/dev/null || true
+rm -rf ~/Applications/KuaminiSecurityClient.app 2>/dev/null || true
+rm -rf ~/Applications/KuaminiAgentTray.app 2>/dev/null || true
 
 # Remove LaunchAgents
 rm -f "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
