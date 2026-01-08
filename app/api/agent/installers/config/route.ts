@@ -122,7 +122,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
     }
 
-    const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
     const token = searchParams.get("token")
 
@@ -144,8 +143,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error?.message || "Invalid token" }, { status: 400 })
     }
 
-    // Verify the account exists
-    const { data: account, error: accountError } = await supabase
+    // Use admin client since this is an unauthenticated endpoint (called during install)
+    const admin = createAdminClient()
+    const { data: account, error: accountError } = await admin
       .from("accounts")
       .select("*")
       .eq("id", accountId)

@@ -1,5 +1,39 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import crypto from "crypto"
+
+const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
+
+function base64UrlDecode(input: string) {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4)
+  return Buffer.from(normalized, "base64")
+}
+
+function verifyAndDecodeToken(token: string) {
+  // Check if it's a signed JWT token (has two parts with dot separator)
+  if (token.includes(".")) {
+    if (!TOKEN_SECRET) {
+      throw new Error("Token secret not configured")
+    }
+    const parts = token.split(".")
+    if (parts.length !== 2) {
+      throw new Error("Invalid token format")
+    }
+    const [payloadPart, signaturePart] = parts
+    const expectedSig = crypto.createHmac("sha256", TOKEN_SECRET).update(payloadPart).digest()
+    const providedSig = base64UrlDecode(signaturePart)
+    if (!crypto.timingSafeEqual(expectedSig, providedSig)) {
+      throw new Error("Invalid token signature")
+    }
+    const payloadJson = base64UrlDecode(payloadPart).toString("utf-8")
+    return JSON.parse(payloadJson)
+  } else {
+    // Legacy base64-encoded JSON token
+    const cleaned = String(token).replace(/\s+/g, "")
+    const decodedStr = Buffer.from(cleaned, "base64").toString("utf-8")
+    return JSON.parse(decodedStr)
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,12 +57,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Decode token (tolerate whitespace/newlines in the provided base64 string)
+    // Decode and verify token (supports both signed JWT and legacy base64)
     let accountId: string
     try {
-      const cleaned = String(token).replace(/\s+/g, "")
-      const decodedStr = Buffer.from(cleaned, "base64").toString("utf-8")
-      const decoded = JSON.parse(decodedStr)
+      const decoded = verifyAndDecodeToken(token)
       accountId = decoded.accountId
     } catch (e) {
       console.error("Invalid registration token decode error:", e)
