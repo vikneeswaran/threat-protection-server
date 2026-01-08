@@ -45,7 +45,7 @@ fi
 /bin/chmod 644 "$CONFIG_FILE" 2>/dev/null || true
 
 # Install and load LaunchAgent for the console user
-PLIST_SRC="/Applications/KuaminiSecurityClient.app/Contents/MacOS/com.kuamini.securityclient.plist"
+PLIST_SRC="/Applications/KuaminiSecurityClient.app/Contents/Resources/com.kuamini.securityclient.plist"
 PLIST_DST="$USER_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
 
 if [ -f "$PLIST_SRC" ]; then
