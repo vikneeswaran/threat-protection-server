@@ -53,9 +53,22 @@ fi
 echo ""
 echo "🛑 Stopping agent..."
 
-# Unload LaunchAgent (both old and new names)
-launchctl unload ~/Library/LaunchAgents/com.kuamini.securityclient.plist 2>/dev/null || true
-launchctl unload ~/Library/LaunchAgents/com.kuamini.agenttray.plist 2>/dev/null || true
+# Determine current user UID
+CURRENT_UID=$(id -u)
+
+# Proactively bootout and disable LaunchAgents (new and old labels)
+launchctl bootout "gui/$CURRENT_UID" com.kuamini.securityclient 2>/dev/null || true
+launchctl bootout "gui/$CURRENT_UID" com.kuamini.agenttray 2>/dev/null || true
+launchctl bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
+launchctl bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
+
+# Best-effort system locations (older installs)
+sudo launchctl bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
+sudo launchctl bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
+
+# Disable to prevent immediate relaunch by launchd if a plist lingers
+launchctl disable "gui/$CURRENT_UID"/com.kuamini.securityclient 2>/dev/null || true
+launchctl disable "gui/$CURRENT_UID"/com.kuamini.agenttray 2>/dev/null || true
 
 # Kill any running processes
 pkill -f "KuaminiSecurityClient" 2>/dev/null || true
@@ -72,8 +85,10 @@ rm -rf ~/Applications/KuaminiSecurityClient.app
 rm -rf ~/Applications/KuaminiAgentTray.app
 
 # Remove LaunchAgents
-rm -f ~/Library/LaunchAgents/com.kuamini.securityclient.plist
-rm -f ~/Library/LaunchAgents/com.kuamini.agenttray.plist
+rm -f "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
+rm -f "$HOME/Library/LaunchAgents/com.kuamini.agenttray.plist"
+sudo rm -f "/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
+sudo rm -f "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
 
 # Remove config and data
 rm -rf ~/.kuamini

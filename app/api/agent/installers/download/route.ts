@@ -270,7 +270,14 @@ async function generateMacOSInstaller(_distPath: string, token: string, accountI
       CONSOLE_URL: `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}/securityAgent`,
     }
     
-    await execAsync(`"${scriptPath}" "${token}" "${outputPkg}"`, { env })
+    try {
+      const { stdout, stderr } = await execAsync(`"${scriptPath}" "${token}" "${outputPkg}"`, { env })
+      if (stdout) console.log("generate-custom-pkg stdout:\n", stdout)
+      if (stderr) console.warn("generate-custom-pkg stderr:\n", stderr)
+    } catch (e: any) {
+      console.error("generate-custom-pkg failed:", e?.stderr || e?.message || e)
+      throw e
+    }
 
     // Read the generated PKG
     const pkgData = await fs.readFile(outputPkg)
@@ -430,6 +437,7 @@ async function generateLinuxInstaller(_distPath: string, token: string, accountI
     ])
     const bundleFileName = path.basename(bundlePath)
     const bundleHash = await getFileSha256(bundlePath)
+    const bundleIsZip = bundleFileName.toLowerCase().endsWith(".zip")
 
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
 
