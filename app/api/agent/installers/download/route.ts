@@ -232,6 +232,10 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
     const pkgData = await fs.readFile(publicPath)
     const sha256 = await getFileSha256(publicPath)
 
+    // Build the install URL for postinstall to use (e.g., in Vercel fallback)
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
+    const installUrl = `${apiBase}/installers/config?token=${token}`
+
     // Fire-and-forget audit log (no blocking on response)
     void safeAuditLog({
       action: "installer_download",
@@ -240,7 +244,7 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
       accountId,
       ip: clientIp,
       userAgent,
-      details: { platform: "macos", sha256 },
+      details: { platform: "macos", sha256, installUrl, fallback: true },
     })
 
     return new NextResponse(pkgData, {
@@ -248,6 +252,7 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
         "Content-Type": "application/octet-stream",
         "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg"`,
         "X-Checksum-SHA256": sha256,
+        "X-Install-URL": installUrl,
       },
     })
   } catch (error) {
@@ -276,7 +281,10 @@ async function generateMacOSInstaller(_distPath: string, token: string, accountI
       if (stderr) console.warn("generate-custom-pkg stderr:\n", stderr)
     } catch (e: any) {
       console.error("generate-custom-pkg failed:", e?.stderr || e?.message || e)
-      throw e
+      console.warn("Falling back to static base PKG; postinstall will download account-specific config")
+      // Clean up temp directory and fall back to static PKG
+      await fs.rm(tempDir, { recursive: true, force: true })
+      return await serveMacOSInstaller(token, accountId, clientIp, userAgent)
     }
 
     // Read the generated PKG
