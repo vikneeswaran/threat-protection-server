@@ -53,22 +53,48 @@ export async function POST(request: NextRequest) {
     }
     const { token, hostname, os, os_version, agent_version, agent_id } = body
 
-    if (!token || !hostname || !os) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
-
-    // Decode and verify token (supports both signed JWT and legacy base64)
-    let accountId: string
-    try {
-      const decoded = verifyAndDecodeToken(token)
-      accountId = decoded.accountId
-    } catch (e) {
-      console.error("Invalid registration token decode error:", e)
-      return NextResponse.json({ error: "Invalid token" }, { status: 400 })
+    if (!hostname || !os) {
+      return NextResponse.json({ error: "Missing required fields: hostname and os" }, { status: 400 })
     }
 
     // Create admin client to bypass RLS
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+
+    // Determine account_id
+    let accountId: string | null = null
+
+    if (token) {
+      // Decode and verify token (supports both signed JWT and legacy base64)
+      try {
+        const decoded = verifyAndDecodeToken(token)
+        accountId = decoded.accountId
+      } catch (e) {
+        console.error("Invalid registration token decode error:", e)
+        return NextResponse.json({ error: "Invalid token" }, { status: 400 })
+      }
+    } else {
+      // Auto-registration without token
+      // For agents that register without a token, try to find a default account
+      console.warn("Registration without token - attempting to find default account")
+      
+      // Get the first active account (for single-account or dev deployments)
+      const { data: defaultAccount } = await supabaseAdmin
+        .from("accounts")
+        .select("id")
+        .eq("is_active", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single()
+      
+      if (!defaultAccount?.id) {
+        return NextResponse.json({ 
+          error: "No active accounts found. Please create an account first or provide a registration token." 
+        }, { status: 403 })
+      }
+      
+      accountId = defaultAccount.id
+      console.log("Assigned default account for token-less registration:", accountId)
+    }
 
     // Check if endpoint already exists — prefer `agent_id` when provided, otherwise fall back to mac+hostname
     let existingEndpoint: any = null

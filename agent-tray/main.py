@@ -304,8 +304,8 @@ def tray_main():
 
     set_status("Starting")
     
-    # Auto-register on startup if configured and registration_token is available
-    if config.get("auto_register") and config.get("registration_token"):
+    # Auto-register on startup (works with or without registration_token)
+    if config.get("auto_register"):
         set_status("Registering...")
         ok, res = register(config)
         if ok:
