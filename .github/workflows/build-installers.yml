@@ -143,10 +143,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "build: update cross-platform installers
-
-macOS: PKG installer
-Windows: MSI installer
-Linux: Self-extracting shell script"
+            git commit -m "build: update cross-platform installers (macOS PKG, Windows MSI, Linux shell)"
             git push origin HEAD:main
           fi
