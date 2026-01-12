@@ -82,10 +82,12 @@ export default async function EndpointsPage({
         {} as Record<string, number>,
       )
     }
-  }WithComputedStatus.map((endpoint) => ({
-      ...endpoint,
-      activeThreats: threatCounts[endpoint.id] || 0,
-    }))
+  }
+
+  const endpointsWithThreats = endpointsWithComputedStatus.map((endpoint) => ({
+    ...endpoint,
+    activeThreats: threatCounts[endpoint.id] || 0,
+  }))
 
   const { data: allEndpoints } = await supabase
     .from("endpoints")
@@ -101,10 +103,7 @@ export default async function EndpointsPage({
     disconnected: allWithComputedStatus.filter((e) => e.computed_status === "disconnected").length,
     windows: allWithComputedStatus.filter((e) => e.os === "windows").length,
     macos: allWithComputedStatus.filter((e) => e.os === "macos").length,
-    linux: allWithComputedStatus.filter((e) => e.os === "linux").lengthcted").length || 0,
-    windows: allEndpoints?.filter((e) => e.os === "windows").length || 0,
-    macos: allEndpoints?.filter((e) => e.os === "macos").length || 0,
-    linux: allEndpoints?.filter((e) => e.os === "linux").length || 0,
+    linux: allWithComputedStatus.filter((e) => e.os === "linux").length,
   }
 
   return (

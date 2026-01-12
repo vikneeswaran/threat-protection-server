@@ -155,9 +155,9 @@ export function EndpointsList({ endpoints, userRole }: EndpointsListProps) {
                   </TableCell>
                   <TableCell className="font-mono text-sm">{endpoint.ip_address || "-"}</TableCell>
                   <TableCell>{endpoint.agent_version || "-"}</TableCell>
-                  <TableCell>computed_status]}>
-                      {endpoint.computed_nt="outline" className={statusColors[endpoint.status]}>
-                      {endpoint.status}
+                  <TableCell>
+                    <Badge variant="outline" className={statusColors[endpoint.computed_status]}>
+                      {endpoint.computed_status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
