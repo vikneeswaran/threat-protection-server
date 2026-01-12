@@ -37,7 +37,12 @@ if (-not ($heat -and $candle -and $light)) {
   }
 }
 
+# Generate GUIDs for WiX
+$ProductCode = [guid]::NewGuid().ToString()
+$StartMenuGuid = [guid]::NewGuid().ToString()
+
 # Create WiX source file (keep minimal to avoid missing-asset failures)
+# Use string interpolation instead of WiX preprocessor variables to avoid PowerShell expansion issues
 $WixSource = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
@@ -67,13 +72,13 @@ $WixSource = @"
     </Directory>
 
     <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="ApplicationFiles" Guid="$(var.ProductCode)">
+      <Component Id="ApplicationFiles" Guid="$ProductCode">
         <File Id="MainExe" Name="KuaminiSecurityClient.exe" DiskId="1" Source="dist\KuaminiSecurityClient\KuaminiSecurityClient.exe" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
     <DirectoryRef Id="ApplicationProgramsFolder">
-      <Component Id="StartMenuShortcut" Guid="$(var.StartMenuGuid)">
+      <Component Id="StartMenuShortcut" Guid="$StartMenuGuid">
         <Shortcut Id="ApplicationStartMenuShortcut" Name="Kuamini Security Client" 
                   Description="Kuamini Security Client" Target="[INSTALLFOLDER]KuaminiSecurityClient.exe" />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
@@ -88,14 +93,9 @@ $WixSource = @"
 # Save WiX source
 $WixSource | Out-File -Encoding UTF8 -FilePath "build\KuaminiSecurityClient.wxs"
 
-# Create configuration file for WiX compiler
-$PreprocessorVars = @{
-    ProductCode = [guid]::NewGuid().ToString()
-    StartMenuGuid = [guid]::NewGuid().ToString()
-}
-
 Write-Host "Creating WiX project file..."
-Write-Host "Preprocessor variables: $($PreprocessorVars | ConvertTo-Json)"
+Write-Host "Generated ProductCode: $ProductCode"
+Write-Host "Generated StartMenuGuid: $StartMenuGuid"
 
 if (-not ($heat -and $candle -and $light)) {
     Write-Host ""
@@ -115,9 +115,7 @@ Write-Host ""
 
 # Compile WiX
 Write-Host "Compiling WiX source..."
-& $candle.Path -d ProductCode=$($PreprocessorVars.ProductCode) `
-             -d StartMenuGuid=$($PreprocessorVars.StartMenuGuid) `
-             -out build\ `
+& $candle.Path -out build\ `
              build\KuaminiSecurityClient.wxs
 
 # Link to create MSI
