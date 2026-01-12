@@ -7,7 +7,7 @@ import { format } from "date-fns"
 import { Monitor, Wifi, Clock, Shield, Network } from "lucide-react"
 
 interface EndpointDetailsProps {
-  endpoint: Endpoint
+  endpoint: Endpoint & { computed_status?: "online" | "offline" | "disconnected" }
 }
 
 const statusColors = {
@@ -17,6 +17,9 @@ const statusColors = {
 }
 
 export function EndpointDetails({ endpoint }: EndpointDetailsProps) {
+  // Use computed status if available, fallback to stored status
+  const displayStatus = endpoint.computed_status || endpoint.status
+  
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <Card>
@@ -57,9 +60,9 @@ export function EndpointDetails({ endpoint }: EndpointDetailsProps) {
           <div className="flex justify-between">
             <span className="text-muted-foreground">IP Address</span>
             <span className="font-mono text-sm">{endpoint.ip_address || "-"}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Status</span>
+          </div>displayStatus]}>
+              <Wifi className="h-3 w-3 mr-1" />
+              {displaySme="text-muted-foreground">Status</span>
             <Badge variant="outline" className={statusColors[endpoint.status]}>
               <Wifi className="h-3 w-3 mr-1" />
               {endpoint.status}

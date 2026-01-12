@@ -5,6 +5,7 @@ import { EndpointDetails } from "@/components/security-agent/endpoint-details"
 import { EndpointThreats } from "@/components/security-agent/endpoint-threats"
 import { EndpointPolicies } from "@/components/security-agent/endpoint-policies"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { withComputedStatus } from "@/lib/endpoint-status"
 
 export default async function EndpointDetailPage({
   params,
@@ -28,6 +29,9 @@ export default async function EndpointDetailPage({
   if (!endpoint) {
     notFound()
   }
+
+  // Add computed status
+  const endpointWithComputedStatus = withComputedStatus(endpoint)
 
   // Get endpoint threats
   const { data: threats } = await supabase
@@ -59,7 +63,7 @@ export default async function EndpointDetailPage({
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="threats">Threats ({threats?.length || 0})</TabsTrigger>
             <TabsTrigger value="policies">Policies ({assignedPolicies?.length || 0})</TabsTrigger>
-          </TabsList>
+          </TabsList>WithComputedStatus
 
           <TabsContent value="details" className="mt-6">
             <EndpointDetails endpoint={endpoint} />

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 import { EndpointsList } from "@/components/security-agent/endpoints-list"
 import { EndpointFilters } from "@/components/security-agent/endpoint-filters"
+import { withComputedStatuses, computeEndpointStatus } from "@/lib/endpoint-status"
 
 export default async function EndpointsPage({
   searchParams,
@@ -55,6 +56,9 @@ export default async function EndpointsPage({
     console.log("[v0] Endpoints fetch error:", endpointsError.message)
   }
 
+  // Compute actual status based on last_seen_at
+  const endpointsWithComputedStatus = endpoints ? withComputedStatuses(endpoints) : []
+
   const endpointIds = endpoints?.map((e) => e.id) || []
   let threatCounts: Record<string, number> = {}
 
@@ -78,24 +82,26 @@ export default async function EndpointsPage({
         {} as Record<string, number>,
       )
     }
-  }
-
-  const endpointsWithThreats =
-    endpoints?.map((endpoint) => ({
+  }WithComputedStatus.map((endpoint) => ({
       ...endpoint,
       activeThreats: threatCounts[endpoint.id] || 0,
-    })) || []
+    }))
 
   const { data: allEndpoints } = await supabase
     .from("endpoints")
-    .select("status, os")
+    .select("status, os, last_seen_at")
     .eq("account_id", profile.account_id)
 
+  // Compute stats with real-time status
+  const allWithComputedStatus = allEndpoints ? withComputedStatuses(allEndpoints) : []
   const stats = {
-    total: allEndpoints?.length || 0,
-    online: allEndpoints?.filter((e) => e.status === "online").length || 0,
-    offline: allEndpoints?.filter((e) => e.status === "offline").length || 0,
-    disconnected: allEndpoints?.filter((e) => e.status === "disconnected").length || 0,
+    total: allWithComputedStatus.length,
+    online: allWithComputedStatus.filter((e) => e.computed_status === "online").length,
+    offline: allWithComputedStatus.filter((e) => e.computed_status === "offline").length,
+    disconnected: allWithComputedStatus.filter((e) => e.computed_status === "disconnected").length,
+    windows: allWithComputedStatus.filter((e) => e.os === "windows").length,
+    macos: allWithComputedStatus.filter((e) => e.os === "macos").length,
+    linux: allWithComputedStatus.filter((e) => e.os === "linux").lengthcted").length || 0,
     windows: allEndpoints?.filter((e) => e.os === "windows").length || 0,
     macos: allEndpoints?.filter((e) => e.os === "macos").length || 0,
     linux: allEndpoints?.filter((e) => e.os === "linux").length || 0,

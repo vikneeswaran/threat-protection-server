@@ -20,6 +20,7 @@ import { useState } from "react"
 
 interface EndpointWithThreats extends Endpoint {
   activeThreats: number
+  computed_status: "online" | "offline" | "disconnected"
 }
 
 interface EndpointsListProps {
@@ -154,8 +155,8 @@ export function EndpointsList({ endpoints, userRole }: EndpointsListProps) {
                   </TableCell>
                   <TableCell className="font-mono text-sm">{endpoint.ip_address || "-"}</TableCell>
                   <TableCell>{endpoint.agent_version || "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={statusColors[endpoint.status]}>
+                  <TableCell>computed_status]}>
+                      {endpoint.computed_nt="outline" className={statusColors[endpoint.status]}>
                       {endpoint.status}
                     </Badge>
                   </TableCell>

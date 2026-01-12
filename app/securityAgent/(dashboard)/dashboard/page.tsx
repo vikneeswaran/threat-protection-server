@@ -7,6 +7,7 @@ import { EndpointStatusChart } from "@/components/security-agent/endpoint-status
 import { RecentThreatsTable } from "@/components/security-agent/recent-threats-table"
 import { LicenseOverview } from "@/components/security-agent/license-overview"
 import { Monitor, AlertTriangle, Shield, Key } from "lucide-react"
+import { withComputedStatuses } from "@/lib/endpoint-status"
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -36,13 +37,14 @@ export default async function DashboardPage() {
   }
 
   // Get endpoint stats
-  const { data: endpoints } = await supabase.from("endpoints").select("status")
+  const { data: endpoints } = await supabase.from("endpoints").select("status, last_seen_at")
 
+  const endpointsWithComputedStatus = endpoints ? withComputedStatuses(endpoints) : []
   const endpointStats = {
-    total: endpoints?.length || 0,
-    online: endpoints?.filter((e) => e.status === "online").length || 0,
-    offline: endpoints?.filter((e) => e.status === "offline").length || 0,
-    disconnected: endpoints?.filter((e) => e.status === "disconnected").length || 0,
+    total: endpointsWithComputedStatus.length,
+    online: endpointsWithComputedStatus.filter((e) => e.computed_status === "online").length,
+    offline: endpointsWithComputedStatus.filter((e) => e.computed_status === "offline").length,
+    disconnected: endpointsWithComputedStatus.filter((e) => e.computed_status === "disconnected").length,
   }
 
   // Get threat stats
