@@ -85,11 +85,28 @@ $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || t
 sudo $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
 sudo $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
 
-# Kill any running processes
-pkill -f "KuaminiSecurityClient" 2>/dev/null || true
-pkill -f "KuaminiAgentTray" 2>/dev/null || true
-pkill -f "KuaminiAgent" 2>/dev/null || true
+# Kill any running processes (more aggressively)
+echo "   Terminating running processes..."
 
+# First try graceful termination (SIGTERM)
+pkill -TERM -f "KuaminiSecurityClient" 2>/dev/null || true
+pkill -TERM -f "KuaminiAgentTray" 2>/dev/null || true
+pkill -TERM -f "KuaminiAgent" 2>/dev/null || true
+
+# Wait a moment for graceful shutdown
+sleep 2
+
+# Force kill any remaining processes (SIGKILL)
+pkill -9 -f "KuaminiSecurityClient" 2>/dev/null || true
+pkill -9 -f "KuaminiAgentTray" 2>/dev/null || true
+pkill -9 -f "KuaminiAgent" 2>/dev/null || true
+
+# Also kill by exact process name in case full path doesn't match
+killall -9 KuaminiSecurityClient 2>/dev/null || true
+killall -9 KuaminiAgentTray 2>/dev/null || true
+killall -9 KuaminiAgent 2>/dev/null || true
+
+# Wait to ensure processes are fully terminated
 sleep 1
 
 echo "🗑️  Removing files..."
@@ -130,9 +147,33 @@ rm -rf ~/Library/Caches/com.kuamini.agenttray
 sudo $PKGUTIL --forget com.kuamini.securityclient >/dev/null 2>&1 || true
 sudo $PKGUTIL --forget com.kuamini.agenttray >/dev/null 2>&1 || true
 
+# Final cleanup: Restart the Dock to clear any ghost tray icons
 echo ""
-echo "✅ Kuamini Security Client has been completely removed"
-echo "   All configuration, logs, and caches have been deleted"
+echo "🔄 Clearing menu bar icons..."
+sleep 2
+
+# Kill and restart Dock (this clears all menu bar icons and caches)
+killall Dock 2>/dev/null || true
+
+# Wait for Dock to restart
+sleep 2
+
+# Final verification: Check if any processes are still running
+REMAINING=$(ps aux | grep -i kuamini | grep -v grep | grep -v uninstall || true)
+
 echo ""
-echo "If you still see a tray icon, log out and back in, or run:"
-echo "  $LAUNCHCTL print gui/$CURRENT_UID | egrep 'com\\.kuamini'"
+if [ -n "$REMAINING" ]; then
+    echo "⚠️  Warning: Some processes may still be running:"
+    echo "$REMAINING"
+    echo ""
+    echo "Please try:"
+    echo "  1. Log out and back in"
+    echo "  2. Or restart your Mac"
+else
+    echo "✅ Kuamini Security Client has been completely removed"
+    echo "   ✓ All files and configurations deleted"
+    echo "   ✓ All processes terminated"
+    echo "   ✓ Menu bar icons cleared"
+    echo ""
+    echo "The uninstallation is complete! Your system is clean."
+fi

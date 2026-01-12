@@ -73,10 +73,28 @@ systemctl disable kuamini-security-client.service 2>/dev/null || true
 systemctl stop kuamini-agent.service 2>/dev/null || true
 systemctl disable kuamini-agent.service 2>/dev/null || true
 
-# Kill any running processes
-pkill -f "KuaminiSecurityClient" 2>/dev/null || true
-pkill -f "KuaminiAgentTray" 2>/dev/null || true
+# Kill any running processes (more aggressively)
+echo "   Terminating running processes..."
 
+# First try graceful termination (SIGTERM)
+pkill -TERM -f "KuaminiSecurityClient" 2>/dev/null || true
+pkill -TERM -f "KuaminiAgentTray" 2>/dev/null || true
+pkill -TERM -f "KuaminiAgent" 2>/dev/null || true
+
+# Wait a moment for graceful shutdown
+sleep 2
+
+# Force kill any remaining processes (SIGKILL)
+pkill -9 -f "KuaminiSecurityClient" 2>/dev/null || true
+pkill -9 -f "KuaminiAgentTray" 2>/dev/null || true
+pkill -9 -f "KuaminiAgent" 2>/dev/null || true
+
+# Also kill by exact process name
+killall -9 KuaminiSecurityClient 2>/dev/null || true
+killall -9 KuaminiAgentTray 2>/dev/null || true
+killall -9 KuaminiAgent 2>/dev/null || true
+
+# Wait to ensure processes are fully terminated
 sleep 1
 
 echo "🗑️  Removing files..."
@@ -106,7 +124,43 @@ done
 # Remove logs
 rm -rf /var/log/kuamini
 
+# Final cleanup: Restart the notification daemon and system tray
 echo ""
-echo "✅ Kuamini Security Client has been completely removed"
-echo "   All configuration, logs, and caches have been deleted"
+echo "🔄 Clearing system tray icons..."
+
+# Kill notification daemon to clear tray icons (GNOME)
+pkill -f "notification-daemon" 2>/dev/null || true
+sleep 1
+
+# Restart notification daemon (GNOME)
+notification-daemon >/dev/null 2>&1 &
+
+# Also try to restart other tray managers (KDE Plasma, XFCE, etc.)
+pkill -f "kded" 2>/dev/null || true
+sleep 1
+
+# Try to restart systemd user services that manage tray
+systemctl --user restart notification-daemon 2>/dev/null || true
+systemctl --user restart xfce4-notifyd 2>/dev/null || true
+
+sleep 2
+
+# Final verification: Check if any processes are still running
+REMAINING=$(ps aux | grep -i kuamini | grep -v grep | grep -v uninstall || true)
+
 echo ""
+if [ -n "$REMAINING" ]; then
+    echo "⚠️  Warning: Some processes may still be running:"
+    echo "$REMAINING"
+    echo ""
+    echo "Please try:"
+    echo "  1. Log out and back in"
+    echo "  2. Or restart your system"
+else
+    echo "✅ Kuamini Security Client has been completely removed"
+    echo "   ✓ All files and configurations deleted"
+    echo "   ✓ All processes terminated"
+    echo "   ✓ System tray icons cleared"
+    echo ""
+    echo "The uninstallation is complete! Your system is clean."
+fi
