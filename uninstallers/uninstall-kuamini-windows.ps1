@@ -39,7 +39,7 @@ if ($AGENT_ID) {
     Write-Host "📡 Deregistering from console..." -ForegroundColor Gray
     try {
         $body = @{ agent_id = $AGENT_ID } | ConvertTo-Json
-        $response = Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
+        $null = Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
         Write-Host "✓ Successfully deregistered from console" -ForegroundColor Green
     } catch {
         Write-Host "⚠️  Deregister failed: $($_.Exception.Message)" -ForegroundColor Yellow
