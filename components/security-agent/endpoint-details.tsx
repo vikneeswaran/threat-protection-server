@@ -60,12 +60,12 @@ export function EndpointDetails({ endpoint }: EndpointDetailsProps) {
           <div className="flex justify-between">
             <span className="text-muted-foreground">IP Address</span>
             <span className="font-mono text-sm">{endpoint.ip_address || "-"}</span>
-          </div>displayStatus]}>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground">Status</span>
+            <Badge variant="outline" className={statusColors[displayStatus]}>
               <Wifi className="h-3 w-3 mr-1" />
-              {displaySme="text-muted-foreground">Status</span>
-            <Badge variant="outline" className={statusColors[endpoint.status]}>
-              <Wifi className="h-3 w-3 mr-1" />
-              {endpoint.status}
+              {displayStatus}
             </Badge>
           </div>
           <div className="flex justify-between">
