@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.11'
       
       - name: Install dependencies
         run: |
@@ -54,19 +54,23 @@ jobs:
           python-version: '3.10'
       
       - name: Install Python dependencies
+        shell: pwsh
         run: |
           cd agent-tray
           pip install -r requirements.txt pyinstaller
       
       - name: Build Windows executable
+        shell: pwsh
         run: |
           cd agent-tray
           pyinstaller --noconfirm KuaminiSecurityClient.spec
       
       - name: Install WiX Toolset
+        shell: pwsh
         run: choco install wixtoolset --no-progress -y
       
       - name: Build Windows MSI installer
+        shell: pwsh
         run: |
           cd agent-tray
           powershell -NoProfile -ExecutionPolicy Bypass -File build/build-windows-msi.ps1
@@ -85,7 +89,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
       
       - name: Install dependencies
         run: |

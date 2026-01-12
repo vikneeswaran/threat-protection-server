@@ -20,7 +20,24 @@ Write-Host "Version: $AppVersion"
 Write-Host "App directory: $AppDir"
 Write-Host ""
 
-# Create WiX source file
+### Locate WiX toolset binaries if not on PATH
+$heat = Get-Command heat.exe -ErrorAction SilentlyContinue
+$candle = Get-Command candle.exe -ErrorAction SilentlyContinue
+$light = Get-Command light.exe -ErrorAction SilentlyContinue
+
+if (-not ($heat -and $candle -and $light)) {
+  # Try to find WiX under Program Files
+  $wixBin = Get-ChildItem -Path "C:\Program Files*" -Recurse -ErrorAction SilentlyContinue -Filter "candle.exe" |
+    Select-Object -First 1 -ExpandProperty DirectoryName
+  if ($wixBin) {
+    $env:PATH = "$wixBin;" + $env:PATH
+    $heat = Get-Command heat.exe -ErrorAction SilentlyContinue
+    $candle = Get-Command candle.exe -ErrorAction SilentlyContinue
+    $light = Get-Command light.exe -ErrorAction SilentlyContinue
+  }
+}
+
+# Create WiX source file (keep minimal to avoid missing-asset failures)
 $WixSource = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
@@ -32,13 +49,9 @@ $WixSource = @"
     
     <Media Id="1" Cabinet="KuaminiSecurityClient.cab" EmbedCab="yes" />
 
-    <Icon Id="ProductIcon" SourceFile="build/icon.ico" />
-    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
-
     <Feature Id="ProductFeature" Title="Kuamini Security Client" Level="1">
       <ComponentRef Id="ApplicationFiles" />
-      <ComponentRef Id="StartMenuShortcut" />
-      <ComponentRef Id="AutoStartService" />
+    <ComponentRef Id="StartMenuShortcut" />
     </Feature>
 
     <UIRef Id="WixUI_Minimal" />
@@ -68,8 +81,6 @@ $WixSource = @"
       </Component>
     </DirectoryRef>
 
-    <WixVariable Id="WixUIBannerBmp" Value="build\banner.bmp" />
-    <WixVariable Id="WixUIDialogBmp" Value="build\dialog.bmp" />
   </Product>
 </Wix>
 "@
@@ -85,11 +96,6 @@ $PreprocessorVars = @{
 
 Write-Host "Creating WiX project file..."
 Write-Host "Preprocessor variables: $($PreprocessorVars | ConvertTo-Json)"
-
-# Check if WiX Toolset is installed
-$heat = Get-Command heat.exe -ErrorAction SilentlyContinue
-$candle = Get-Command candle.exe -ErrorAction SilentlyContinue
-$light = Get-Command light.exe -ErrorAction SilentlyContinue
 
 if (-not ($heat -and $candle -and $light)) {
     Write-Host ""
@@ -109,14 +115,14 @@ Write-Host ""
 
 # Compile WiX
 Write-Host "Compiling WiX source..."
-& candle.exe -d ProductCode=$($PreprocessorVars.ProductCode) `
+& $candle.Path -d ProductCode=$($PreprocessorVars.ProductCode) `
              -d StartMenuGuid=$($PreprocessorVars.StartMenuGuid) `
              -out build\ `
              build\KuaminiSecurityClient.wxs
 
 # Link to create MSI
 Write-Host "Linking to create MSI..."
-& light.exe -out dist\KuaminiSecurityClient-1.0.0.msi `
+& $light.Path -out dist\KuaminiSecurityClient-1.0.0.msi `
            -ext WixUIExtension `
            -ext WixUtilExtension `
            build\KuaminiSecurityClient.wixobj
