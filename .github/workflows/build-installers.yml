@@ -1,0 +1,149 @@
+name: Build and Deploy Installers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent-tray/**'
+      - '.github/workflows/build-installers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          pip install -r requirements.txt pyinstaller
+      
+      - name: Build macOS app bundle
+        run: |
+          cd agent-tray
+          pyinstaller KuaminiSecurityClient.spec --clean
+      
+      - name: Build macOS PKG installer
+        run: |
+          cd agent-tray
+          bash build/pkgbuild-mac.sh
+      
+      - name: Upload macOS PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.pkg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install Python dependencies
+        run: |
+          cd agent-tray
+          pip install -r requirements.txt pyinstaller
+      
+      - name: Build Windows executable
+        run: |
+          cd agent-tray
+          pyinstaller --noconfirm KuaminiSecurityClient.spec
+      
+      - name: Install WiX Toolset
+        run: choco install wixtoolset --no-progress -y
+      
+      - name: Build Windows MSI installer
+        run: |
+          cd agent-tray
+          powershell -NoProfile -ExecutionPolicy Bypass -File build/build-windows-msi.ps1
+      
+      - name: Upload Windows MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.msi
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          pip install -r requirements.txt pyinstaller
+      
+      - name: Build Linux executable
+        run: |
+          cd agent-tray
+          pyinstaller --noconfirm KuaminiSecurityClient.spec
+      
+      - name: Build Linux installer
+        run: |
+          cd agent-tray
+          bash build/build-linux-installer.sh
+      
+      - name: Upload Linux installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.sh
+
+  deploy:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+      
+      - name: Copy to public/tray
+        run: |
+          mkdir -p public/tray
+          cp macos-installer/KuaminiSecurityClient-1.0.0.pkg public/tray/
+          cp windows-installer/KuaminiSecurityClient-1.0.0.msi public/tray/
+          cp linux-installer/KuaminiSecurityClient-1.0.0.sh public/tray/
+      
+      - name: Verify installers
+        run: |
+          echo "=== Installers created ==="
+          ls -lh public/tray/
+      
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add public/tray/KuaminiSecurityClient-*
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "build: update cross-platform installers
+
+- macOS: PKG installer
+- Windows: MSI installer  
+- Linux: Self-extracting shell script
+Built on $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)"
+            git push origin HEAD:main
+          fi

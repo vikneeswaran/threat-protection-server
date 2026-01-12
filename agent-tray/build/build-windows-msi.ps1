@@ -1,0 +1,126 @@
+# Windows MSI Installer Builder (PowerShell)
+# Requires WiX Toolset to be installed
+# Install with: choco install wixtoolset
+
+param(
+    [string]$AppVersion = "1.0.0"
+)
+
+$ErrorActionPreference = "Stop"
+
+# Verify PyInstaller output exists
+$AppDir = "dist/KuaminiSecurityClient"
+if (-not (Test-Path "$AppDir/KuaminiSecurityClient.exe")) {
+    Write-Error "Error: $AppDir/KuaminiSecurityClient.exe not found. Run PyInstaller first."
+    exit 1
+}
+
+Write-Host "=== Building Windows MSI Installer ==="
+Write-Host "Version: $AppVersion"
+Write-Host "App directory: $AppDir"
+Write-Host ""
+
+# Create WiX source file
+$WixSource = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product Id="*" Name="Kuamini Security Client" Language="1033" Version="$AppVersion" 
+           Manufacturer="Kuamini Systems" UpgradeCode="6F69F6B9-F84B-48C9-9BD2-C4B5C5D5E5F5">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Kuamini Security Client is already installed." />
+    
+    <Media Id="1" Cabinet="KuaminiSecurityClient.cab" EmbedCab="yes" />
+
+    <Icon Id="ProductIcon" SourceFile="build/icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+
+    <Feature Id="ProductFeature" Title="Kuamini Security Client" Level="1">
+      <ComponentRef Id="ApplicationFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="AutoStartService" />
+    </Feature>
+
+    <UIRef Id="WixUI_Minimal" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Kuamini Security Client" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Kuamini Security Client" />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ApplicationFiles" Guid="$(var.ProductCode)">
+        <File Id="MainExe" Name="KuaminiSecurityClient.exe" DiskId="1" Source="dist\KuaminiSecurityClient\KuaminiSecurityClient.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcut" Guid="$(var.StartMenuGuid)">
+        <Shortcut Id="ApplicationStartMenuShortcut" Name="Kuamini Security Client" 
+                  Description="Kuamini Security Client" Target="[INSTALLFOLDER]KuaminiSecurityClient.exe" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\Kuamini\SecurityClient" Name="StartMenuShortcutInstalled" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <WixVariable Id="WixUIBannerBmp" Value="build\banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="build\dialog.bmp" />
+  </Product>
+</Wix>
+"@
+
+# Save WiX source
+$WixSource | Out-File -Encoding UTF8 -FilePath "build\KuaminiSecurityClient.wxs"
+
+# Create configuration file for WiX compiler
+$PreprocessorVars = @{
+    ProductCode = [guid]::NewGuid().ToString()
+    StartMenuGuid = [guid]::NewGuid().ToString()
+}
+
+Write-Host "Creating WiX project file..."
+Write-Host "Preprocessor variables: $($PreprocessorVars | ConvertTo-Json)"
+
+# Check if WiX Toolset is installed
+$heat = Get-Command heat.exe -ErrorAction SilentlyContinue
+$candle = Get-Command candle.exe -ErrorAction SilentlyContinue
+$light = Get-Command light.exe -ErrorAction SilentlyContinue
+
+if (-not ($heat -and $candle -and $light)) {
+    Write-Host ""
+    Write-Host "⚠️  WiX Toolset not found!"
+    Write-Host ""
+    Write-Host "To build the MSI installer, install WiX Toolset:"
+    Write-Host "  choco install wixtoolset --no-progress -y"
+    Write-Host ""
+    Write-Host "Or download from: https://wixtoolset.org/releases/"
+    Write-Host ""
+    Write-Host "After installing, run this script again."
+    exit 1
+}
+
+Write-Host "WiX Toolset found. Building..."
+Write-Host ""
+
+# Compile WiX
+Write-Host "Compiling WiX source..."
+& candle.exe -d ProductCode=$($PreprocessorVars.ProductCode) `
+             -d StartMenuGuid=$($PreprocessorVars.StartMenuGuid) `
+             -out build\ `
+             build\KuaminiSecurityClient.wxs
+
+# Link to create MSI
+Write-Host "Linking to create MSI..."
+& light.exe -out dist\KuaminiSecurityClient-1.0.0.msi `
+           -ext WixUIExtension `
+           -ext WixUtilExtension `
+           build\KuaminiSecurityClient.wixobj
+
+Write-Host ""
+Write-Host "✅ Built installer: dist\KuaminiSecurityClient-1.0.0.msi"
+Get-Item dist\KuaminiSecurityClient-1.0.0.msi | Format-List FullName, Length
