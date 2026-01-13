@@ -38,6 +38,60 @@ def setup_ca_bundle():
                 return
         
         print("[CA Bundle] No cert bundle found, using requests defaults", file=sys.stderr)
+
+def verify_installation():
+    """Verify that the app bundle was installed correctly and fix common installation issues."""
+    if not getattr(sys, 'frozen', False):
+        # Not running as PyInstaller bundle, skip verification
+        return
+    
+    issues = []
+    
+    # Check if running on macOS and app is in Applications
+    if sys.platform == 'darwin':
+        app_path = Path("/Applications/KuaminiSecurityClient.app")
+        if not app_path.exists():
+            issues.append("App bundle not found in /Applications")
+    
+    # Check config directory and create if missing
+    config_dir = Path.home() / ".kuamini"
+    if not config_dir.exists():
+        try:
+            config_dir.mkdir(parents=True, exist_ok=True)
+            print(f"[Installation Fix] Created config directory: {config_dir}", file=sys.stderr)
+        except Exception as e:
+            issues.append(f"Could not create config directory: {e}")
+    
+    # Check config file and create default if missing
+    config_file = config_dir / "config.json"
+    if not config_file.exists():
+        try:
+            default_config = {
+                "api_base": "https://kuaminisystems.com/api/agent",
+                "console_url": "https://kuaminisystems.com/securityAgent",
+                "auto_register": True,
+                "heartbeat_interval": 60
+            }
+            config_file.write_text(json.dumps(default_config, indent=2))
+            print(f"[Installation Fix] Created default config file: {config_file}", file=sys.stderr)
+        except Exception as e:
+            issues.append(f"Could not create config file: {e}")
+    
+    # Check LaunchAgent on macOS
+    if sys.platform == 'darwin':
+        plist_path = Path.home() / "Library/LaunchAgents/com.kuamini.securityclient.plist"
+        if not plist_path.exists():
+            print(f"[Installation Fix] LaunchAgent plist not found: {plist_path}", file=sys.stderr)
+            print("[Installation Fix] Agent will need to be manually started or loaded via launchctl", file=sys.stderr)
+    
+    # Log any issues
+    if issues:
+        print(f"[Installation Issues] {', '.join(issues)}", file=sys.stderr)
+    
+    return len(issues) == 0
+
+# Verify installation and setup CA bundle before any other operations
+verify_installation()
 # Setup CA bundle before any requests
 setup_ca_bundle()
 

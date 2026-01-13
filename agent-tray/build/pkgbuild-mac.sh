@@ -99,7 +99,55 @@ fi
 /bin/chmod 644 "$CONFIG_FILE" 2>/dev/null || true
 
 # Install LaunchAgent for the console user
-PLIST_SRC="/Applications/KuaminiSecurityClient.app/Contents/Resources/com.kuamini.securityclient.plist"
+# Try to find the plist - it may be embedded in the bundle
+APP_BUNDLE="/Applications/KuaminiSecurityClient.app"
+PLIST_SRC=""
+
+# First, look in standard locations
+if [ -f "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ]; then
+    PLIST_SRC="$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist"
+elif [ -f "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
+    PLIST_SRC="$APP_BUNDLE/Contents/com.kuamini.securityclient.plist"
+fi
+
+# If still not found, create a LaunchAgent plist dynamically
+if [ -z "$PLIST_SRC" ]; then
+    echo "⚠️  LaunchAgent plist not found in bundle; creating from scratch"
+    PLIST_SRC="/tmp/com.kuamini.securityclient.plist.$$"
+    
+    # Create the plist with proper path to the executable
+    cat > "$PLIST_SRC" << 'EOFPLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kuamini.securityclient</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/kuamini-agent-out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/kuamini-agent-err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>$USER_HOME</string>
+    </dict>
+</dict>
+</plist>
+EOFPLIST
+fi
+
+# Copy LaunchAgent plist to user's LaunchAgents directory
 PLIST_DST="$USER_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
 
 if [ -f "$PLIST_SRC" ]; then
@@ -111,8 +159,14 @@ if [ -f "$PLIST_SRC" ]; then
     echo "✅ LaunchAgent plist installed to $PLIST_DST"
     echo "⚠️  Note: LaunchAgent will load automatically on next login."
     echo "   To load now, run: launchctl load $PLIST_DST"
+    
+    # Clean up temporary plist if we created one
+    if [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ] && [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
+        rm -f "$PLIST_SRC"
+    fi
 else
-    echo "❌ Warning: LaunchAgent plist not found at $PLIST_SRC"
+    echo "❌ Error: Could not create LaunchAgent plist"
+    exit 1
 fi
 
 echo "Installation complete!"
