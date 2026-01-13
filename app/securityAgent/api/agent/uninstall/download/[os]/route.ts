@@ -1,64 +1,48 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { readFile } from "fs/promises"
+import { join } from "path"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ os: string }> }) {
   const { os } = await params
-  const searchParams = request.nextUrl.searchParams
-  const endpointId = searchParams.get("endpoint_id")
-  const agentId = searchParams.get("agent_id")
 
-  // Verify authentication
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()
-
-  if (!profile || !["super_admin", "admin"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com/securityAgent/api/agent"
-
-  let script: string
   let filename: string
   let contentType: string
 
   switch (os.toLowerCase()) {
     case "macos":
-      filename = "uninstall-kuamini-agent.sh"
+      filename = "uninstall-kuamini-macos.sh"
       contentType = "application/x-sh"
-      script = generateMacOSUninstaller(baseUrl, endpointId, agentId)
       break
     case "linux":
-      filename = "uninstall-kuamini-agent.sh"
+      filename = "uninstall-kuamini-linux.sh"
       contentType = "application/x-sh"
-      script = generateLinuxUninstaller(baseUrl, endpointId, agentId)
       break
     case "windows":
-      filename = "uninstall-kuamini-agent.ps1"
+      filename = "uninstall-kuamini-windows.ps1"
       contentType = "application/octet-stream"
-      script = generateWindowsUninstaller(baseUrl, endpointId, agentId)
       break
     default:
       return NextResponse.json({ error: "Unsupported OS" }, { status: 400 })
   }
 
-  return new NextResponse(script, {
-    status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${filename}"`,
-    },
-  })
-}
+  try {
+    // Read the uninstaller file from public/tray directory
+    const filePath = join(process.cwd(), "public", "tray", filename)
+    const script = await readFile(filePath, "utf-8")
 
-function generateMacOSUninstaller(baseUrl: string, endpointId: string | null, agentId: string | null): string {
+    return new NextResponse(script, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-cache",
+      },
+    })
+  } catch (error) {
+    console.error(`Error reading uninstaller file ${filename}:`, error)
+    return NextResponse.json({ error: "Uninstaller file not found" }, { status: 404 })
+  }
+}
   const deregisterUrl = baseUrl.replace("/securityAgent/api/agent", "/api/agent")
   return `#!/bin/bash
 set -euo pipefail
