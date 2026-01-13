@@ -17,6 +17,29 @@ from PIL import Image, ImageDraw
 
 DEFAULT_HEARTBEAT_INTERVAL = 60
 
+def setup_ca_bundle():
+    """Configure CA bundle path for requests library in PyInstaller bundled apps."""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled PyInstaller executable
+        exe_dir = Path(sys.executable).parent
+        resources_dir = exe_dir.parent / "Resources"
+        
+        # Try common cert bundle paths in this order:
+        possible_paths = [
+            resources_dir / "certifi" / "cacert.pem",
+            Path("/etc/ssl/certs/ca-certificates.crt"),
+            Path("/etc/ssl/cert.pem"),
+        ]
+        
+        for cert_path in possible_paths:
+            if cert_path.exists():
+                os.environ["REQUESTS_CA_BUNDLE"] = str(cert_path)
+                print(f"[CA Bundle] Set to: {cert_path}", file=sys.stderr)
+                return
+        
+        print("[CA Bundle] No cert bundle found, using requests defaults", file=sys.stderr)
+# Setup CA bundle before any requests
+setup_ca_bundle()
 
 def get_config_path() -> Path:
     """Find config.json in multiple locations for PyInstaller compatibility and pre-configured installers."""
