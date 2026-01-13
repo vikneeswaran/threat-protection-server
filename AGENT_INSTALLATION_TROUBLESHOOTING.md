@@ -71,7 +71,7 @@ bash build/pkgbuild-mac.sh
 
 ### Step 2: Install the New PKG
 ```bash
-sudo installer -pkg agent-tray/dist/KuaminiSecurityClient-1.0.0.pkg -target /
+sudo /usr/sbin/installer -pkg agent-tray/dist/KuaminiSecurityClient-1.0.0.pkg -target /
 ```
 
 ### Step 3: Verify Installation
@@ -170,7 +170,7 @@ After installation, you should have `~/.kuamini/config.json`:
 
 1. **Install PKG**
    ```
-   sudo installer -pkg KuaminiSecurityClient-1.0.0.pkg -target /
+   sudo /usr/sbin/installer -pkg KuaminiSecurityClient-1.0.0.pkg -target /
    ```
 
 2. **Postinstall script runs:**

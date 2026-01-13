@@ -160,8 +160,8 @@ sudo pkgbuild \
   --ownership preserve \
   dist/$PKG_NAME
 
-# Fix permissions since sudo was used
-sudo chown "$USER" dist/$PKG_NAME
+# Fix permissions since sudo was used (use absolute path for chown)
+sudo /usr/sbin/chown "$USER" dist/$PKG_NAME
 
 echo "✅ Built pkg: dist/$PKG_NAME"
 ls -lh dist/$PKG_NAME

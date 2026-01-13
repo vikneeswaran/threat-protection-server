@@ -30,7 +30,7 @@ jobs:
       - name: Build macOS app bundle
         run: |
           cd agent-tray
-          pyinstaller KuaminiSecurityClient.spec --clean
+          pyinstaller KuaminiSecurityClient-mac.spec --clean
       
       - name: Build macOS PKG installer
         run: |
@@ -63,7 +63,7 @@ jobs:
         shell: pwsh
         run: |
           cd agent-tray
-          pyinstaller --noconfirm KuaminiSecurityClient.spec
+          pyinstaller --noconfirm KuaminiSecurityClient-win.spec
       
       - name: Install WiX Toolset
         shell: pwsh
@@ -99,7 +99,7 @@ jobs:
       - name: Build Linux executable
         run: |
           cd agent-tray
-          pyinstaller --noconfirm KuaminiSecurityClient.spec
+          pyinstaller --noconfirm KuaminiSecurityClient-linux.spec
       
       - name: Build Linux installer
         run: |

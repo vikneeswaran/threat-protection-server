@@ -40,7 +40,7 @@ if [ -f "$PLIST_PATH" ]; then
     cat "$PLIST_PATH" | head -20
 else
     echo "  ❌ LaunchAgent plist NOT found at $PLIST_PATH"
-    echo "  💡 Run: sudo installer -pkg KuaminiSecurityClient-1.0.0.pkg -target /"
+    echo "  💡 Run: sudo /usr/sbin/installer -pkg KuaminiSecurityClient-1.0.0.pkg -target /"
 fi
 echo ""
 
@@ -140,7 +140,7 @@ if [ -f "$PLIST_PATH" ] && [ -f "$CONFIG_FILE" ]; then
     echo "     /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient"
 else
     echo "  1. Reinstall the agent:"
-    echo "     sudo installer -pkg KuaminiSecurityClient-1.0.0.pkg -target /"
+    echo "     sudo /usr/sbin/installer -pkg KuaminiSecurityClient-1.0.0.pkg -target /"
     echo ""
     echo "  2. Log out and back in (to load LaunchAgent)"
     echo ""
