@@ -83,7 +83,31 @@ Write-Host "[OK] Created WiX source file" -ForegroundColor Green
 Write-Host "Compiling with candle.exe..." -ForegroundColor Yellow
 
 $WIXOBJ = Join-Path $BUILD_DIR "$APP_NAME.wixobj"
-& "C:\Program Files (x86)\WiX Toolset v3.11\bin\candle.exe" $WXS_FILE -out $WIXOBJ
+
+# Try to find candle.exe in PATH first, then common locations
+$candleExe = Get-Command candle.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+if (-not $candleExe) {
+    $possiblePaths = @(
+        "C:\Program Files (x86)\WiX Toolset v3.11\bin\candle.exe",
+        "C:\Program Files (x86)\WiX Toolset v3.14\bin\candle.exe",
+        "C:\Program Files\WiX Toolset v3.11\bin\candle.exe",
+        "C:\Program Files\WiX Toolset v3.14\bin\candle.exe"
+    )
+    foreach ($path in $possiblePaths) {
+        if (Test-Path $path) {
+            $candleExe = $path
+            break
+        }
+    }
+}
+
+if (-not $candleExe) {
+    Write-Host "ERROR: candle.exe not found. Is WiX Toolset installed?" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Using candle.exe: $candleExe" -ForegroundColor Gray
+& $candleExe $WXS_FILE -out $WIXOBJ
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: candle.exe failed" -ForegroundColor Red
@@ -95,7 +119,15 @@ Write-Host "[OK] Compiled WiX object file" -ForegroundColor Green
 Write-Host "Linking with light.exe..." -ForegroundColor Yellow
 
 $MSI_FILE = Join-Path $DIST_DIR "$APP_NAME-$VERSION.msi"
-& "C:\Program Files (x86)\WiX Toolset v3.11\bin\light.exe" $WIXOBJ -out $MSI_FILE
+
+# Find light.exe
+$lightExe = Get-Command light.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+if (-not $lightExe) {
+    $lightExe = Join-Path (Split-Path $candleExe) "light.exe"
+}
+
+Write-Host "Using light.exe: $lightExe" -ForegroundColor Gray
+& $lightExe $WIXOBJ -out $MSI_FILE -sice:ICE69
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: light.exe failed" -ForegroundColor Red
