@@ -63,9 +63,6 @@ $wxsContent = @"
       <Directory Id="ProgramFilesFolder">
         <Directory Id="INSTALLFOLDER" Name="$APP_NAME" />
       </Directory>
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="$APP_NAME"/>
-      </Directory>
     </Directory>
 
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
@@ -127,7 +124,7 @@ if (-not $lightExe) {
 }
 
 Write-Host "Using light.exe: $lightExe" -ForegroundColor Gray
-& $lightExe $WIXOBJ -out $MSI_FILE -sice:ICE69
+& $lightExe $WIXOBJ -out $MSI_FILE -sice:ICE64 -sice:ICE69
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: light.exe failed" -ForegroundColor Red
