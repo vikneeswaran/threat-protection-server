@@ -49,3 +49,4 @@ agent-tray/build/*.wxs
 
 # Local development
 .env.development.local
+agent-tray/build/KuaminiSecurityClient-*/
