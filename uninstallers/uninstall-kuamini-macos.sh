@@ -69,7 +69,23 @@ echo "🛑 Stopping agent..."
 # Determine current user UID
 CURRENT_UID=$(id -u)
 
-# Proactively bootout and disable LaunchAgents (new and old labels)
+# Kill processes FIRST before trying to unload LaunchAgent
+echo "   Terminating running processes..."
+
+# Force kill immediately (LaunchAgent bootout often fails with error 5)
+pkill -9 -f "KuaminiSecurityClient" 2>/dev/null || true
+pkill -9 -f "KuaminiAgentTray" 2>/dev/null || true
+pkill -9 -f "KuaminiAgent" 2>/dev/null || true
+
+# Also kill by exact process name
+killall -9 KuaminiSecurityClient 2>/dev/null || true
+killall -9 KuaminiAgentTray 2>/dev/null || true
+killall -9 KuaminiAgent 2>/dev/null || true
+
+# Wait for processes to fully terminate
+sleep 2
+
+# Now try to unload LaunchAgents (may fail with error 5, but we already killed the process)
 $LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.securityclient >/dev/null 2>&1 || true
 $LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.agenttray >/dev/null 2>&1 || true
 $LAUNCHCTL bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
@@ -79,35 +95,9 @@ $LAUNCHCTL bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.ag
 sudo $LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
 sudo $LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
 
-# Disable to prevent immediate relaunch by launchd if a plist lingers
+# Disable to prevent immediate relaunch
 $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
 $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
-sudo $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
-sudo $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
-
-# Kill any running processes (more aggressively)
-echo "   Terminating running processes..."
-
-# First try graceful termination (SIGTERM)
-pkill -TERM -f "KuaminiSecurityClient" 2>/dev/null || true
-pkill -TERM -f "KuaminiAgentTray" 2>/dev/null || true
-pkill -TERM -f "KuaminiAgent" 2>/dev/null || true
-
-# Wait a moment for graceful shutdown
-sleep 2
-
-# Force kill any remaining processes (SIGKILL)
-pkill -9 -f "KuaminiSecurityClient" 2>/dev/null || true
-pkill -9 -f "KuaminiAgentTray" 2>/dev/null || true
-pkill -9 -f "KuaminiAgent" 2>/dev/null || true
-
-# Also kill by exact process name in case full path doesn't match
-killall -9 KuaminiSecurityClient 2>/dev/null || true
-killall -9 KuaminiAgentTray 2>/dev/null || true
-killall -9 KuaminiAgent 2>/dev/null || true
-
-# Wait to ensure processes are fully terminated
-sleep 1
 
 echo "🗑️  Removing files..."
 
