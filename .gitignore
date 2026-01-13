@@ -10,7 +10,6 @@ coverage/
 .next/
 out/
 dist/
-build/
 
 # Environment variables
 .env
@@ -43,7 +42,10 @@ agent-tray/*.pyc
 agent-tray/.env
 agent-tray/build/KuaminiSecurityClient/
 agent-tray/build/KuaminiAgentTray/
-agent-tray/dist/
+agent-tray/dist/SecurityClient-mac/
+agent-tray/build/KuaminiAgentTray/
+agent-tray/build/*.wixobj
+agent-tray/build/*.wxs
 
 # Local development
 .env.development.local
