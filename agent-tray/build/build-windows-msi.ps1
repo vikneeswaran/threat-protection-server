@@ -19,7 +19,7 @@ if (-not (Test-Path $EXE_DIR)) {
     exit 1
 }
 
-Write-Host "✓ Found executable directory: $EXE_DIR" -ForegroundColor Green
+Write-Host "[OK] Found executable directory: $EXE_DIR" -ForegroundColor Green
 
 # Create WiX source file
 $WXS_FILE = Join-Path $BUILD_DIR "$APP_NAME.wxs"
@@ -77,7 +77,7 @@ $($components -join "`r`n")
 
 $wxsContent | Out-File -FilePath $WXS_FILE -Encoding UTF8
 
-Write-Host "✓ Created WiX source file" -ForegroundColor Green
+Write-Host "[OK] Created WiX source file" -ForegroundColor Green
 
 # Build MSI using WiX
 Write-Host "Compiling with candle.exe..." -ForegroundColor Yellow
@@ -90,7 +90,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "✓ Compiled WiX object file" -ForegroundColor Green
+Write-Host "[OK] Compiled WiX object file" -ForegroundColor Green
 
 Write-Host "Linking with light.exe..." -ForegroundColor Yellow
 
@@ -102,7 +102,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "✓ Created MSI installer" -ForegroundColor Green
+Write-Host "[OK] Created MSI installer" -ForegroundColor Green
 
 # Cleanup
 Remove-Item $WXS_FILE -ErrorAction SilentlyContinue
