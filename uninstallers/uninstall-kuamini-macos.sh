@@ -58,7 +58,8 @@ fi
 if [ -n "$AGENT_ID" ]; then
     echo ""
     echo "📡 Deregistering from console..."
-    RESPONSE=$(curl -s -X POST "$API_BASE/deregister" \
+    # Use --insecure flag for curl to handle certificate issues, with timeout
+    RESPONSE=$(curl -s --insecure -m 5 -X POST "$API_BASE/deregister" \
         -H "Content-Type: application/json" \
         -d "{\"agent_id\":\"$AGENT_ID\"}" \
         -w "\n%{http_code}" 2>&1)
@@ -66,10 +67,10 @@ if [ -n "$AGENT_ID" ]; then
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | sed '$d')
     
-    if [ "$HTTP_CODE" = "200" ]; then
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
         echo "✓ Successfully deregistered from console"
     else
-        echo "⚠️  Deregister returned HTTP $HTTP_CODE: $BODY"
+        echo "⚠️  Deregister returned HTTP $HTTP_CODE"
         echo "   (Continuing with local cleanup...)"
     fi
 else
@@ -94,8 +95,8 @@ pkill -9 -f "KuaminiAgent" 2>/dev/null || true
 killall -9 KuaminiSecurityClient 2>/dev/null || true
 killall -9 KuaminiAgentTray 2>/dev/null || true
 killall -9 KuaminiAgent 2>/dev/null || true
-
-# Wait for processes to fully terminate
+ (longer wait for system caches)
+sleep 3for processes to fully terminate
 sleep 2
 
 # Now try to unload LaunchAgents (may fail with error 5, but we already killed the process)
@@ -154,13 +155,13 @@ $PKGUTIL --forget com.kuamini.agenttray >/dev/null 2>&1 || true
 # Final cleanup: Restart the Dock to clear any ghost tray icons
 echo ""
 echo "🔄 Clearing menu bar icons..."
-sleep 2
+sleep 1
 
 # Kill and restart Dock as the actual user (this clears all menu bar icons and caches)
 sudo -u "$ACTUAL_USER" killall Dock 2>/dev/null || true
 
-# Wait for Dock to restart
-sleep 2
+# Wait longer for Dock to restart and processes to fully clean up
+sleep 4
 
 # Final verification: Check if any processes are still running
 REMAINING=$(ps aux | grep -i kuamini | grep -v grep | grep -v uninstall || true)
