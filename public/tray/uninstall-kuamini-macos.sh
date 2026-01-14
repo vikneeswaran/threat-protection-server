@@ -1,7 +1,6 @@
 #!/bin/bash
 # Kuamini Security Client Uninstaller for macOS
 # Removes all traces and deregisters from console
-# Version: 2.0
 
 set -e
 
@@ -9,20 +8,32 @@ echo "🗑️  Kuamini Security Client Uninstaller"
 echo "======================================="
 echo ""
 
-# Check if running as user (not root)
-if [ "$EUID" -eq 0 ]; then 
-    echo "⚠️  Please run as normal user (not sudo)"
-    exit 1
+# Ensure sudo access for root operations
+if [ "$EUID" -ne 0 ]; then
+    echo "This script requires elevated privileges to remove system files."
+    echo "You may be prompted for your password."
+    echo ""
+    # Restart script with sudo, preserving all arguments
+    exec sudo "$0" "$@"
 fi
 
-# Tool paths
+# Tool paths (avoid "command not found" on sudo env)
 LAUNCHCTL="/bin/launchctl"
 PKGUTIL="/usr/sbin/pkgutil"
+
+# Find the actual user (when running with sudo)
+if [ -n "$SUDO_USER" ]; then
+    ACTUAL_USER="$SUDO_USER"
+    ACTUAL_HOME=$(eval echo ~"$SUDO_USER")
+else
+    ACTUAL_USER=$(whoami)
+    ACTUAL_HOME="$HOME"
+fi
 
 # Read agent_id and api_base from config if it exists
 AGENT_ID=""
 API_BASE=""
-CONFIG_FILE="$HOME/.kuamini/config.json"
+CONFIG_FILE="$ACTUAL_HOME/.kuamini/config.json"
 if [ -f "$CONFIG_FILE" ]; then
     echo "📋 Found config file, reading agent configuration..."
     AGENT_ID=$(grep -o '"agent_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
@@ -36,7 +47,7 @@ if [ -f "$CONFIG_FILE" ]; then
     fi
 fi
 
-# Fallback to production URL if not found in config
+# Fallback to environment variable or production URL if not found in config
 if [ -z "$API_BASE" ]; then
     API_BASE="${API_BASE:-https://kuaminisystems.com/api/agent}"
     echo "ℹ️  Using default API: $API_BASE"
@@ -68,7 +79,7 @@ echo ""
 echo "🛑 Stopping agent..."
 
 # Determine current user UID
-CURRENT_UID=$(id -u)
+CURRENT_UID=$(id -u "$ACTUAL_USER")
 
 # Kill processes FIRST before trying to unload LaunchAgent
 echo "   Terminating running processes..."
@@ -87,64 +98,65 @@ killall -9 KuaminiAgent 2>/dev/null || true
 sleep 2
 
 # Now try to unload LaunchAgents (may fail with error 5, but we already killed the process)
-$LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.securityclient >/dev/null 2>&1 || true
-$LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.agenttray >/dev/null 2>&1 || true
-$LAUNCHCTL bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
-$LAUNCHCTL bootout "gui/$CURRENT_UID" "$HOME/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
+# Run as the actual user to access their LaunchAgents
+sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.securityclient >/dev/null 2>&1 || true
+sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.agenttray >/dev/null 2>&1 || true
+sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
+sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
 
 # Best-effort system locations (older installs)
-sudo $LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
-sudo $LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
+$LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
+$LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
 
 # Disable to prevent immediate relaunch
-$LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
-$LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
+sudo -u "$ACTUAL_USER" $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
+sudo -u "$ACTUAL_USER" $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
 
 echo "🗑️  Removing files..."
 
-# Remove applications (both old and new names) - use sudo for apps installed by PKG
-sudo rm -rf /Applications/KuaminiSecurityClient.app 2>/dev/null || true
-sudo rm -rf /Applications/KuaminiAgentTray.app 2>/dev/null || true
-rm -rf ~/Applications/KuaminiSecurityClient.app 2>/dev/null || true
-rm -rf ~/Applications/KuaminiAgentTray.app 2>/dev/null || true
+# Remove applications (both old and new names)
+rm -rf /Applications/KuaminiSecurityClient.app 2>/dev/null || true
+rm -rf /Applications/KuaminiAgentTray.app 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Applications/KuaminiSecurityClient.app" 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Applications/KuaminiAgentTray.app" 2>/dev/null || true
 
-# Remove LaunchAgents
-rm -f "$HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
-rm -f "$HOME/Library/LaunchAgents/com.kuamini.agenttray.plist"
-sudo rm -f "/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
-sudo rm -f "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
+# Remove LaunchAgents (user and system)
+rm -f "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
+rm -f "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.agenttray.plist"
+rm -f "/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
+rm -f "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
 
 # Remove config and data
-rm -rf ~/.kuamini
+rm -rf "$ACTUAL_HOME/.kuamini"
 rm -rf /tmp/kuamini-* 2>/dev/null || true
 
 # Remove logs
-rm -rf ~/Library/Logs/KuaminiSecurityClient
-rm -rf ~/Library/Logs/KuaminiAgentTray
+rm -rf "$ACTUAL_HOME/Library/Logs/KuaminiSecurityClient"
+rm -rf "$ACTUAL_HOME/Library/Logs/KuaminiAgentTray"
 
 # Remove Application Support
-rm -rf ~/Library/Application\ Support/KuaminiSecurityClient
-rm -rf ~/Library/Application\ Support/KuaminiAgentTray
+rm -rf "$ACTUAL_HOME/Library/Application Support/KuaminiSecurityClient"
+rm -rf "$ACTUAL_HOME/Library/Application Support/KuaminiAgentTray"
 
 # Remove Preferences
-rm -f ~/Library/Preferences/com.kuamini.securityclient.plist
-rm -f ~/Library/Preferences/com.kuamini.agenttray.plist
+rm -f "$ACTUAL_HOME/Library/Preferences/com.kuamini.securityclient.plist"
+rm -f "$ACTUAL_HOME/Library/Preferences/com.kuamini.agenttray.plist"
 
 # Remove Caches
-rm -rf ~/Library/Caches/com.kuamini.securityclient
-rm -rf ~/Library/Caches/com.kuamini.agenttray
+rm -rf "$ACTUAL_HOME/Library/Caches/com.kuamini.securityclient"
+rm -rf "$ACTUAL_HOME/Library/Caches/com.kuamini.agenttray"
 
 # Forget package receipts
-sudo $PKGUTIL --forget com.kuamini.securityclient >/dev/null 2>&1 || true
-sudo $PKGUTIL --forget com.kuamini.agenttray >/dev/null 2>&1 || true
+$PKGUTIL --forget com.kuamini.securityclient >/dev/null 2>&1 || true
+$PKGUTIL --forget com.kuamini.agenttray >/dev/null 2>&1 || true
 
 # Final cleanup: Restart the Dock to clear any ghost tray icons
 echo ""
 echo "🔄 Clearing menu bar icons..."
 sleep 2
 
-# Kill and restart Dock (this clears all menu bar icons and caches)
-killall Dock 2>/dev/null || true
+# Kill and restart Dock as the actual user (this clears all menu bar icons and caches)
+sudo -u "$ACTUAL_USER" killall Dock 2>/dev/null || true
 
 # Wait for Dock to restart
 sleep 2
@@ -162,7 +174,6 @@ if [ -n "$REMAINING" ]; then
     echo "  2. Or restart your Mac"
 else
     echo "✅ Kuamini Security Client has been completely removed"
-    echo "   ✓ Deregistered from console"
     echo "   ✓ All files and configurations deleted"
     echo "   ✓ All processes terminated"
     echo "   ✓ Menu bar icons cleared"
