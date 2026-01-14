@@ -31,31 +31,52 @@ else
     ACTUAL_HOME="$HOME"
 fi
 
+echo "👤 Running as user: $ACTUAL_USER"
+echo ""
+
 # Read agent_id and api_base from config if it exists
 AGENT_ID=""
 API_BASE=""
 CONFIG_FILE="$ACTUAL_HOME/.kuamini/config.json"
-if [ -f "$CONFIG_FILE" ]; then
-    echo "📋 Found config file, reading agent configuration..."
-    AGENT_ID=$(grep -o '"agent_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
-    API_BASE=$(grep -o '"api_base"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+
+# Try multiple possible config locations
+POSSIBLE_CONFIGS=(
+    "$ACTUAL_HOME/.kuamini/config.json"
+    "/Library/Application Support/KuaminiSecurityClient/config.json"
+    "$ACTUAL_HOME/Library/Application Support/KuaminiSecurityClient/config.json"
+)
+
+for CONFIG in "${POSSIBLE_CONFIGS[@]}"; do
+    if [ -f "$CONFIG" ]; then
+        CONFIG_FILE="$CONFIG"
+        echo "📋 Found config file at: $CONFIG_FILE"
+        AGENT_ID=$(grep -o '"agent_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+        API_BASE=$(grep -o '"api_base"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+        
+        if [ -n "$AGENT_ID" ]; then
+            echo "✓ Agent ID: $AGENT_ID"
+        fi && [ -n "$API_BASE" ]; then
+    echo ""
+    echo "📡 Deregistering from console..."
+    # Use --insecure flag for curl to handle certificate issues, with timeout
+    RESPONSE=$(curl -s --insecure -m 5 -X POST "$API_BASE/deregister" \
+        -H "Content-Type: application/json" \
+        -d "{\"agent_id\":\"$AGENT_ID\"}" \
+        -w "\n%{http_code}" 2>&1)
     
-    if [ -n "$AGENT_ID" ]; then
-        echo "✓ Agent ID: $AGENT_ID"
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    BODY=$(echo "$RESPONSE" | sed '$d')
+    
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
+        echo "✓ Successfully deregistered from console"
+    else
+        echo "⚠️  Deregister returned HTTP $HTTP_CODE"
+        echo "   (Offline or network issue - continuing with local cleanup...)"
     fi
-    if [ -n "$API_BASE" ]; then
-        echo "✓ API Base: $API_BASE"
-    fi
-fi
-
-# Fallback to environment variable or production URL if not found in config
-if [ -z "$API_BASE" ]; then
-    API_BASE="${API_BASE:-https://kuaminisystems.com/api/agent}"
-    echo "ℹ️  Using default API: $API_BASE"
-fi
-
-# Deregister from console
-if [ -n "$AGENT_ID" ]; then
+else
+    echo ""
+    echo "ℹ️  No agent_id or API endpoint found"
+    echo "   (Installation may be corrupt or offline - skipping deregister)
     echo ""
     echo "📡 Deregistering from console..."
     # Use --insecure flag for curl to handle certificate issues, with timeout
@@ -84,18 +105,26 @@ echo "🛑 Stopping agent..."
 CURRENT_UID=$(id -u "$ACTUAL_USER")
 
 # Kill processes FIRST before trying to unload LaunchAgent
-echo "   Terminating running processes..."
+echind and kill ALL Kuamini processes regardless of location
+ps aux | grep -i kuamini | grep -v grep | grep -v uninstall | awk '{print $2}' | xargs -r kill -9 2>/dev/null || true
 
-# Force kill immediately (LaunchAgent bootout often fails with error 5)
+# Force kill by pattern matching (even if running from unusual locations)
 pkill -9 -f "KuaminiSecurityClient" 2>/dev/null || true
 pkill -9 -f "KuaminiAgentTray" 2>/dev/null || true
 pkill -9 -f "KuaminiAgent" 2>/dev/null || true
+pkill -9 -f "kuamini" 2>/dev/null || true
 
 # Also kill by exact process name
 killall -9 KuaminiSecurityClient 2>/dev/null || true
 killall -9 KuaminiAgentTray 2>/dev/null || true
 killall -9 KuaminiAgent 2>/dev/null || true
 
+# Wait for processes to fully terminate (longer wait for system caches)
+sleep 3
+
+# Second attempt - ensure nothing survived
+ps aux | grep -i kuamini | grep -v grep | grep -v uninstall | awk '{print $2}' | xargs -r kill -9 2>/dev/null || true
+sleep 1
 # Wait for processes to fully terminate (longer wait for system caches)
 sleep 3
 
@@ -106,41 +135,61 @@ sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" com.kuamini.agenttr
 sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
 sudo -u "$ACTUAL_USER" $LAUNCHCTL bootout "gui/$CURRENT_UID" "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
 
-# Best-effort system locations (older installs)
-$LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.securityclient.plist" >/dev/null 2>&1 || true
-$LAUNCHCTL bootout "gui/$CURRENT_UID" "/Library/LaunchAgents/com.kuamini.agenttray.plist" >/dev/null 2>&1 || true
-
-# Disable to prevent immediate relaunch
-sudo -u "$ACTUAL_USER" $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.securityclient >/dev/null 2>&1 || true
-sudo -u "$ACTUAL_USER" $LAUNCHCTL disable "gui/$CURRENT_UID"/com.kuamini.agenttray >/dev/null 2>&1 || true
-
-echo "🗑️  Removing files..."
-
-# Remove applications (both old and new names)
+# Best-effort system lfrom ALL possible locations (both old and new names)
+echo "   Removing application bundles..."
 rm -rf /Applications/KuaminiSecurityClient.app 2>/dev/null || true
 rm -rf /Applications/KuaminiAgentTray.app 2>/dev/null || true
 rm -rf "$ACTUAL_HOME/Applications/KuaminiSecurityClient.app" 2>/dev/null || true
 rm -rf "$ACTUAL_HOME/Applications/KuaminiAgentTray.app" 2>/dev/null || true
+rm -rf /Applications/Kuamini*.app 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Applications/Kuamini*.app" 2>/dev/null || true
 
-# Remove LaunchAgents (user and system)
-rm -f "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
-rm -f "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.agenttray.plist"
-rm -f "/Library/LaunchAgents/com.kuamini.securityclient.plist" 2>/dev/null || true
-rm -f "/Library/LaunchAgents/com.kuamini.agenttray.plist" 2>/dev/null || true
+# Search for and remove any stray app bundles
+find /Applications -maxdepth 1 -iname "*kuamini*" -type d -exec rm -rf {} \; 2>/dev/null || true
+find "$ACTUAL_HOME/Applications" -maxdepth 1 -iname "*kuamini*" -type d -exec rm -rf {} \; 2>/dev/null || true
 
-# Remove config and data
-rm -rf "$ACTUAL_HOME/.kuamini"
+# Remove LaunchAgents (user and system, all possible names)
+echo "   Removing LaunchAgents..."
+rm -f "$ACTUAL_HOME/Library/LaunchAgents/com.kuamini."* 2>/dev/null || true
+rm -f "/Library/LaunchAgents/com.kuamini."* 2>/dev/null || true
+find "$ACTUAL_HOME/Library/LaunchAgents" -iname "*kuamini*" -delete 2>/dev/null || true
+find "/Library/LaunchAgents" -iname "*kuamini*" -delete 2>/dev/null || true
+
+# Remove config and data from ALL possible locations
+echo "   Removing configuration and data..."
+rm -rf "$ACTUAL_HOME/.kuamini" 2>/dev/null || true
+rm -rf "/Library/Application Support/KuaminiSecurityClient" 2>/dev/null || true
+rm -rf "/Library/Application Support/Kuamini"* 2>/dev/null || true
 rm -rf /tmp/kuamini-* 2>/dev/null || true
+rm -rf /tmp/*kuamini* 2>/dev/null || true
 
-# Remove logs
-rm -rf "$ACTUAL_HOME/Library/Logs/KuaminiSecurityClient"
-rm -rf "$ACTUAL_HOME/Library/Logs/KuaminiAgentTray"
+# Remove logs from ALL possible locations
+echo "   Removing logs..."
+rm -rf "$ACTUAL_HOME/Library/Logs/KuaminiSecurityClient" 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Library/Logs/KuaminiAgentTray" 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Library/Logs/Kuamini"* 2>/dev/null || true
+find "$ACTUAL_HOME/Library/Logs" -iname "*kuamini*" -type d -exec rm -rf {} \; 2>/dev/null || true
 
-# Remove Application Support
-rm -rf "$ACTUAL_HOME/Library/Application Support/KuaminiSecurityClient"
-rm -rf "$ACTUAL_HOME/Library/Application Support/KuaminiAgentTray"
+# Remove Application Support from ALL possible locations
+echo "   Removing application support files..."
+rm -rf "$ACTUAL_HOME/Library/Application Support/KuaminiSecurityClient" 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Library/Application Support/KuaminiAgentTray" 2>/dev/null || true
+rm -rf "$ACTUAL_HOME/Library/Application Support/Kuamini"* 2>/dev/null || true
+find "$ACTUAL_HOME/Library/Application Support" -iname "*kuamini*" -type d -exec rm -rf {} \; 2>/dev/null || true
 
 # Remove Preferences
+echo "   Removing preferences..."
+rm -f "$ACTUAL_HOME/Library/Preferences/com.kuamini."* 2>/dev/null || true
+find "$ACTUAL_HOME/Library/Preferences" -iname "*kuamini*" -delete 2>/dev/null || true
+
+# Remove Caches
+echo "   Removing caches..."
+rm -rf "$ACTUAL_HOME/Library/Caches/com.kuamini."* 2>/dev/null || true
+find "$ACTUAL_HOME/Library/Caches" -iname "*kuamini*" -type d -exec rm -rf {} \; 2>/dev/null || true
+
+# Forget package receipts (all possible package IDs)
+echo "   Forgetting package receipts..."
+$PKGUTIL --pkgs | grep -i kuamini | xargs -I {} $PKGUTIL --forget {} 2>/dev/null
 rm -f "$ACTUAL_HOME/Library/Preferences/com.kuamini.securityclient.plist"
 rm -f "$ACTUAL_HOME/Library/Preferences/com.kuamini.agenttray.plist"
 
