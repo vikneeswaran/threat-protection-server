@@ -2,7 +2,8 @@
 # Kuamini Security Client Uninstaller for macOS
 # Removes all traces and deregisters from console
 
-set -e
+# Note: Removed 'set -e' to allow script to continue even if individual commands fail
+# This ensures all cleanup operations run even if some fail
 
 echo "🗑️  Kuamini Security Client Uninstaller"
 echo "======================================="
