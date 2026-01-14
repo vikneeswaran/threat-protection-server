@@ -116,7 +116,8 @@ if [ -z "$PLIST_SRC" ]; then
     PLIST_SRC="/tmp/com.kuamini.securityclient.plist.$$"
     
     # Create the plist with proper path to the executable
-    cat > "$PLIST_SRC" << 'EOFPLIST'
+    # Use double quotes to allow variable expansion
+    cat > "$PLIST_SRC" << EOFPLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -200,16 +201,19 @@ chmod +x "$SCRIPTS_DIR/postinstall"
 # Create temporary root directory for packaging
 TEMP_ROOT=$(mktemp -d)
 trap "rm -rf $SCRIPTS_DIR $TEMP_ROOT" EXIT
+# Create the Applications directory structure in TEMP_ROOT
+# This way with --install-location . the files go to /Applications/...
 mkdir -p "$TEMP_ROOT/Applications"
 cp -r "dist/$APP_NAME" "$TEMP_ROOT/Applications/"
 
-# Build PKG
+# Build PKG - with install-location "." (dot), pkgbuild will install
+# TEMP_ROOT/Applications to /Applications
 sudo pkgbuild \
   --identifier com.kuamini.securityclient \
   --version 1.0.0 \
   --root "$TEMP_ROOT" \
   --scripts "$SCRIPTS_DIR" \
-  --ownership preserve \
+  --install-location / \
   dist/$PKG_NAME
 
 # Fix permissions

@@ -55,7 +55,13 @@ for CONFIG in "${POSSIBLE_CONFIGS[@]}"; do
         
         if [ -n "$AGENT_ID" ]; then
             echo "✓ Agent ID: $AGENT_ID"
-        fi && [ -n "$API_BASE" ]; then
+        fi
+        break
+    fi
+done
+
+# Step 2: Deregister from console if we have agent_id and api_base
+if [ -n "$AGENT_ID" ] && [ -n "$API_BASE" ]; then
     echo ""
     echo "📡 Deregistering from console..."
     # Use --insecure flag for curl to handle certificate issues, with timeout
@@ -76,26 +82,7 @@ for CONFIG in "${POSSIBLE_CONFIGS[@]}"; do
 else
     echo ""
     echo "ℹ️  No agent_id or API endpoint found"
-    echo "   (Installation may be corrupt or offline - skipping deregister)
-    echo ""
-    echo "📡 Deregistering from console..."
-    # Use --insecure flag for curl to handle certificate issues, with timeout
-    RESPONSE=$(curl -s --insecure -m 5 -X POST "$API_BASE/deregister" \
-        -H "Content-Type: application/json" \
-        -d "{\"agent_id\":\"$AGENT_ID\"}" \
-        -w "\n%{http_code}" 2>&1)
-    
-    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-    BODY=$(echo "$RESPONSE" | sed '$d')
-    
-    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
-        echo "✓ Successfully deregistered from console"
-    else
-        echo "⚠️  Deregister returned HTTP $HTTP_CODE"
-        echo "   (Continuing with local cleanup...)"
-    fi
-else
-    echo "ℹ️  No agent_id found, skipping deregister"
+    echo "   (Installation may be corrupt or offline - skipping deregister)"
 fi
 
 echo ""
@@ -105,7 +92,7 @@ echo "🛑 Stopping agent..."
 CURRENT_UID=$(id -u "$ACTUAL_USER")
 
 # Kill processes FIRST before trying to unload LaunchAgent
-echind and kill ALL Kuamini processes regardless of location
+# Find and kill ALL Kuamini processes regardless of location
 ps aux | grep -i kuamini | grep -v grep | grep -v uninstall | awk '{print $2}' | xargs -r kill -9 2>/dev/null || true
 
 # Force kill by pattern matching (even if running from unusual locations)
