@@ -246,11 +246,23 @@ def _antialias_filter():
     return Image.NEAREST
 
 
-def make_icon(status_color=(46, 204, 113)):
-    # Generate a simple circular icon in memory (green by default)
+def make_icon(status_color=(46, 204, 113), status_text=""):
+    """Generate a circular status icon with optional status indicator in the corner."""
     img = Image.new("RGB", (64, 64), (255, 255, 255))
     draw = ImageDraw.Draw(img)
-    draw.ellipse((8, 8, 56, 56), fill=status_color, outline=(40, 40, 40))
+    
+    # Main circle (status indicator)
+    draw.ellipse((8, 8, 56, 56), fill=status_color, outline=(40, 40, 40), width=2)
+    
+    # Status text or dot
+    if status_text:
+        try:
+            # Try to draw a small indicator dot in corner if status text provided
+            indicator_color = (46, 204, 113) if status_color == (46, 204, 113) else (231, 76, 60)
+            draw.ellipse((48, 48, 62, 62), fill=indicator_color, outline=(40, 40, 40), width=1)
+        except Exception as e:
+            logging.debug("Could not draw status indicator: %s", e)
+    
     return img.resize((64, 64), _antialias_filter())
 
 
@@ -338,9 +350,9 @@ def tray_main():
     def set_status(text, color=(46, 204, 113)):
         status["text"] = text
         status["color"] = color
-        icon.icon = make_icon(color)
-        icon.title = f"Kuamini Agent — {text}"
-        logging.info("Status changed: %s", text)
+        icon.icon = make_icon(color, text)
+        icon.title = f"Kuamini: {text}"
+        logging.info("Status changed: %s (color: %s)", text, color)
 
     def do_register(icon_, item):
         ok, res = register(config)
@@ -368,16 +380,21 @@ def tray_main():
             set_status("Online" if ok else "Heartbeat failed", (46, 204, 113) if ok else (231, 76, 60))
             stop_event.wait(interval)
 
-    icon.menu = pystray.Menu(
-        pystray.MenuItem(lambda item: f"Agent: {config.get('agent_id') or 'unknown'}", None, enabled=False),
-        pystray.MenuItem(lambda item: f"Status: {status['text']}", None, enabled=False),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Register now", do_register),
-        pystray.MenuItem("Send heartbeat", do_heartbeat),
-        pystray.MenuItem("Open console", open_console),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quit", quit_app),
-    )
+    def build_menu():
+        """Build menu dynamically so status updates in real time."""
+        return pystray.Menu(
+            pystray.MenuItem(lambda item: f"● Agent: {config.get('agent_id', 'unknown')[:8]}...", None, enabled=False),
+            pystray.MenuItem(lambda item: f"◉ Status: {status.get('text', 'Unknown')}", None, enabled=False),
+            pystray.MenuItem(lambda item: f"  Account: {config.get('account_id', 'Not set')[:8]}..." if config.get('account_id') else "  Account: Not configured", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Register now", do_register),
+            pystray.MenuItem("Send heartbeat", do_heartbeat),
+            pystray.MenuItem("Open console", open_console),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", quit_app),
+        )
+    
+    icon.menu = build_menu()
 
     set_status("Starting")
     
