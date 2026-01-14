@@ -157,8 +157,26 @@ if [ -f "$PLIST_SRC" ]; then
     chmod 644 "$PLIST_DST"
     
     echo "✅ LaunchAgent plist installed to $PLIST_DST"
-    echo "⚠️  Note: LaunchAgent will load automatically on next login."
-    echo "   To load now, run: launchctl load $PLIST_DST"
+    
+    # Try to load the LaunchAgent using the modern bootstrap API
+    # First, unload/bootout any existing instance to avoid conflicts
+    sudo -u "$CONSOLE_USER" launchctl bootout "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null || true
+    
+    # Use bootstrap instead of deprecated load command (avoids Error 5)
+    if sudo -u "$CONSOLE_USER" launchctl bootstrap "gui/$CONSOLE_UID" "$PLIST_DST" 2>/dev/null; then
+        echo "✅ LaunchAgent loaded successfully"
+        echo "   Agent will start automatically now and on future logins"
+    else
+        # If bootstrap fails, it might already be loaded - try to enable and kickstart
+        if sudo -u "$CONSOLE_USER" launchctl enable "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null; then
+            sudo -u "$CONSOLE_USER" launchctl kickstart -k "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null || true
+            echo "✅ LaunchAgent enabled and started"
+        else
+            echo "⚠️  LaunchAgent installed but not loaded (may already be running)"
+            echo "   Will load automatically on next login"
+            echo "   To start now: launchctl bootstrap gui/$CONSOLE_UID $PLIST_DST"
+        fi
+    fi
     
     # Clean up temporary plist if we created one
     if [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ] && [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
