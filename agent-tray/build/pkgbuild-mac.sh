@@ -98,6 +98,62 @@ fi
 /bin/chmod 755 "$CONFIG_DIR" 2>/dev/null || true
 /bin/chmod 644 "$CONFIG_FILE" 2>/dev/null || true
 
+# CRITICAL FIX FOR MACOS SEQUOIA: Extract app bundle from Payload
+# PKG extraction is unreliable on Sequoia; manually extract from Payload archive
+echo "Extracting application bundle from package payload..."
+APP_BUNDLE="/Applications/KuaminiSecurityClient.app"
+
+# Check if app was installed by pkgbuild (it should have, but Sequoia might fail)
+if [ ! -d "$APP_BUNDLE" ]; then
+    echo "⚠️  App bundle not found in /Applications; attempting manual extraction from Payload..."
+    
+    # Find the PKG this script is running from
+    # When running as postinstall, we're in the Scripts directory of an expanded PKG
+    PKG_PAYLOAD_DIR="${2%/Contents*}/Payload" 2>/dev/null || PKG_PAYLOAD_DIR=""
+    
+    if [ -z "$PKG_PAYLOAD_DIR" ] || [ ! -f "$PKG_PAYLOAD_DIR" ]; then
+        # Try to find the Payload in the package being installed
+        # Look for xar archive in the installer path
+        for possible_payload in "/var/tmp"/*"Kuamini"*/Payload "$3/Payload" /tmp/*/Payload; do
+            if [ -f "$possible_payload" ]; then
+                PKG_PAYLOAD_DIR="$possible_payload"
+                break
+            fi
+        done
+    fi
+    
+    if [ -f "$PKG_PAYLOAD_DIR" ]; then
+        echo "Found Payload at: $PKG_PAYLOAD_DIR"
+        EXTRACT_DIR=$(mktemp -d)
+        trap "rm -rf $EXTRACT_DIR" EXIT
+        
+        # Extract payload (it's a tar.gz file despite no extension)
+        if tar -xzf "$PKG_PAYLOAD_DIR" -C "$EXTRACT_DIR" 2>/dev/null; then
+            if [ -d "$EXTRACT_DIR/Applications/KuaminiSecurityClient.app" ]; then
+                echo "✅ Extracted app from Payload"
+                mkdir -p /Applications
+                cp -r "$EXTRACT_DIR/Applications/KuaminiSecurityClient.app" "$APP_BUNDLE"
+                echo "✅ App installed to $APP_BUNDLE"
+            else
+                echo "⚠️  Could not find app in extracted Payload"
+            fi
+        else
+            echo "⚠️  Failed to extract Payload"
+        fi
+    else
+        echo "⚠️  Could not locate Payload archive"
+    fi
+fi
+
+# Verify app bundle exists
+if [ ! -d "$APP_BUNDLE" ]; then
+    echo "❌ Error: Application bundle could not be installed"
+    echo "   Payload extraction failed or package was incomplete"
+    exit 1
+fi
+
+echo "✅ Application bundle verified at $APP_BUNDLE"
+
 # Install LaunchAgent for the console user
 # Try to find the plist - it may be embedded in the bundle
 APP_BUNDLE="/Applications/KuaminiSecurityClient.app"
