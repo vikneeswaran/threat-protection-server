@@ -39,7 +39,7 @@ jobs:
           bash build/pkgbuild-mac.sh
 
       - name: Upload macOS PKG artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos-pkg
           path: agent-tray/dist/KuaminiSecurityClient-1.0.0.pkg
@@ -78,7 +78,7 @@ jobs:
           powershell -ExecutionPolicy Bypass -File build-windows-msi.ps1
 
       - name: Upload Windows MSI artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-msi
           path: agent-tray/dist/KuaminiSecurityClient-1.0.0.msi
@@ -113,7 +113,7 @@ jobs:
           bash build/build-linux-installer.sh
 
       - name: Upload Linux shell installer artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux-sh
           path: agent-tray/dist/KuaminiSecurityClient-1.0.0.sh
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
 
       - name: Deploy to public/tray
         run: |
