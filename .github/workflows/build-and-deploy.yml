@@ -1,0 +1,167 @@
+name: Build and Deploy Installers
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'agent-tray/**'
+      - '.github/workflows/build-and-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS app
+        run: |
+          cd agent-tray
+          rm -rf dist/KuaminiSecurityClient.app
+          pyinstaller main.py --onedir --windowed --osx-bundle-identifier=com.kuamini.securityclient --name=KuaminiSecurityClient -y
+
+      - name: Build macOS PKG installer
+        run: |
+          cd agent-tray
+          bash build/pkgbuild-mac.sh
+
+      - name: Upload macOS PKG artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos-pkg
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.pkg
+          retention-days: 30
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Windows exe
+        run: |
+          cd agent-tray
+          rmdir /s /q dist\KuaminiSecurityClient 2>nul || true
+          pyinstaller main.py --onedir --windowed --name=KuaminiSecurityClient -y
+
+      - name: Install WiX Toolset
+        run: |
+          choco install wixtoolset -y
+
+      - name: Build Windows MSI installer
+        run: |
+          cd agent-tray\build
+          powershell -ExecutionPolicy Bypass -File build-windows-msi.ps1
+
+      - name: Upload Windows MSI artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-msi
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.msi
+          retention-days: 30
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Linux executable
+        run: |
+          cd agent-tray
+          rm -rf dist/KuaminiSecurityClient
+          pyinstaller main.py --onedir --name=KuaminiSecurityClient -y
+
+      - name: Build Linux shell installer
+        run: |
+          cd agent-tray
+          bash build/build-linux-installer.sh
+
+      - name: Upload Linux shell installer artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-sh
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.sh
+          retention-days: 30
+
+  deploy:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Deploy to public/tray
+        run: |
+          mkdir -p public/tray
+          cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/
+          cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/
+          cp linux-sh/KuaminiSecurityClient-1.0.0.sh public/tray/
+          
+          echo "Deployed installers:"
+          ls -lh public/tray/*.{pkg,msi,sh} 2>/dev/null || true
+
+      - name: Commit and push installers
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          
+          git add public/tray/*.{pkg,msi,sh}
+          
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "build: update installers from latest code"
+            git push
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            public/tray/KuaminiSecurityClient-1.0.0.pkg
+            public/tray/KuaminiSecurityClient-1.0.0.msi
+            public/tray/KuaminiSecurityClient-1.0.0.sh
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
