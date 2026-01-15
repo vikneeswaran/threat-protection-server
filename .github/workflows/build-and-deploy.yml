@@ -9,6 +9,10 @@ on:
       - '.github/workflows/build-and-deploy.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build-macos:
     runs-on: macos-latest
