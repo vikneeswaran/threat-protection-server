@@ -72,20 +72,16 @@ jobs:
           Remove-Item -Path dist\KuaminiSecurityClient -Recurse -Force -ErrorAction SilentlyContinue
           pyinstaller main.py --onedir --windowed --name=KuaminiSecurityClient -y
 
-      - name: Install WiX Toolset
+      - name: Package Windows artifact
         run: |
-          choco install wixtoolset -y
+          cd agent-tray
+          Compress-Archive -Path dist/KuaminiSecurityClient -DestinationPath dist/KuaminiSecurityClient-windows.zip -Force
 
-      - name: Build Windows MSI installer
-        run: |
-          cd agent-tray\build
-          powershell -ExecutionPolicy Bypass -File build-windows-msi.ps1
-
-      - name: Upload Windows MSI artifact
+      - name: Upload Windows ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msi
-          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.msi
+          name: windows-zip
+          path: agent-tray/dist/KuaminiSecurityClient-windows.zip
           retention-days: 30
 
   build-linux:
@@ -111,16 +107,16 @@ jobs:
           rm -rf dist/KuaminiSecurityClient
           pyinstaller main.py --onedir --name=KuaminiSecurityClient -y
 
-      - name: Build Linux shell installer
+      - name: Package Linux artifact
         run: |
           cd agent-tray
-          bash build/build-linux-installer.sh
+          tar -czf dist/KuaminiSecurityClient-linux.tar.gz -C dist KuaminiSecurityClient
 
-      - name: Upload Linux shell installer artifact
+      - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-sh
-          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.sh
+          name: linux-tar
+          path: agent-tray/dist/KuaminiSecurityClient-linux.tar.gz
           retention-days: 30
 
   deploy:
@@ -137,11 +133,11 @@ jobs:
         run: |
           mkdir -p public/tray
           cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/
-          cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/
-          cp linux-sh/KuaminiSecurityClient-1.0.0.sh public/tray/
+          cp windows-zip/KuaminiSecurityClient-windows.zip public/tray/
+          cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/
           
           echo "Deployed installers:"
-          ls -lh public/tray/*.{pkg,msi,sh} 2>/dev/null || true
+          ls -lh public/tray/* 2>/dev/null || true
 
       - name: Commit and push installers
         run: |
@@ -165,8 +161,8 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/KuaminiSecurityClient-1.0.0.msi
-            public/tray/KuaminiSecurityClient-1.0.0.sh
+            public/tray/KuaminiSecurityClient-windows.zip
+            public/tray/KuaminiSecurityClient-linux.tar.gz
           draft: false
           prerelease: false
         env:
