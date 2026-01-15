@@ -411,19 +411,21 @@ def tray_main():
     
     threading.Thread(target=heartbeat_loop, daemon=True).start()
     icon.icon = make_icon(status["color"])
+    
+    # Try to run the tray icon, with fallback to background-only mode
     try:
+        logging.info("Starting tray icon...")
         icon.run()
     except Exception as e:
-        logging.exception("Tray icon run failed: %s", e)
-        if sys.platform == "darwin":
-            try:
-                subprocess.run([
-                    "osascript",
-                    "-e",
-                    'display alert "Kuamini Agent" message "The tray failed to start. See log file for details."',
-                ], check=False)
-            except Exception:
-                pass
+        logging.warning("Tray icon failed to start: %s", e)
+        logging.info("Running in background-only mode (no tray icon)")
+        # Keep the heartbeat thread running even if tray fails
+        try:
+            while not stop_event.is_set():
+                stop_event.wait(1)
+        except KeyboardInterrupt:
+            logging.info("Shutting down...")
+            stop_event.set()
 
 
 if __name__ == "__main__":
