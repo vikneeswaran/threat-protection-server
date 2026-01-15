@@ -10,10 +10,42 @@ from pathlib import Path
 from typing import Tuple
 import uuid
 
-import psutil
-import pystray
-import requests
-from PIL import Image, ImageDraw
+# Import PIL first and add Pillow 10+ compatibility patch for pystray
+try:
+    from PIL import Image, ImageDraw
+except ImportError as e:
+    print(f"[IMPORT ERROR] Failed to import PIL: {e}", file=sys.stderr)
+    sys.exit(1)
+
+# Compatibility fix for Pillow 10.0.0+ which removed Image.ANTIALIAS
+# pystray 0.19.4 still uses this constant, so we need to patch it
+if not hasattr(Image, 'ANTIALIAS'):
+    if hasattr(Image, 'Resampling'):
+        # Pillow 10.0.0+
+        Image.ANTIALIAS = Image.Resampling.LANCZOS
+    elif hasattr(Image, 'LANCZOS'):
+        # Older Pillow versions
+        Image.ANTIALIAS = Image.LANCZOS
+    print("[COMPAT] Patched PIL.Image.ANTIALIAS for Pillow 10+ compatibility", file=sys.stderr)
+
+# Try to import external dependencies with early error reporting
+try:
+    import psutil
+except ImportError as e:
+    print(f"[IMPORT ERROR] Failed to import psutil: {e}", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import pystray
+except ImportError as e:
+    print(f"[IMPORT ERROR] Failed to import pystray: {e}", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import requests
+except ImportError as e:
+    print(f"[IMPORT ERROR] Failed to import requests: {e}", file=sys.stderr)
+    sys.exit(1)
 
 DEFAULT_HEARTBEAT_INTERVAL = 60
 
@@ -343,6 +375,17 @@ def tray_main():
     setup_logging()
     logging.info("Starting Kuamini Agent Tray")
     config = load_config()
+    
+    # Detect if running under LaunchAgent (no display available)
+    # LaunchAgent typically doesn't have DISPLAY env var and can't create UI
+    has_display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    is_launchagent = "LAUNCHCTL_LAUNCHER_SOCKET" in os.environ or "SESSIONTYPE" not in os.environ
+    
+    if not has_display and is_launchagent:
+        logging.info("Running under LaunchAgent without display; using background mode instead of tray icon")
+        background_agent_mode(config)
+        return
+    
     status = {"text": "Idle", "color": (46, 204, 113)}
     
     # Create icon with error handling
@@ -487,14 +530,28 @@ def background_agent_mode(config):
 
 
 if __name__ == "__main__":
+    # Ensure all output is captured, even on early crashes
+    print("[STARTUP] Agent starting...", file=sys.stderr)
+    sys.stderr.flush()
+    
     try:
+        print("[STARTUP] About to call tray_main()", file=sys.stderr)
+        sys.stderr.flush()
         tray_main()
     except KeyboardInterrupt:
-        pass
+        print("[SHUTDOWN] Received keyboard interrupt", file=sys.stderr)
+        sys.stderr.flush()
     except Exception as e:
-        # Ensure unexpected exceptions are logged
+        # Ensure unexpected exceptions are logged, even before setup_logging
+        print(f"[ERROR] Exception before setup_logging: {type(e).__name__}: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        
+        # Try to also setup logging and log the error
         try:
             setup_logging()
             logging.exception("Fatal error: %s", e)
-        except Exception:
-            pass
+        except Exception as log_error:
+            print(f"[ERROR] Failed to setup logging: {log_error}", file=sys.stderr)
+            sys.stderr.flush()
