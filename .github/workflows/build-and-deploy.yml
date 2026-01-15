@@ -65,7 +65,7 @@ jobs:
       - name: Build Windows exe
         run: |
           cd agent-tray
-          rmdir /s /q dist\KuaminiSecurityClient 2>nul || true
+          Remove-Item -Path dist\KuaminiSecurityClient -Recurse -Force -ErrorAction SilentlyContinue
           pyinstaller main.py --onedir --windowed --name=KuaminiSecurityClient -y
 
       - name: Install WiX Toolset
