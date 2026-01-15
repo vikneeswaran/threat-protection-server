@@ -151,9 +151,9 @@ jobs:
           else
             git commit -m "build: update installers from latest code"
             git push origin main
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
