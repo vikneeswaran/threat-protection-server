@@ -99,21 +99,30 @@ fi
 /bin/chmod 755 "$CONFIG_DIR" 2>/dev/null || true
 /bin/chmod 644 "$CONFIG_FILE" 2>/dev/null || true
 
-# Extract app bundle from Scripts directory
+# Extract app bundle from Scripts directory (robust path detection)
 # We embed the app directly in PKG Scripts for reliable installation
 APP_BUNDLE="/Applications/KuaminiSecurityClient.app"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Installing application bundle..."
-echo "  Scripts directory: $2"
+echo "  Script dir: $SCRIPT_DIR"
+echo "  Installer arg2: ${2:-<empty>}"
 
-# $2 is the path to the Scripts directory during postinstall
-if [ -d "$2/KuaminiSecurityClient.app" ]; then
-    echo "  Found app bundle in Scripts directory"
+FOUND_APP=""
+for candidate in "$SCRIPT_DIR/KuaminiSecurityClient.app" "$2/KuaminiSecurityClient.app"; do
+    if [ -d "$candidate" ]; then
+        FOUND_APP="$candidate"
+        break
+    fi
+done
+
+if [ -n "$FOUND_APP" ]; then
+    echo "  Found app bundle: $FOUND_APP"
     mkdir -p /Applications
-    cp -r "$2/KuaminiSecurityClient.app" "$APP_BUNDLE"
+    cp -r "$FOUND_APP" "$APP_BUNDLE"
     echo "✅ App successfully installed to /Applications"
 else
-    echo "⚠️  App bundle not found in Scripts directory"
+    echo "⚠️  App bundle not found (checked $SCRIPT_DIR and $2)"
 fi
 
 # LaunchAgent setup (optional - only if app is installed)
