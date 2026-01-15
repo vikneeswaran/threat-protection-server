@@ -375,17 +375,7 @@ def tray_main():
     setup_logging()
     logging.info("Starting Kuamini Agent Tray")
     config = load_config()
-    
-    # Detect if running under LaunchAgent (no display available)
-    # LaunchAgent typically doesn't have DISPLAY env var and can't create UI
-    has_display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    is_launchagent = "LAUNCHCTL_LAUNCHER_SOCKET" in os.environ or "SESSIONTYPE" not in os.environ
-    
-    if not has_display and is_launchagent:
-        logging.info("Running under LaunchAgent without display; using background mode instead of tray icon")
-        background_agent_mode(config)
-        return
-    
+
     status = {"text": "Idle", "color": (46, 204, 113)}
     
     # Create icon with error handling
