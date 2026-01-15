@@ -150,7 +150,9 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "build: update installers from latest code"
-            git push
+            git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           fi
 
       - name: Create Release
