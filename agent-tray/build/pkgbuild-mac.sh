@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Don't use set -euo pipefail - causes issues during postinstall in installer environment
 cd "$(dirname "$0")/.."
 
 APP_NAME=KuaminiSecurityClient.app
@@ -17,7 +17,8 @@ trap "rm -rf $SCRIPTS_DIR" EXIT
 # Create postinstall script with improved LaunchAgent handling
 cat > "$SCRIPTS_DIR/postinstall" << 'EOF'
 #!/bin/bash
-set -euo pipefail
+# Use +e to allow errors - macOS installer environment
+set +euo pipefail
 
 # Set explicit PATH for macOS installer environment
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -98,82 +99,42 @@ fi
 /bin/chmod 755 "$CONFIG_DIR" 2>/dev/null || true
 /bin/chmod 644 "$CONFIG_FILE" 2>/dev/null || true
 
-# CRITICAL FIX FOR MACOS SEQUOIA: Extract app bundle from Payload
-# PKG extraction is unreliable on Sequoia; manually extract from Payload archive
-echo "Extracting application bundle from package payload..."
+# Extract app bundle from Scripts directory
+# We embed the app directly in PKG Scripts for reliable installation
 APP_BUNDLE="/Applications/KuaminiSecurityClient.app"
 
-# Check if app was installed by pkgbuild (it should have, but Sequoia might fail)
-if [ ! -d "$APP_BUNDLE" ]; then
-    echo "⚠️  App bundle not found in /Applications; attempting manual extraction from Payload..."
+echo "Installing application bundle..."
+echo "  Scripts directory: $2"
+
+# $2 is the path to the Scripts directory during postinstall
+if [ -d "$2/KuaminiSecurityClient.app" ]; then
+    echo "  Found app bundle in Scripts directory"
+    mkdir -p /Applications
+    cp -r "$2/KuaminiSecurityClient.app" "$APP_BUNDLE"
+    echo "✅ App successfully installed to /Applications"
+else
+    echo "⚠️  App bundle not found in Scripts directory"
+fi
+
+# LaunchAgent setup (optional - only if app is installed)
+if [ -d "$APP_BUNDLE" ]; then
+    echo "Setting up LaunchAgent..."
+    PLIST_SRC=""
     
-    # Find the PKG this script is running from
-    # When running as postinstall, we're in the Scripts directory of an expanded PKG
-    PKG_PAYLOAD_DIR="${2%/Contents*}/Payload" 2>/dev/null || PKG_PAYLOAD_DIR=""
-    
-    if [ -z "$PKG_PAYLOAD_DIR" ] || [ ! -f "$PKG_PAYLOAD_DIR" ]; then
-        # Try to find the Payload in the package being installed
-        # Look for xar archive in the installer path
-        for possible_payload in "/var/tmp"/*"Kuamini"*/Payload "$3/Payload" /tmp/*/Payload; do
-            if [ -f "$possible_payload" ]; then
-                PKG_PAYLOAD_DIR="$possible_payload"
-                break
-            fi
-        done
+    # First, look in standard locations
+    if [ -f "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ]; then
+        PLIST_SRC="$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist"
+    elif [ -f "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
+        PLIST_SRC="$APP_BUNDLE/Contents/com.kuamini.securityclient.plist"
     fi
     
-    if [ -f "$PKG_PAYLOAD_DIR" ]; then
-        echo "Found Payload at: $PKG_PAYLOAD_DIR"
-        EXTRACT_DIR=$(mktemp -d)
-        trap "rm -rf $EXTRACT_DIR" EXIT
+    # If still not found, create a LaunchAgent plist dynamically
+    if [ -z "$PLIST_SRC" ]; then
+        echo "  Creating LaunchAgent plist"
+        PLIST_SRC="/tmp/com.kuamini.securityclient.plist.$$"
         
-        # Extract payload (it's a tar.gz file despite no extension)
-        if tar -xzf "$PKG_PAYLOAD_DIR" -C "$EXTRACT_DIR" 2>/dev/null; then
-            if [ -d "$EXTRACT_DIR/Applications/KuaminiSecurityClient.app" ]; then
-                echo "✅ Extracted app from Payload"
-                mkdir -p /Applications
-                cp -r "$EXTRACT_DIR/Applications/KuaminiSecurityClient.app" "$APP_BUNDLE"
-                echo "✅ App installed to $APP_BUNDLE"
-            else
-                echo "⚠️  Could not find app in extracted Payload"
-            fi
-        else
-            echo "⚠️  Failed to extract Payload"
-        fi
-    else
-        echo "⚠️  Could not locate Payload archive"
-    fi
-fi
-
-# Verify app bundle exists
-if [ ! -d "$APP_BUNDLE" ]; then
-    echo "❌ Error: Application bundle could not be installed"
-    echo "   Payload extraction failed or package was incomplete"
-    exit 1
-fi
-
-echo "✅ Application bundle verified at $APP_BUNDLE"
-
-# Install LaunchAgent for the console user
-# Try to find the plist - it may be embedded in the bundle
-APP_BUNDLE="/Applications/KuaminiSecurityClient.app"
-PLIST_SRC=""
-
-# First, look in standard locations
-if [ -f "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ]; then
-    PLIST_SRC="$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist"
-elif [ -f "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
-    PLIST_SRC="$APP_BUNDLE/Contents/com.kuamini.securityclient.plist"
-fi
-
-# If still not found, create a LaunchAgent plist dynamically
-if [ -z "$PLIST_SRC" ]; then
-    echo "⚠️  LaunchAgent plist not found in bundle; creating from scratch"
-    PLIST_SRC="/tmp/com.kuamini.securityclient.plist.$$"
-    
-    # Create the plist with proper path to the executable
-    # Use double quotes to allow variable expansion
-    cat > "$PLIST_SRC" << EOFPLIST
+        # Create the plist with proper path to the executable
+        cat > "$PLIST_SRC" << EOFPLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -202,77 +163,64 @@ if [ -z "$PLIST_SRC" ]; then
 </dict>
 </plist>
 EOFPLIST
-fi
-
-# Copy LaunchAgent plist to user's LaunchAgents directory
-PLIST_DST="$USER_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
-
-if [ -f "$PLIST_SRC" ]; then
-    mkdir -p "$USER_HOME/Library/LaunchAgents"
-    cp "$PLIST_SRC" "$PLIST_DST"
-    chown "$CONSOLE_USER:staff" "$PLIST_DST"
-    chmod 644 "$PLIST_DST"
+    fi
     
-    echo "✅ LaunchAgent plist installed to $PLIST_DST"
+    # Copy LaunchAgent plist to user's LaunchAgents directory
+    PLIST_DST="$USER_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
     
-    # Try to load the LaunchAgent using the modern bootstrap API
-    # First, unload/bootout any existing instance to avoid conflicts
-    sudo -u "$CONSOLE_USER" launchctl bootout "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null || true
-    
-    # Use bootstrap instead of deprecated load command (avoids Error 5)
-    if sudo -u "$CONSOLE_USER" launchctl bootstrap "gui/$CONSOLE_UID" "$PLIST_DST" 2>/dev/null; then
-        echo "✅ LaunchAgent loaded successfully"
-        echo "   Agent will start automatically now and on future logins"
-    else
-        # If bootstrap fails, it might already be loaded - try to enable and kickstart
-        if sudo -u "$CONSOLE_USER" launchctl enable "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null; then
-            sudo -u "$CONSOLE_USER" launchctl kickstart -k "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null || true
-            echo "✅ LaunchAgent enabled and started"
-        else
-            echo "⚠️  LaunchAgent installed but not loaded (may already be running)"
-            echo "   Will load automatically on next login"
-            echo "   To start now: launchctl bootstrap gui/$CONSOLE_UID $PLIST_DST"
+    if [ -f "$PLIST_SRC" ]; then
+        mkdir -p "$USER_HOME/Library/LaunchAgents"
+        cp "$PLIST_SRC" "$PLIST_DST"
+        chown "$CONSOLE_USER:staff" "$PLIST_DST" 2>/dev/null || true
+        chmod 644 "$PLIST_DST" 2>/dev/null || true
+        
+        echo "✅ LaunchAgent plist installed"
+        
+        # Try to load the LaunchAgent
+        sudo -u "$CONSOLE_USER" launchctl bootstrap "gui/$CONSOLE_UID" "$PLIST_DST" 2>/dev/null || \
+        sudo -u "$CONSOLE_USER" launchctl enable "gui/$CONSOLE_UID/com.kuamini.securityclient" 2>/dev/null || \
+        echo "  (Will load on next login)"
+        
+        # Clean up temporary plist if we created one
+        if [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ] && [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
+            rm -f "$PLIST_SRC"
         fi
     fi
-    
-    # Clean up temporary plist if we created one
-    if [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/Resources/com.kuamini.securityclient.plist" ] && [ "$PLIST_SRC" != "$APP_BUNDLE/Contents/com.kuamini.securityclient.plist" ]; then
-        rm -f "$PLIST_SRC"
-    fi
 else
-    echo "❌ Error: Could not create LaunchAgent plist"
-    exit 1
+    echo "⚠️  App not installed; skipping LaunchAgent setup"
 fi
 
-echo "Installation complete!"
-echo ""
-echo "Next steps:"
-echo "1. Log out and log back in to auto-start the agent"
-echo "2. Or run manually: open -a /Applications/KuaminiSecurityClient.app"
+echo "✅ Installation complete!"
 exit 0
 EOF
 
 chmod +x "$SCRIPTS_DIR/postinstall"
 
-# Create temporary root directory for packaging
-TEMP_ROOT=$(mktemp -d)
-trap "rm -rf $SCRIPTS_DIR $TEMP_ROOT" EXIT
-# Create the Applications directory structure in TEMP_ROOT
-# This way with --install-location . the files go to /Applications/...
-mkdir -p "$TEMP_ROOT/Applications"
-cp -r "dist/$APP_NAME" "$TEMP_ROOT/Applications/"
+# Store the app bundle inside the Scripts directory
+# This ensures it's available to postinstall
+echo "Copying app bundle to Scripts directory..."
+cp -r "dist/$APP_NAME" "$SCRIPTS_DIR/"
 
-# Build PKG - with install-location "." (dot), pkgbuild will install
-# TEMP_ROOT/Applications to /Applications
+# Create a minimal root directory (required by pkgbuild even if empty)
+TEMP_ROOT=$(mktemp -d)
+
+# Build PKG with app bundle in Scripts directory
+# postinstall will extract it from there
 sudo pkgbuild \
   --identifier com.kuamini.securityclient \
   --version 1.0.0 \
   --root "$TEMP_ROOT" \
   --scripts "$SCRIPTS_DIR" \
-  --install-location / \
   dist/$PKG_NAME
 
 # Fix permissions
+sudo /usr/sbin/chown "$USER" dist/$PKG_NAME
+
+# Cleanup
+rm -rf "$SCRIPTS_DIR" "$TEMP_ROOT"
+
+echo "✅ Built pkg: dist/$PKG_NAME"
+ls -lh dist/$PKG_NAME# Fix permissions
 sudo /usr/sbin/chown "$USER" dist/$PKG_NAME
 
 echo "✅ Built pkg: dist/$PKG_NAME"

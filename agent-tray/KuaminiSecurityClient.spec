@@ -6,7 +6,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['pystray', 'PIL'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -46,5 +46,5 @@ app = BUNDLE(
     coll,
     name='KuaminiSecurityClient.app',
     icon=None,
-    bundle_identifier='com.kuamini.securityclient',
+    bundle_identifier=None,
 )
