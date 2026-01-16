@@ -203,20 +203,58 @@ export async function GET(request: NextRequest) {
     const projectRoot = process.cwd()
     const agentTrayDistPath = path.join(projectRoot, "agent-tray", "dist")
 
-    // Generate custom installer based on platform
+    // Serve prebuilt installers. macOS stays dynamic to preserve postinstall token download.
     switch (platform) {
       case "macos":
         return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "windows":
-        return await generateWindowsInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
+        return await serveStaticInstaller("windows", accountId, clientIp, request.headers.get("user-agent"))
       case "linux":
-        return await generateLinuxInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
+        return await serveStaticInstaller("linux", accountId, clientIp, request.headers.get("user-agent"))
       default:
         return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
     }
   } catch (error) {
     console.error("Error generating installer:", error)
     return NextResponse.json({ error: "Failed to generate installer" }, { status: 500 })
+  }
+}
+
+async function serveStaticInstaller(platform: string, accountId: string, clientIp?: string, userAgent?: string | null) {
+  try {
+    const basePath = path.join(process.cwd(), "public", "tray")
+    const candidates =
+      platform === "windows"
+        ? ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
+        : ["KuaminiSecurityClient-linux.tar.gz", "linux.tar.gz", "linux.zip"]
+
+    const filePath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
+    const data = await fs.readFile(filePath)
+    const sha256 = await getFileSha256(filePath)
+
+    void safeAuditLog({
+      action: "installer_download",
+      entityType: "installer",
+      entityId: accountId,
+      accountId,
+      ip: clientIp,
+      userAgent,
+      details: { platform, sha256, static: true },
+    })
+
+    const filename = platform === "windows" ? `KuaminiSecurityClient-${accountId.slice(0, 8)}.msi` : `KuaminiSecurityClient-${accountId.slice(0, 8)}.tar.gz`
+    const contentType = platform === "windows" ? "application/octet-stream" : "application/gzip"
+
+    return new NextResponse(data, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "X-Checksum-SHA256": sha256,
+      },
+    })
+  } catch (error) {
+    console.error(`Error serving static ${platform} installer:`, error)
+    return NextResponse.json({ error: `Installer not available for ${platform}` }, { status: 404 })
   }
 }
 
