@@ -323,6 +323,7 @@ async function generateWindowsInstaller(_distPath: string, token: string, accoun
   try {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
     const bundlePath = await resolveBundlePath([
+      path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-windows.zip"),
       path.join(process.cwd(), "public", "tray", "windows.zip"),
       path.join(process.cwd(), "public", "tray", "windows.exe.zip"),
     ])
@@ -440,8 +441,9 @@ async function generateLinuxInstaller(_distPath: string, token: string, accountI
   try {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
     const bundlePath = await resolveBundlePath([
-      path.join(process.cwd(), "public", "tray", "linux.zip"),
+      path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-linux.tar.gz"),
       path.join(process.cwd(), "public", "tray", "linux.tar.gz"),
+      path.join(process.cwd(), "public", "tray", "linux.zip"),
     ])
     const bundleFileName = path.basename(bundlePath)
     const bundleHash = await getFileSha256(bundlePath)
