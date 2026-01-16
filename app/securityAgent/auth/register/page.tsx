@@ -47,7 +47,7 @@ export default function RegisterPage() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -64,6 +64,7 @@ export default function RegisterPage() {
           },
         },
       })
+
       if (error) {
         // If the user already exists, attempt to attach this registration (organization) to the
         // existing auth user via a server-side admin endpoint. This allows using the same
@@ -101,6 +102,38 @@ export default function RegisterPage() {
         }
         throw error
       }
+
+      // Handle linked accounts: if signup succeeds but user already existed with a different provider
+      // (e.g., GitHub + email), we need to create the profile for this new organization.
+      if (data?.user) {
+        try {
+          const res = await fetch("/api/auth/register-existing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, full_name: fullName, organization_name: organizationName, license_tier: licenseTier }),
+          })
+
+          if (res.ok) {
+            // User already existed (linked account), show success message
+            toast({
+              title: "Organization created",
+              description:
+                "Your organization has been created. Please sign in to access your console.",
+              action: (
+                <ToastAction altText="Sign in" asChild>
+                  <a href="/securityAgent/auth/login">Sign in</a>
+                </ToastAction>
+              ),
+            })
+            setIsLoading(false)
+            return
+          }
+        } catch (e) {
+          // If creating profile fails, continue to email verification flow
+          console.warn("Profile creation attempt failed, proceeding to email verification:", e)
+        }
+      }
+
       router.push("/securityAgent/auth/verify-email")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
