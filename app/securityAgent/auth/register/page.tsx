@@ -47,7 +47,20 @@ export default function RegisterPage() {
     }
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // First check if email already exists in profiles table
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("email", email)
+        .single()
+
+      if (existingProfile) {
+        setError("Email already registered. Please use a different email or sign in.")
+        setIsLoading(false)
+        return
+      }
+
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -66,72 +79,14 @@ export default function RegisterPage() {
       })
 
       if (error) {
-        // If the user already exists, attempt to attach this registration (organization) to the
-        // existing auth user via a server-side admin endpoint. This allows using the same
-        // email across multiple organizations (profiles/accounts) by linking the existing
-        // auth user to a new `accounts`/`profiles` row.
+        // If the user already exists, show clear error message
         const msg = error.message || ""
         if (msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("user already exists") || msg.toLowerCase().includes("duplicate")) {
-          try {
-            const res = await fetch("/api/auth/register-existing", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, full_name: fullName, organization_name: organizationName, license_tier: licenseTier }),
-            })
-
-            if (res.ok) {
-                // Show a dismissible toast informing the user and linking to sign in
-                toast({
-                  title: "Organization attached",
-                  description:
-                    "An account already exists for this email — your new organization has been attached.",
-                  action: (
-                    <ToastAction altText="Sign in" asChild>
-                      <a href="/securityAgent/auth/login">Sign in</a>
-                    </ToastAction>
-                  ),
-                })
-              setIsLoading(false)
-              return
-            }
-            const body = await res.json().catch(() => ({}))
-            throw new Error(body?.message || "Failed to register existing user")
-          } catch (e: unknown) {
-            throw e instanceof Error ? e : new Error("Registration failed")
-          }
+          setError("Email already registered. Please use a different email or sign in.")
+          setIsLoading(false)
+          return
         }
         throw error
-      }
-
-      // Handle linked accounts: if signup succeeds but user already existed with a different provider
-      // (e.g., GitHub + email), we need to create the profile for this new organization.
-      if (data?.user) {
-        try {
-          const res = await fetch("/api/auth/register-existing", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, full_name: fullName, organization_name: organizationName, license_tier: licenseTier }),
-          })
-
-          if (res.ok) {
-            // User already existed (linked account), show success message
-            toast({
-              title: "Organization created",
-              description:
-                "Your organization has been created. Please sign in to access your console.",
-              action: (
-                <ToastAction altText="Sign in" asChild>
-                  <a href="/securityAgent/auth/login">Sign in</a>
-                </ToastAction>
-              ),
-            })
-            setIsLoading(false)
-            return
-          }
-        } catch (e) {
-          // If creating profile fails, continue to email verification flow
-          console.warn("Profile creation attempt failed, proceeding to email verification:", e)
-        }
       }
 
       router.push("/securityAgent/auth/verify-email")
