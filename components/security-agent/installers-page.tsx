@@ -109,11 +109,11 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
       icon: Monitor,
       version: "1.0.0",
       size: "~12 MB",
-      fileType: "PowerShell Script (.ps1)",
-      requirements: "Windows 10/11, Server 2016+, PowerShell 5.1+",
-      filename: "Install-KuaminiAgent.ps1",
+      fileType: "ZIP Archive (.zip)",
+      requirements: "Windows 10/11, Server 2016+",
+      filename: "KuaminiSecurityClient-windows.zip",
       description:
-        "PowerShell installer script that automatically downloads and installs the agent as a Windows Scheduled Task with automatic startup. Pre-configured for your account.",
+        "Windows agent archive containing the security client executable and configuration. Extract and run to install the agent with automatic startup.",
     },
     {
       id: "macos",
@@ -123,7 +123,7 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
       size: "~15 MB",
       fileType: "PKG Installer (.pkg)",
       requirements: "macOS 11 (Big Sur) or later",
-      filename: "KuaminiAgentTray.pkg",
+      filename: "KuaminiSecurityClient-1.0.0.pkg",
       description: "macOS installer package that automatically installs and configures the agent as a LaunchAgent with your account credentials embedded.",
     },
     {
@@ -132,10 +132,10 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
       icon: Terminal,
       version: "1.0.0",
       size: "~8 MB",
-      fileType: "Shell Script (.sh)",
+      fileType: "TAR.GZ Archive (.tar.gz)",
       requirements: "Ubuntu 20.04+, RHEL 8+, Debian 10+, systemd",
-      filename: "install-kuamini-agent.sh",
-      description: "Shell script that installs the agent as a systemd service for continuous monitoring. Pre-configured for automatic registration.",
+      filename: "KuaminiSecurityClient-linux.tar.gz",
+      description: "Linux agent archive containing the security client executable. Extract and run to install as a systemd service for continuous monitoring.",
     },
   ]
 

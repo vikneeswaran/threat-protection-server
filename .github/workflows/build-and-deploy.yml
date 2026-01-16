@@ -150,6 +150,7 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "build: update installers from latest code"
+            git pull --rebase origin main
             git push origin main
           fi
         env:
