@@ -109,11 +109,11 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
       icon: Monitor,
       version: "1.0.0",
       size: "~12 MB",
-      fileType: "ZIP Archive (.zip)",
+      fileType: "MSI Installer (.msi)",
       requirements: "Windows 10/11, Server 2016+",
-      filename: "KuaminiSecurityClient-windows.zip",
+      filename: "KuaminiSecurityClient-1.0.0.msi",
       description:
-        "Windows agent archive containing the security client executable and configuration. Extract and run to install the agent with automatic startup.",
+        "Windows installer package that automatically installs and configures the agent with automatic startup. Double-click to install.",
     },
     {
       id: "macos",

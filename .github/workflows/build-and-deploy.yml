@@ -64,7 +64,7 @@ jobs:
           cd agent-tray
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller cx_Freeze
 
       - name: Build Windows exe
         run: |
@@ -72,16 +72,16 @@ jobs:
           Remove-Item -Path dist\KuaminiSecurityClient -Recurse -Force -ErrorAction SilentlyContinue
           pyinstaller main.py --onedir --windowed --name=KuaminiSecurityClient -y
 
-      - name: Package Windows artifact
+      - name: Build MSI installer
         run: |
           cd agent-tray
-          Compress-Archive -Path dist/KuaminiSecurityClient -DestinationPath dist/KuaminiSecurityClient-windows.zip -Force
+          python build/build-windows-msi.py
 
-      - name: Upload Windows ZIP artifact
+      - name: Upload Windows MSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-zip
-          path: agent-tray/dist/KuaminiSecurityClient-windows.zip
+          name: windows-msi
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.msi
           retention-days: 30
 
   build-linux:
@@ -133,7 +133,7 @@ jobs:
         run: |
           mkdir -p public/tray
           cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/
-          cp windows-zip/KuaminiSecurityClient-windows.zip public/tray/
+          cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/
           cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/
           
           echo "Deployed installers:"
@@ -144,7 +144,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          git add public/tray/*.pkg public/tray/*.zip public/tray/*.tar.gz
+          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz
           
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -162,7 +162,7 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/KuaminiSecurityClient-windows.zip
+            public/tray/KuaminiSecurityClient-1.0.0.msi
             public/tray/KuaminiSecurityClient-linux.tar.gz
           draft: false
           prerelease: false
