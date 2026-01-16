@@ -17,19 +17,27 @@ if (-not $isAdmin) {
 # API base URL (default to production)
 $API_BASE = if ($env:API_BASE) { $env:API_BASE } else { "https://kuaminisystems.com/api/agent" }
 
-# Read agent_id from config if it exists
+# Read agent_id from config if it exists (check multiple locations)
 $AGENT_ID = ""
-$CONFIG_FILE = "$env:APPDATA\Kuamini\config.json"
-if (Test-Path $CONFIG_FILE) {
-    Write-Host "📋 Found config file, reading agent_id..." -ForegroundColor Gray
-    try {
-        $config = Get-Content $CONFIG_FILE | ConvertFrom-Json
-        $AGENT_ID = $config.agent_id
-        if ($AGENT_ID) {
-            Write-Host "✓ Agent ID: $AGENT_ID" -ForegroundColor Green
+$CONFIG_LOCATIONS = @(
+    "$env:LOCALAPPDATA\KuaminiSecurityClient\config.json",
+    "$env:APPDATA\Kuamini\config.json",
+    "$env:USERPROFILE\.kuamini\config.json"
+)
+
+foreach ($CONFIG_FILE in $CONFIG_LOCATIONS) {
+    if (Test-Path $CONFIG_FILE) {
+        Write-Host "📋 Found config file at: $CONFIG_FILE" -ForegroundColor Gray
+        try {
+            $config = Get-Content $CONFIG_FILE | ConvertFrom-Json
+            $AGENT_ID = $config.agent_id
+            if ($AGENT_ID) {
+                Write-Host "✓ Agent ID: $AGENT_ID" -ForegroundColor Green
+                break
+            }
+        } catch {
+            Write-Host "⚠️  Could not read agent_id from config" -ForegroundColor Yellow
         }
-    } catch {
-        Write-Host "⚠️  Could not read agent_id from config" -ForegroundColor Yellow
     }
 }
 
@@ -51,6 +59,46 @@ if ($AGENT_ID) {
 
 Write-Host ""
 Write-Host "🛑 Stopping agent..." -ForegroundColor Gray
+
+# Try to uninstall via MSI first (if installed via MSI)
+Write-Host "   Checking for MSI installation..." -ForegroundColor Gray
+$uninstallKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+$kuaminiApp = Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue | 
+    Where-Object { $_.DisplayName -like "*Kuamini*Security*Client*" } |
+    Select-Object -First 1
+
+if ($kuaminiApp) {
+    Write-Host "✓ Found MSI installation: $($kuaminiApp.DisplayName)" -ForegroundColor Green
+    Write-Host "   Attempting to uninstall via MSI..." -ForegroundColor Gray
+    
+    $uninstallString = $kuaminiApp.UninstallString
+    if ($uninstallString -match 'MsiExec.exe /[IX](\{[A-F0-9-]+\})') {
+        $productCode = $Matches[1]
+        Write-Host "   Product Code: $productCode" -ForegroundColor Gray
+        
+        try {
+            # Silent uninstall with no reboot
+            Start-Process "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow
+            Write-Host "✓ MSI uninstall completed" -ForegroundColor Green
+            Start-Sleep -Seconds 3
+        } catch {
+            Write-Host "⚠️  MSI uninstall failed: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "   Continuing with manual cleanup..." -ForegroundColor Gray
+        }
+    }
+} else {
+    Write-Host "   No MSI installation found, proceeding with manual cleanup" -ForegroundColor Gray
+}
+
+# Remove from startup registry
+Write-Host "   Removing startup entries..." -ForegroundColor Gray
+Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "KuaminiSecurityClient" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "KuaminiAgentTray" -ErrorAction SilentlyContinue
 
 # Stop and remove scheduled task (both old and new names)
 Unregister-ScheduledTask -TaskName "KuaminiSecurityClient" -Confirm:$false -ErrorAction SilentlyContinue
@@ -83,17 +131,38 @@ Start-Sleep -Seconds 1
 
 Write-Host "🗑️  Removing files..." -ForegroundColor Gray
 
-# Remove program files (both old and new names)
-Remove-Item -Recurse -Force "$env:ProgramFiles\Kuamini\SecurityClient" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$env:ProgramFiles\Kuamini\AgentTray" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$env:ProgramFiles\Kuamini" -ErrorAction SilentlyContinue
+# Remove program files (all possible installation locations)
+$installPaths = @(
+    "$env:ProgramFiles\KuaminiSecurityClient",
+    "$env:ProgramFiles\Kuamini\SecurityClient",
+    "$env:ProgramFiles\Kuamini\AgentTray",
+    "$env:ProgramFiles\Kuamini",
+    "${env:ProgramFiles(x86)}\KuaminiSecurityClient",
+    "${env:ProgramFiles(x86)}\Kuamini"
+)
 
-# Remove AppData (both old and new names)
-Remove-Item -Recurse -Force "$env:APPDATA\Kuamini" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Kuamini" -ErrorAction SilentlyContinue
+foreach ($path in $installPaths) {
+    if (Test-Path $path) {
+        Write-Host "   Removing: $path" -ForegroundColor Gray
+        Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue
+    }
+}
 
-# Remove ProgramData (both old and new names)  
-Remove-Item -Recurse -Force "$env:ProgramData\Kuamini" -ErrorAction SilentlyContinue
+# Remove AppData and config (all possible locations)
+$dataPaths = @(
+    "$env:LOCALAPPDATA\KuaminiSecurityClient",
+    "$env:LOCALAPPDATA\Kuamini",
+    "$env:APPDATA\Kuamini",
+    "$env:USERPROFILE\.kuamini",
+    "$env:ProgramData\Kuamini"
+)
+
+foreach ($path in $dataPaths) {
+    if (Test-Path $path) {
+        Write-Host "   Removing: $path" -ForegroundColor Gray
+        Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue
+    }
+}
 
 # Remove registry entries (both old and new names)
 Remove-Item -Path "HKCU:\Software\Kuamini" -Recurse -Force -ErrorAction SilentlyContinue
