@@ -41,6 +41,16 @@ def build_msi():
         product_wxs = os.path.join(tmp, "product.wxs")
         app_wixobj = os.path.join(tmp, "files.wixobj")
         product_wixobj = os.path.join(tmp, "product.wixobj")
+        
+        # Copy post-install script to temp
+        post_install_src = os.path.join(script_dir, "post-install.ps1")
+        post_install_dst = os.path.join(tmp, "post-install.ps1")
+        if os.path.exists(post_install_src):
+            import shutil
+            shutil.copy2(post_install_src, post_install_dst)
+            print(f"Copied post-install script: {post_install_src}")
+        else:
+            print(f"WARNING: post-install.ps1 not found at {post_install_src}")
 
         # Harvest files into a ComponentGroup AppFiles
         heat_cmd = [
@@ -68,14 +78,34 @@ def build_msi():
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
     <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{{0}}.cab' />
+    
     <Directory Id='TARGETDIR' Name='SourceDir'>
       <Directory Id='ProgramFilesFolder'>
-        <Directory Id='INSTALLFOLDER' Name='KuaminiSecurityClient' />
+        <Directory Id='INSTALLFOLDER' Name='KuaminiSecurityClient'>
+          <Component Id='PostInstallScript' Guid='*'>
+            <File Id='PostInstallPs1' Source='{post_install_dst}' KeyPath='yes' />
+          </Component>
+        </Directory>
       </Directory>
     </Directory>
+    
     <Feature Id='DefaultFeature' Level='1'>
       <ComponentGroupRef Id='AppFiles' />
+      <ComponentRef Id='PostInstallScript' />
     </Feature>
+    
+    <!-- Run post-install PowerShell script after installation -->
+    <CustomAction Id='RunPostInstall' 
+                  Directory='INSTALLFOLDER' 
+                  ExeCommand='powershell.exe -ExecutionPolicy Bypass -File "[INSTALLFOLDER]post-install.ps1"'
+                  Execute='deferred'
+                  Impersonate='yes'
+                  Return='ignore' />
+    
+    <InstallExecuteSequence>
+      <Custom Action='RunPostInstall' After='InstallFiles'>NOT Installed AND NOT REMOVE</Custom>
+    </InstallExecuteSequence>
+    
   </Product>
 </Wix>
 """
