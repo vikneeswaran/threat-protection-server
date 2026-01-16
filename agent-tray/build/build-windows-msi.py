@@ -53,6 +53,7 @@ def build_msi():
             "INSTALLFOLDER",
             "-sfrag",
             "-srd",
+            "-sreg",
             "-gg",
             "-var",
             "var.SourceDir",
@@ -66,7 +67,7 @@ def build_msi():
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
-    <MediaTemplate EmbedCab='yes' CabinetTemplate='cab1.cab' />
+    <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{0}.cab' />
     <Directory Id='TARGETDIR' Name='SourceDir'>
       <Directory Id='ProgramFilesFolder'>
         <Directory Id='INSTALLFOLDER' Name='KuaminiSecurityClient' />
@@ -91,10 +92,6 @@ def build_msi():
     print(f"MSI created successfully: {msi_path}")
     return True
 
-
-if __name__ == "__main__":
-    success = build_msi()
-    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     success = build_msi()
