@@ -9,10 +9,10 @@ import shutil
 
 def build_msi():
     # Define paths
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(script_dir))
-    dist_path = os.path.join(project_root, "dist", "KuaminiSecurityClient")
-    output_dir = os.path.join(project_root, "dist")
+    script_dir = os.path.dirname(os.path.abspath(__file__))  # agent-tray/build
+    agent_tray_dir = os.path.dirname(script_dir)  # agent-tray
+    dist_path = os.path.join(agent_tray_dir, "dist", "KuaminiSecurityClient")
+    output_dir = os.path.join(agent_tray_dir, "dist")
     msi_path = os.path.join(output_dir, "KuaminiSecurityClient-1.0.0.msi")
     
     print(f"PyInstaller dist path: {dist_path}")
