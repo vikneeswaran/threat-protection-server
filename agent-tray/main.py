@@ -218,8 +218,13 @@ def load_config():
     logging.info("Looking for config at: %s", config_path)
     if config_path.exists():
         logging.info("Loading config from: %s", config_path)
-        with open(config_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
+        try:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
+                cfg = json.load(f)
+        except json.JSONDecodeError as e:
+            logging.warning("Config JSON decode failed (%s), retrying without BOM handling", e)
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
         
         # Ensure agent_id exists; generate a persistent one if missing/empty
         agent_id = cfg.get("agent_id")

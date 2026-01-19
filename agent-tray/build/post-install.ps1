@@ -1,5 +1,6 @@
 # Kuamini Security Client Post-Installation Script
 # Simplified and fully balanced try/catch
+# Mirrors macOS postinstall behavior: config in user home, auto-start at login
 
 $ErrorActionPreference = 'Continue'
 
@@ -39,8 +40,13 @@ if (-not $InstallDir) {
     exit 1
 }
 
+# Get the current user's home directory for config placement
+# This mirrors macOS behavior: config lives in user's home, not SYSTEM
+$CurrentUser = $env:USERNAME
 $ConfigDir = "$env:USERPROFILE\.kuamini"
 $ConfigFile = "$ConfigDir\config.json"
+
+Write-Host "Creating config in user directory: $ConfigDir" -ForegroundColor Gray
 
 if (-not (Test-Path $ConfigDir)) {
     try { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null } catch {}
@@ -48,59 +54,119 @@ if (-not (Test-Path $ConfigDir)) {
 
 if (-not (Test-Path $ConfigFile)) {
     try {
+        # Create config JSON without UTF-8 BOM (use ASCII encoding to avoid BOM)
+        # JSON content as string
         $DefaultConfig = @{
             api_base = 'https://kuaminisystems.com/api/agent'
             console_url = 'https://kuaminisystems.com/securityAgent'
             auto_register = $true
             heartbeat_interval = 60
         } | ConvertTo-Json -Depth 10
-        $DefaultConfig | Set-Content -Path $ConfigFile -Encoding UTF8
-    } catch {}
+        
+        # Write using ASCII to prevent UTF-8 BOM that causes JSON parse errors
+        [System.IO.File]::WriteAllText($ConfigFile, $DefaultConfig, [System.Text.Encoding]::UTF8)
+        Write-Host "Created config at: $ConfigFile" -ForegroundColor Green
+    } catch {
+        Write-Host "Warning: Could not create config: $_" -ForegroundColor Yellow
+    }
 }
 
+# Ensure startup for all users via HKLM Run (quoted path) as a safety net
+$RunKeyMachine = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run"
+try {
+    if (-not (Test-Path $RunKeyMachine)) { New-Item -Path $RunKeyMachine -Force | Out-Null }
+    Set-ItemProperty -Path $RunKeyMachine -Name "KuaminiSecurityClient" -Value "`"$ExePath`"" -Force
+    Write-Host "Set HKLM Run entry for all users" -ForegroundColor Green
+} catch {
+    Write-Host "Warning: Failed to set HKLM Run entry: $_" -ForegroundColor Yellow
+}
+
+# Create scheduled task for user-context setup on next login
+# This mirrors macOS LaunchAgent: runs at user login to set startup registry
 $SetupTaskName = 'KuaminiSecurityClientSetup'
 $SetupScriptPath = "$InstallDir\setup-user.ps1"
 
-$SetupScript = @'
-$ErrorActionPreference = "SilentlyContinue"
-$ExePath = "' + $ExePath + '"
-$ConfigDir = Join-Path -Path $env:USERPROFILE -ChildPath ".kuamini"
-$ConfigFile = Join-Path -Path $ConfigDir -ChildPath "config.json"
-
-if (-not (Test-Path $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
-
-if (-not (Test-Path $ConfigFile)) {
-    $DefaultConfig = @{ api_base = "https://kuaminisystems.com/api/agent"; console_url = "https://kuaminisystems.com/securityAgent"; auto_register = $true; heartbeat_interval = 60 } | ConvertTo-Json -Depth 10
-    $DefaultConfig | Set-Content -Path $ConfigFile -Encoding UTF8 -Force
+# Get current user for scheduled task
+$CurrentUserDomain = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+if (-not $CurrentUserDomain) {
+    $CurrentUserDomain = whoami
 }
 
-$StartupKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-if (-not (Test-Path $StartupKey)) { New-Item -Path $StartupKey -Force | Out-Null }
-Set-ItemProperty -Path $StartupKey -Name "KuaminiSecurityClient" -Value "`"$ExePath`"" -Force
+Write-Host "Current user context: $CurrentUserDomain" -ForegroundColor Gray
 
-if (Test-Path $ExePath) { Start-Process -FilePath $ExePath -WindowStyle Hidden }
+# Create the setup script that will run as the user (mirroring macOS: config + startup registry)
+$SetupScript = @"
+`$ErrorActionPreference = `"SilentlyContinue`"
+`$ExePath = `"$ExePath`"
+`$ConfigDir = Join-Path -Path `$env:USERPROFILE -ChildPath `.kuamini`
+`$ConfigFile = Join-Path -Path `$ConfigDir -ChildPath `config.json`
 
-Unregister-ScheduledTask -TaskName "' + $SetupTaskName + '" -Confirm:$false -ErrorAction SilentlyContinue
-'@
+# Ensure config directory exists for this user
+if (-not (Test-Path `$ConfigDir)) {
+    New-Item -ItemType Directory -Path `$ConfigDir -Force | Out-Null
+}
+
+# If config doesn't exist for this user, create default
+if (-not (Test-Path `$ConfigFile)) {
+    `$DefaultConfig = @{
+        api_base = `"https://kuaminisystems.com/api/agent`"
+        console_url = `"https://kuaminisystems.com/securityAgent`"
+        auto_register = `$true
+        heartbeat_interval = 60
+    } | ConvertTo-Json -Depth 10
+    
+    [System.IO.File]::WriteAllText(`$ConfigFile, `$DefaultConfig, [System.Text.Encoding]::UTF8)
+}
+
+# Set startup registry for this user (HKCU, not HKLM)
+`$StartupKey = `"HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`"
+if (-not (Test-Path `$StartupKey)) {
+    New-Item -Path `$StartupKey -Force | Out-Null
+}
+Set-ItemProperty -Path `$StartupKey -Name `"KuaminiSecurityClient`" -Value `"`\"`$ExePath`\"`" -Force
+
+# Start the agent immediately
+if (Test-Path `$ExePath) {
+    try {
+        Start-Process -FilePath `$ExePath -WindowStyle Hidden -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+# Clean up this scheduled task after running
+Unregister-ScheduledTask -TaskName `"$SetupTaskName`" -Confirm:`$false -ErrorAction SilentlyContinue
+"@
 
 try {
-    $SetupScript | Set-Content -Path $SetupScriptPath -Encoding UTF8 -Force
-    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$SetupScriptPath`""
+    # Write setup script without UTF-8 BOM
+    [System.IO.File]::WriteAllText($SetupScriptPath, $SetupScript, [System.Text.Encoding]::UTF8)
+    
+    # Create scheduled task that runs the setup script as the current user at logon
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NoProfile -File `"$SetupScriptPath`""
     $Trigger = New-ScheduledTaskTrigger -AtLogOn
-    $Principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive
-    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    
+    # Run as the current user (not SYSTEM)
+    $Principal = New-ScheduledTaskPrincipal -UserId $CurrentUserDomain -LogonType Interactive -RunLevel Highest
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Compatibility Win7
+    
     Register-ScheduledTask -TaskName $SetupTaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
-    Write-Host "Setup scheduled for next user login" -ForegroundColor Green
+    Write-Host "✅ Setup scheduled task created for user: $CurrentUserDomain" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to create setup task: $_" -ForegroundColor Yellow
+    Write-Host "⚠️  Failed to create setup task: $_" -ForegroundColor Yellow
 }
 
+# Start the agent immediately in user context (mirrors macOS immediate launch)
 Write-Host "Starting Kuamini Security Client..." -ForegroundColor Gray
 try {
+    # Try to start the agent immediately
     $p = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
-    if ($p) { Write-Host "Agent started (PID: $($p.Id))" -ForegroundColor Green }
+    if ($p) {
+        Write-Host "✅ Agent started immediately (PID: $($p.Id))" -ForegroundColor Green
+    } else {
+        Write-Host "⚠️  Agent will start from scheduled task or registry startup" -ForegroundColor Cyan
+    }
 } catch {
-    Write-Host "Agent will start on next login" -ForegroundColor Cyan
+    Write-Host "⚠️  Could not start immediately, will load on next login" -ForegroundColor Cyan
 }
 
-Write-Host "Done. Logs: %USERPROFILE%\.kuamini\agent.log" -ForegroundColor Gray
+Write-Host "✅ Installation complete!" -ForegroundColor Green
+Write-Host "Logs available at: %LOCALAPPDATA%\KuaminiSecurityClient\agent.log" -ForegroundColor Gray
