@@ -85,6 +85,12 @@ def build_msi():
           <Component Id='PostInstallScript' Guid='*'>
             <File Id='PostInstallPs1' Source='{post_install_dst}' KeyPath='yes' />
           </Component>
+          <!-- Add RemoveFolder to ensure directory is removed on uninstall -->
+          <Component Id='RemoveInstallFolder' Guid='*'>
+            <CreateFolder />
+            <RemoveFolder Id='RemoveINSTALLFOLDER' On='uninstall' />
+            <RegistryValue Root='HKCU' Key='Software\\Kuamini\\SecurityClient' Name='installed' Type='integer' Value='1' KeyPath='yes' />
+          </Component>
         </Directory>
       </Directory>
     </Directory>
@@ -92,6 +98,7 @@ def build_msi():
     <Feature Id='DefaultFeature' Level='1'>
       <ComponentGroupRef Id='AppFiles' />
       <ComponentRef Id='PostInstallScript' />
+      <ComponentRef Id='RemoveInstallFolder' />
     </Feature>
     
     <!-- Run post-install PowerShell script as system to set up installation folder -->
