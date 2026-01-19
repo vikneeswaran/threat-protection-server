@@ -1,20 +1,23 @@
 # Kuamini Security Client Post-Installation Script
-# This script runs after MSI installation to:
-# 1. Create config directory and default config
-# 2. Start the agent immediately
-# 3. Configure autostart
+# Simplified and fully balanced try/catch
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = 'Continue'
 
-Write-Host ""
-Write-Host "=== Kuamini Security Client Post-Install ===" -ForegroundColor Cyan
-Write-Host ""
+# Prefer the directory of this script first
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
-# Determine install location (check multiple possible locations)
+# Determine install location
 $possibleInstallDirs = @(
-    "${env:ProgramFiles}\KuaminiSecurityClient",
-    "${env:ProgramFiles}\Kuamini",
-    "${env:ProgramFiles}\Kuamini\SecurityClient"
+    $ScriptDir,
+    "$env:ProgramFiles\KuaminiSecurityClient",
+    "$env:ProgramFiles\Kuamini",
+    "$env:ProgramFiles\Kuamini\SecurityClient",
+    "$env:ProgramW6432\KuaminiSecurityClient",
+    "$env:ProgramW6432\Kuamini",
+    "$env:ProgramW6432\Kuamini\SecurityClient",
+    "$env:ProgramFiles(x86)\KuaminiSecurityClient",
+    "$env:ProgramFiles(x86)\Kuamini",
+    "$env:ProgramFiles(x86)\Kuamini\SecurityClient"
 )
 
 $InstallDir = $null
@@ -22,126 +25,82 @@ $ExePath = $null
 
 Write-Host "Searching for installation..." -ForegroundColor Gray
 foreach ($dir in $possibleInstallDirs) {
-    Write-Host "  Checking: $dir" -ForegroundColor Gray
     if (Test-Path "$dir\KuaminiSecurityClient.exe") {
         $InstallDir = $dir
         $ExePath = "$dir\KuaminiSecurityClient.exe"
-        Write-Host "  ✓ Found executable!" -ForegroundColor Green
         break
     }
 }
 
 if (-not $InstallDir) {
-    Write-Host ""
     Write-Host "ERROR: Could not find KuaminiSecurityClient.exe" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Searched locations:" -ForegroundColor Yellow
-    foreach ($dir in $possibleInstallDirs) {
-        Write-Host "  - $dir" -ForegroundColor Yellow
-    }
-    Write-Host ""
-    Write-Host "The MSI installation may be incomplete." -ForegroundColor Red
-    Write-Host "Please try reinstalling or contact support." -ForegroundColor Yellow
-    Write-Host ""
-    pause
+    Write-Host "Checked:" -ForegroundColor Yellow
+    $possibleInstallDirs | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
     exit 1
 }
 
-# Use user's .kuamini directory for config (matches what agent expects)
 $ConfigDir = "$env:USERPROFILE\.kuamini"
 $ConfigFile = "$ConfigDir\config.json"
 
-Write-Host ""
-Write-Host "Configuration:" -ForegroundColor Cyan
-Write-Host "  Install Dir: $InstallDir" -ForegroundColor Gray
-Write-Host "  Executable: $ExePath" -ForegroundColor Gray
-Write-Host "  Config Dir: $ConfigDir" -ForegroundColor Gray
-Write-Host ""
-
-# Create config directory
-Write-Host "Setting up configuration..." -ForegroundColor Gray
 if (-not (Test-Path $ConfigDir)) {
-    try {
-        New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
-        Write-Host "  ✓ Created config directory" -ForegroundColor Green
-    } catch {
-        Write-Host "  ⚠ Failed to create config directory: $_" -ForegroundColor Yellow
-    }
+    try { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null } catch {}
 }
 
-# Create default config if it doesn't exist
 if (-not (Test-Path $ConfigFile)) {
     try {
         $DefaultConfig = @{
-            api_base = "https://kuaminisystems.com/api/agent"
-            console_url = "https://kuaminisystems.com/securityAgent"
+            api_base = 'https://kuaminisystems.com/api/agent'
+            console_url = 'https://kuaminisystems.com/securityAgent'
             auto_register = $true
             heartbeat_interval = 60
         } | ConvertTo-Json -Depth 10
-        
         $DefaultConfig | Set-Content -Path $ConfigFile -Encoding UTF8
-        Write-Host "  ✓ Created default config file" -ForegroundColor Green
-    } catch {
-        Write-Host "  ⚠ Failed to create config file: $_" -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "  ℹ Config file already exists" -ForegroundColor Gray
+    } catch {}
 }
 
-# Add to startup (current user)
-Write-Host ""
-Write-Host "Configuring autostart..." -ForegroundColor Gray
+$SetupTaskName = 'KuaminiSecurityClientSetup'
+$SetupScriptPath = "$InstallDir\setup-user.ps1"
+
+$SetupScript = @'
+$ErrorActionPreference = "SilentlyContinue"
+$ExePath = "' + $ExePath + '"
+$ConfigDir = Join-Path -Path $env:USERPROFILE -ChildPath ".kuamini"
+$ConfigFile = Join-Path -Path $ConfigDir -ChildPath "config.json"
+
+if (-not (Test-Path $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
+
+if (-not (Test-Path $ConfigFile)) {
+    $DefaultConfig = @{ api_base = "https://kuaminisystems.com/api/agent"; console_url = "https://kuaminisystems.com/securityAgent"; auto_register = $true; heartbeat_interval = 60 } | ConvertTo-Json -Depth 10
+    $DefaultConfig | Set-Content -Path $ConfigFile -Encoding UTF8 -Force
+}
+
 $StartupKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$AppName = "KuaminiSecurityClient"
+if (-not (Test-Path $StartupKey)) { New-Item -Path $StartupKey -Force | Out-Null }
+Set-ItemProperty -Path $StartupKey -Name "KuaminiSecurityClient" -Value "`"$ExePath`"" -Force
+
+if (Test-Path $ExePath) { Start-Process -FilePath $ExePath -WindowStyle Hidden }
+
+Unregister-ScheduledTask -TaskName "' + $SetupTaskName + '" -Confirm:$false -ErrorAction SilentlyContinue
+'@
 
 try {
-    Set-ItemProperty -Path $StartupKey -Name $AppName -Value "`"$ExePath`"" -Force
-    Write-Host "  ✓ Added to Windows startup" -ForegroundColor Green
+    $SetupScript | Set-Content -Path $SetupScriptPath -Encoding UTF8 -Force
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$SetupScriptPath`""
+    $Trigger = New-ScheduledTaskTrigger -AtLogOn
+    $Principal = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $SetupTaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
+    Write-Host "Setup scheduled for next user login" -ForegroundColor Green
 } catch {
-    Write-Host "  ⚠ Failed to add startup entry: $_" -ForegroundColor Yellow
+    Write-Host "Failed to create setup task: $_" -ForegroundColor Yellow
 }
 
-# Start the application
-Write-Host ""
 Write-Host "Starting Kuamini Security Client..." -ForegroundColor Gray
 try {
-    $process = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru
-    Start-Sleep -Seconds 3
-    
-    # Verify process is still running
-    if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) {
-        Write-Host "  ✓ Agent started successfully (PID: $($process.Id))" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-        Write-Host "  Installation Complete!" -ForegroundColor Green
-        Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "  The Kuamini Security Client is now running." -ForegroundColor White
-        Write-Host "  Look for the tray icon near your system clock." -ForegroundColor Gray
-        Write-Host ""
-        Write-Host "  Right-click the icon to:" -ForegroundColor Gray
-        Write-Host "    • View agent status" -ForegroundColor Gray
-        Write-Host "    • Open the management console" -ForegroundColor Gray
-        Write-Host "    • Send manual heartbeat" -ForegroundColor Gray
-        Write-Host ""
-    } else {
-        Write-Host "  ⚠ Agent started but may have exited" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Check logs for details:" -ForegroundColor Yellow
-        Write-Host "  $env:USERPROFILE\.kuamini\" -ForegroundColor Gray
-        Write-Host ""
-        Write-Host "You can manually start the agent from:" -ForegroundColor Yellow
-        Write-Host "  $ExePath" -ForegroundColor Gray
-        Write-Host ""
-    }
+    $p = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru -ErrorAction SilentlyContinue
+    if ($p) { Write-Host "Agent started (PID: $($p.Id))" -ForegroundColor Green }
 } catch {
-    Write-Host "  ✗ Failed to start agent: $_" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Troubleshooting:" -ForegroundColor Yellow
-    Write-Host "  1. Check if antivirus is blocking the application" -ForegroundColor Gray
-    Write-Host "  2. Try running manually: $ExePath" -ForegroundColor Gray
-    Write-Host "  3. Check logs: $env:USERPROFILE\.kuamini\" -ForegroundColor Gray
-    Write-Host ""
+    Write-Host "Agent will start on next login" -ForegroundColor Cyan
 }
 
-Write-Host ""
+Write-Host "Done. Logs: %USERPROFILE%\.kuamini\agent.log" -ForegroundColor Gray

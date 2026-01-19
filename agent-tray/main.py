@@ -249,7 +249,7 @@ def load_config():
     # Fallback to env vars
     logging.warning("Config file not found at %s, using environment variables", config_path)
     return {
-        "api_base": os.environ.get("API_BASE"),
+        "api_base": os.environ.get("API_BASE") or "https://kuaminisystems.com/api/agent",
         "registration_token": os.environ.get("REGISTRATION_TOKEN"),
         "agent_id": os.environ.get("AGENT_ID") or str(uuid.uuid4()),
         "account_id": os.environ.get("ACCOUNT_ID"),
@@ -313,14 +313,22 @@ def get_network_info() -> Tuple[str | None, str | None]:
 def register(config):
     payload = {
         "token": config.get("registration_token"),
-        "hostname": os.uname().nodename,
+        "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME") or "unknown",
         "os": "macos" if sys.platform == "darwin" else ("windows" if os.name == "nt" else "linux"),
-        "os_version": os.uname().release,
+        "os_version": os.uname().release if hasattr(os, "uname") else sys.getwindowsversion().release if hasattr(sys, "getwindowsversion") else "unknown",
         "agent_version": "tray-1.0.0",
         "agent_id": config.get("agent_id"),
     }
     try:
-        resp = requests.post(f"{config['api_base']}/register", json=payload, timeout=10)
+        api_url = config.get('api_base') or "https://kuaminisystems.com/api/agent"
+        register_url = f"{api_url}/register"
+        logging.info("Attempting registration to: %s", register_url)
+        logging.info("Registration payload: %s", payload)
+        
+        resp = requests.post(register_url, json=payload, timeout=10)
+        logging.info("Registration response status: %s", resp.status_code)
+        logging.info("Registration response body: %s", resp.text)
+        
         resp.raise_for_status()
         # Persist account_id if missing, derived from token
         if not config.get("account_id") and config.get("registration_token"):
@@ -334,6 +342,7 @@ def register(config):
                     logging.warning("Failed to save derived account_id after register: %s", e)
         return True, resp.json()
     except Exception as exc:
+        logging.error("Registration failed: %s", exc, exc_info=True)
         return False, str(exc)
 
 
@@ -520,23 +529,35 @@ def background_agent_mode(config):
 
 
 if __name__ == "__main__":
+    def safe_print(msg: str):
+        stream = sys.stderr or sys.stdout
+        if stream is None:
+            return
+        print(msg, file=stream)
+        try:
+            stream.flush()
+        except Exception:
+            pass
+
     # Ensure all output is captured, even on early crashes
-    print("[STARTUP] Agent starting...", file=sys.stderr)
-    sys.stderr.flush()
+    safe_print("[STARTUP] Agent starting...")
     
     try:
-        print("[STARTUP] About to call tray_main()", file=sys.stderr)
-        sys.stderr.flush()
+        safe_print("[STARTUP] About to call tray_main()")
         tray_main()
     except KeyboardInterrupt:
-        print("[SHUTDOWN] Received keyboard interrupt", file=sys.stderr)
-        sys.stderr.flush()
+        safe_print("[SHUTDOWN] Received keyboard interrupt")
     except Exception as e:
         # Ensure unexpected exceptions are logged, even before setup_logging
-        print(f"[ERROR] Exception before setup_logging: {type(e).__name__}: {e}", file=sys.stderr)
+        safe_print(f"[ERROR] Exception before setup_logging: {type(e).__name__}: {e}")
         import traceback
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
+        stream = sys.stderr or sys.stdout
+        if stream:
+            try:
+                traceback.print_exc(file=stream)
+                stream.flush()
+            except Exception:
+                pass
         
         # Try to also setup logging and log the error
         try:
