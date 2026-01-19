@@ -42,7 +42,6 @@ if (-not $InstallDir) {
 
 # Get the current user's home directory for config placement
 # This mirrors macOS behavior: config lives in user's home, not SYSTEM
-$CurrentUser = $env:USERNAME
 $ConfigDir = "$env:USERPROFILE\.kuamini"
 $ConfigFile = "$ConfigDir\config.json"
 
