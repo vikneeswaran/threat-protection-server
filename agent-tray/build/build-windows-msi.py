@@ -94,12 +94,13 @@ def build_msi():
       <ComponentRef Id='PostInstallScript' />
     </Feature>
     
-    <!-- Run post-install PowerShell script after installation -->
+    <!-- Run post-install PowerShell script as system to set up installation folder -->
+    <!-- User-specific setup (startup registry, config creation) is handled by scheduled task -->
     <CustomAction Id='RunPostInstall' 
                   Directory='INSTALLFOLDER' 
-                  ExeCommand='powershell.exe -ExecutionPolicy Bypass -File "[INSTALLFOLDER]post-install.ps1"'
+                  ExeCommand='powershell.exe -ExecutionPolicy Bypass -NoProfile -File "[INSTALLFOLDER]post-install.ps1"'
                   Execute='deferred'
-                  Impersonate='yes'
+                  Impersonate='no'
                   Return='ignore' />
     
     <InstallExecuteSequence>
