@@ -1,49 +1,115 @@
 ﻿# Kuamini Security Client Uninstaller for Windows
-param([switch]$Silent, [switch]$SkipDeregister)
-$ErrorActionPreference = "Continue"
-function Write-Step { param($msg) if (-not $Silent) { Write-Host ">> $msg" -ForegroundColor Cyan } }
-function Write-Success { param($msg) if (-not $Silent) { Write-Host "  [OK] $msg" -ForegroundColor Green } }
-function Write-Warning { param($msg) if (-not $Silent) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow } }
-function Write-Info { param($msg) if (-not $Silent) { Write-Host "  [INFO] $msg" -ForegroundColor Gray } }
-if (-not $Silent) { Write-Host "`n====================================================`n   Kuamini Security Client - Complete Uninstaller`n====================================================`n" -ForegroundColor Cyan }
+# Removes all traces and deregisters from console
+# Version: 2.0
+
+# Check if running as Administrator
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) { Write-Warning "Requires Administrator"; pause; exit 1 }
-Write-Step "Finding agent configuration..."
-$AGENT_ID = ""; $ACCOUNT_ID = ""; $API_BASE = "https://kuaminisystems.com/api/agent"
-foreach ($configPath in @("$env:USERPROFILE\.kuamini\config.json", "$env:LOCALAPPDATA\KuaminiSecurityClient\config.json", "$env:APPDATA\Kuamini\config.json")) {
-    if (Test-Path $configPath) { try { $config = Get-Content $configPath -Raw | ConvertFrom-Json; if ($config.agent_id) { $AGENT_ID = $config.agent_id; Write-Success "Agent ID: $AGENT_ID"; break } } catch { } }
+if (-not $isAdmin) {
+    Write-Host "[ERROR] This script requires Administrator privileges" -ForegroundColor Yellow
+    Write-Host "        Right-click and select 'Run as Administrator'" -ForegroundColor Yellow
+    pause
+    exit 1
 }
-if (-not $SkipDeregister -and $AGENT_ID) {
-    Write-Step "Deregistering from console..."
-    try { Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post -Body (@{agent_id=$AGENT_ID;account_id=$ACCOUNT_ID}|ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10 | Out-Null; Write-Success "Deregistered" } catch { Write-Warning "Deregister failed" }
+
+Write-Host ""
+Write-Host "Kuamini Security Client Uninstaller" -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor Cyan
+Write-Host ""
+# API base URL
+$API_BASE = "https://kuaminisystems.com/api/agent"
+$AGENT_ID = ""
+
+# Read agent_id from config if it exists
+Write-Host "[INFO] Finding agent configuration..." -ForegroundColor Gray
+$configPaths = @("$env:USERPROFILE\.kuamini\config.json", "$env:LOCALAPPDATA\KuaminiSecurityClient\config.json", "$env:APPDATA\Kuamini\config.json")
+foreach ($configPath in $configPaths) {
+    if (Test-Path $configPath) {
+        try {
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            if ($config.agent_id) {
+                $AGENT_ID = $config.agent_id
+                Write-Host "[OK] Agent ID: $AGENT_ID" -ForegroundColor Green
+                break
+            }
+        }
+        catch { }
+    }
 }
-Write-Step "Checking for MSI installation..."
+
+# Deregister from console
+if ($AGENT_ID) {
+    Write-Host "[INFO] Deregistering from console..." -ForegroundColor Gray
+    try {
+        $body = @{agent_id=$AGENT_ID} | ConvertTo-Json
+        Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 10 | Out-Null
+        Write-Host "[OK] Deregistered from console" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "[WARN] Deregister failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+Write-Host ""
+Write-Host "[INFO] Checking for MSI installation..." -ForegroundColor Gray
 foreach ($keyPath in @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*")) {
     Get-ItemProperty $keyPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*Kuamini*" } | ForEach-Object {
-        Write-Info "Found: $($_.DisplayName)"
+        Write-Host "[INFO] Found: $($_.DisplayName)" -ForegroundColor Gray
         if ($_.UninstallString -match '\{([A-F0-9-]+)\}') {
-            Start-Process "msiexec.exe" -ArgumentList "/x $($Matches[1]) /qn /norestart" -Wait -NoNewWindow | Out-Null
-            Write-Success "MSI uninstalled"
+            Start-Process "msiexec.exe" -ArgumentList "/x $($Matches[1]) /qn /norestart" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+            Write-Host "[OK] MSI uninstalled" -ForegroundColor Green
         }
     }
 }
-Write-Step "Stopping processes..."
+
+Write-Host ""
+Write-Host "[INFO] Stopping processes..." -ForegroundColor Gray
 Get-Process | Where-Object { $_.ProcessName -like "*Kuamini*" } | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
-Write-Step "Removing startup entries..."
+Start-Sleep -Seconds 2
+Write-Host "[INFO] Removing startup entries..." -ForegroundColor Gray
 foreach ($key in @(@{Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Run";Name="KuaminiSecurityClient"},@{Path="HKLM:\Software\Microsoft\Windows\CurrentVersion\Run";Name="KuaminiSecurityClient"})) {
     if (Test-Path $key.Path) { Remove-ItemProperty -Path $key.Path -Name $key.Name -Force -ErrorAction SilentlyContinue }
 }
-@("KuaminiSecurityClient","KuaminiAgentTray","KuaminiAgent","KuaminiSecurityClientSetup") | ForEach-Object { Unregister-ScheduledTask -TaskName $_ -Confirm:$false -ErrorAction SilentlyContinue }
-Write-Step "Removing files..."
+
+Write-Host "[INFO] Removing scheduled tasks..." -ForegroundColor Gray
+@("KuaminiSecurityClient","KuaminiAgentTray","KuaminiAgent","KuaminiSecurityClientSetup") | ForEach-Object { 
+    Unregister-ScheduledTask -TaskName $_ -Confirm:$false -ErrorAction SilentlyContinue 
+}
+
+Write-Host ""
+Write-Host "[INFO] Removing installation files..." -ForegroundColor Gray
 $failedPaths = @()
 foreach ($path in @("$env:ProgramFiles\KuaminiSecurityClient","${env:ProgramFiles(x86)}\KuaminiSecurityClient","$env:LOCALAPPDATA\KuaminiSecurityClient","$env:USERPROFILE\.kuamini","$env:ProgramData\Kuamini")) {
     if (Test-Path $path) {
-        try { Get-ChildItem $path -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Attributes = 'Normal' }; Remove-Item $path -Recurse -Force -ErrorAction Stop; Write-Success "Removed: $path" }
-        catch { try { $temp = Join-Path $env:TEMP "kuamini-empty"; if (-not (Test-Path $temp)) { New-Item -ItemType Directory $temp -Force | Out-Null }; robocopy $temp $path /MIR /NFL /NDL /NJH /NJS | Out-Null; Remove-Item $path -Recurse -Force; Write-Success "Removed: $path" } catch { Write-Warning "Could not remove: $path"; $failedPaths += $path } }
+        try {
+            Get-ChildItem $path -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Attributes = 'Normal' }
+            Remove-Item $path -Recurse -Force -ErrorAction Stop
+            Write-Host "[OK] Removed: $path" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "[WARN] Could not remove: $path" -ForegroundColor Yellow
+            $failedPaths += $path
+        }
     }
 }
-Write-Step "Removing registry..."
-@("HKCU:\Software\Kuamini","HKLM:\Software\Kuamini","HKLM:\Software\WOW6432Node\Kuamini") | ForEach-Object { if (Test-Path $_) { Remove-Item $_ -Recurse -Force -ErrorAction SilentlyContinue } }
-Write-Step "Restarting Explorer..."
-Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Start-Sleep 2; Start-Process explorer.exe
-if (-not $Silent) { Write-Host "`n====================================================`n" -ForegroundColor Cyan; if ($failedPaths.Count -eq 0) { Write-Success "Uninstall complete!" } else { Write-Warning "Completed with issues: $($failedPaths -join ', ')"; Write-Host "  Try restarting and running again" -ForegroundColor Gray }; pause }
+
+Write-Host ""
+Write-Host "[INFO] Removing registry entries..." -ForegroundColor Gray
+@("HKCU:\Software\Kuamini","HKLM:\Software\Kuamini","HKLM:\Software\WOW6432Node\Kuamini") | ForEach-Object { 
+    if (Test-Path $_) { Remove-Item $_ -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "[INFO] Restarting Windows Explorer..." -ForegroundColor Gray
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+Start-Process explorer.exe
+
+Write-Host ""
+if ($failedPaths.Count -eq 0) {
+    Write-Host "[OK] Uninstall complete! System is clean." -ForegroundColor Green
+} else {
+    Write-Host "[WARN] Completed with some issues:" -ForegroundColor Yellow
+    foreach ($p in $failedPaths) { Write-Host "      - $p" -ForegroundColor Gray }
+    Write-Host "      Try restarting and running again" -ForegroundColor Gray
+}
+Write-Host ""
+pause
