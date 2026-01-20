@@ -316,11 +316,23 @@ def get_network_info() -> Tuple[str | None, str | None]:
 
 
 def register(config):
+    def _os_version():
+        # mac/linux: prefer uname.release; windows: use platform helpers since sys.getwindowsversion may differ
+        try:
+            if hasattr(os, "uname"):
+                return os.uname().release
+            if os.name == "nt":
+                import platform
+                return platform.release() or platform.version() or "windows"
+        except Exception as exc:
+            logging.debug("Could not resolve os_version: %s", exc)
+        return "unknown"
+
     payload = {
         "token": config.get("registration_token"),
         "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME") or "unknown",
         "os": "macos" if sys.platform == "darwin" else ("windows" if os.name == "nt" else "linux"),
-        "os_version": os.uname().release if hasattr(os, "uname") else sys.getwindowsversion().release if hasattr(sys, "getwindowsversion") else "unknown",
+        "os_version": _os_version(),
         "agent_version": "tray-1.0.0",
         "agent_id": config.get("agent_id"),
     }
