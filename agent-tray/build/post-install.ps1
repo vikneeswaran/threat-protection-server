@@ -99,7 +99,9 @@ if (-not (Test-Path $ConfigFile)) {
         $DefaultConfig = $configObj | ConvertTo-Json -Depth 10
         
         # Write using UTF8 encoding (no BOM) to prevent JSON parse errors
-        [System.IO.File]::WriteAllText($ConfigFile, $DefaultConfig, [System.Text.Encoding]::UTF8)
+        # Use UTF8Encoding constructor with $false to explicitly disable BOM
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($ConfigFile, $DefaultConfig, $utf8NoBom)
         Write-Host "Created config at: $ConfigFile" -ForegroundColor Green
     } catch {
         Write-Host "Warning: Could not create config: $_" -ForegroundColor Yellow

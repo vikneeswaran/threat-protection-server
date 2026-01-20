@@ -218,13 +218,29 @@ def load_config():
     logging.info("Looking for config at: %s", config_path)
     if config_path.exists():
         logging.info("Loading config from: %s", config_path)
+        # Read raw bytes and strip BOM if present
         try:
-            with open(config_path, "r", encoding="utf-8-sig") as f:
-                cfg = json.load(f)
-        except json.JSONDecodeError as e:
-            logging.warning("Config JSON decode failed (%s), retrying without BOM handling", e)
-            with open(config_path, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
+            raw_bytes = config_path.read_bytes()
+            # Strip UTF-8 BOM if present (EF BB BF)
+            if raw_bytes.startswith(b'\xef\xbb\xbf'):
+                logging.info("Detected and stripping UTF-8 BOM from config")
+                raw_bytes = raw_bytes[3:]
+            # Strip UTF-16 LE BOM if present (FF FE)
+            if raw_bytes.startswith(b'\xff\xfe'):
+                logging.info("Detected UTF-16 LE BOM, decoding and re-encoding")
+                text = raw_bytes.decode('utf-16-le')
+                raw_bytes = text.encode('utf-8')
+            text = raw_bytes.decode('utf-8')
+            cfg = json.loads(text)
+        except Exception as e:
+            logging.error("Failed to load config with BOM handling: %s", e, exc_info=True)
+            # Final fallback: try utf-8-sig
+            try:
+                with open(config_path, "r", encoding="utf-8-sig") as f:
+                    cfg = json.load(f)
+            except Exception as e2:
+                logging.error("Final fallback failed: %s", e2, exc_info=True)
+                raise
         
         # Ensure agent_id exists; generate a persistent one if missing/empty
         agent_id = cfg.get("agent_id")
