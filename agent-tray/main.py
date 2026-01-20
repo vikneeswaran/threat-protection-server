@@ -267,11 +267,25 @@ def load_config():
                 except Exception as e:
                     logging.warning("Failed to persist derived account_id: %s", e)
         return cfg
-    # Fallback to env vars
-    logging.warning("Config file not found at %s, using environment variables", config_path)
+    # Fallback to env vars or token file
+    logging.warning("Config file not found at %s, checking for token file or environment variables", config_path)
+    
+    # Check for registration_token.txt file in the installation directory
+    token_from_file = None
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle
+        install_dir = Path(sys.executable).parent
+        token_file = install_dir / "registration_token.txt"
+        if token_file.exists():
+            try:
+                token_from_file = token_file.read_text(encoding='utf-8').strip()
+                logging.info("Found registration token in token file: %s", token_file)
+            except Exception as e:
+                logging.warning("Failed to read token file: %s", e)
+    
     return {
         "api_base": os.environ.get("API_BASE") or "https://kuaminisystems.com/api/agent",
-        "registration_token": os.environ.get("REGISTRATION_TOKEN"),
+        "registration_token": token_from_file or os.environ.get("REGISTRATION_TOKEN"),
         "agent_id": os.environ.get("AGENT_ID") or str(uuid.uuid4()),
         "account_id": os.environ.get("ACCOUNT_ID"),
         "console_url": os.environ.get("CONSOLE_URL", "https://kuaminisystems.com/securityAgent"),

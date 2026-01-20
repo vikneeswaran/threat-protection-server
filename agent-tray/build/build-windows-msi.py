@@ -73,15 +73,12 @@ def build_msi(registration_token=None):
         app_wixobj = os.path.join(tmp, "files.wixobj")
         product_wixobj = os.path.join(tmp, "product.wixobj")
         
-        # Copy post-install script to temp
-        post_install_src = os.path.join(script_dir, "post-install.ps1")
-        post_install_dst = os.path.join(tmp, "post-install.ps1")
-        if os.path.exists(post_install_src):
-            import shutil
-            shutil.copy2(post_install_src, post_install_dst)
-            print(f"Copied post-install script: {post_install_src}")
-        else:
-            print(f"WARNING: post-install.ps1 not found at {post_install_src}")
+        # Create a token file that the agent will read on first run
+        token_file = os.path.join(dist_path, "registration_token.txt")
+        if registration_token:
+            with open(token_file, "w", encoding="utf-8") as f:
+                f.write(registration_token)
+            print(f"Created token file: {token_file}")
 
         # Harvest files into a ComponentGroup AppFiles
         heat_cmd = [
@@ -103,22 +100,16 @@ def build_msi(registration_token=None):
         ]
         run(heat_cmd)
 
-        # Product WiX - with embedded registration token
+        # Product WiX - Simple installation with token file
         product_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
     <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{{0}}.cab' />
     
-    <!-- Embedded registration token - set during MSI build -->
-    <Property Id='REGISTRATION_TOKEN' Value='{registration_token}' />
-    
     <Directory Id='TARGETDIR' Name='SourceDir'>
       <Directory Id='ProgramFilesFolder'>
         <Directory Id='INSTALLFOLDER' Name='KuaminiSecurityClient'>
-          <Component Id='PostInstallScript' Guid='*'>
-            <File Id='PostInstallPs1' Source='{post_install_dst}' KeyPath='yes' />
-          </Component>
           <Component Id='RemoveInstallFolder' Guid='*'>
             <CreateFolder />
             <RemoveFolder Id='RemoveINSTALLFOLDER' On='uninstall' />
@@ -130,20 +121,8 @@ def build_msi(registration_token=None):
     
     <Feature Id='DefaultFeature' Level='1'>
       <ComponentGroupRef Id='AppFiles' />
-      <ComponentRef Id='PostInstallScript' />
       <ComponentRef Id='RemoveInstallFolder' />
     </Feature>
-    
-    <!-- Run post-install script with embedded token -->
-    <CustomAction Id='RunPostInstall' 
-                  Directory='INSTALLFOLDER' 
-                  ExeCommand='cmd.exe /c set REGISTRATION_TOKEN=[REGISTRATION_TOKEN] &amp;&amp; powershell.exe -ExecutionPolicy Bypass -NoProfile -File &quot;post-install.ps1&quot;'
-                  Execute='commit'
-                  Return='ignore' />
-    
-    <InstallExecuteSequence>
-      <Custom Action='RunPostInstall' After='InstallFiles'>NOT Installed</Custom>
-    </InstallExecuteSequence>
     
   </Product>
 </Wix>
