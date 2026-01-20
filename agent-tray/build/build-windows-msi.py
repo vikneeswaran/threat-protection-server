@@ -1,6 +1,12 @@
 """
 Build a real Windows MSI using WiX Toolset (heat/candle/light).
 Assumes WiX is available on windows-latest GitHub runner.
+
+Usage:
+  python build-windows-msi.py [REGISTRATION_TOKEN]
+  
+If REGISTRATION_TOKEN is provided, it will be embedded in the MSI.
+Otherwise, it reads from REGISTRATION_TOKEN environment variable.
 """
 import os
 import sys
@@ -13,7 +19,25 @@ def run(cmd, cwd=None):
     subprocess.run(cmd, check=True, cwd=cwd)
 
 
-def build_msi():
+def build_msi(registration_token=None):
+    # Get registration token from parameter, environment, or prompt
+    if not registration_token:
+        registration_token = os.environ.get("REGISTRATION_TOKEN", "")
+    
+    if not registration_token:
+        print("\nWARNING: No REGISTRATION_TOKEN provided.")
+        print("The MSI will be created without an embedded token.")
+        print("Users will need to configure the token manually after installation.")
+        print("\nTo embed a token, either:")
+        print("  1. Pass as argument: python build-windows-msi.py YOUR_TOKEN")
+        print("  2. Set environment: set REGISTRATION_TOKEN=YOUR_TOKEN")
+        response = input("\nContinue anyway? (y/N): ")
+        if response.lower() != 'y':
+            print("Build cancelled.")
+            sys.exit(0)
+    else:
+        print(f"Using registration token: {registration_token[:20]}...")
+    
     # Paths
     script_dir = os.path.dirname(os.path.abspath(__file__))  # agent-tray/build
     agent_tray_dir = os.path.dirname(script_dir)  # agent-tray
@@ -79,15 +103,15 @@ def build_msi():
         ]
         run(heat_cmd)
 
-        # Product WiX - with post-install setup script
+        # Product WiX - with embedded registration token
         product_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
     <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{{0}}.cab' />
     
-    <!-- Property for registration token (can be passed via msiexec REGISTRATION_TOKEN="token") -->
-    <Property Id='REGISTRATION_TOKEN' Secure='yes' />
+    <!-- Embedded registration token - set during MSI build -->
+    <Property Id='REGISTRATION_TOKEN' Value='{registration_token}' />
     
     <Directory Id='TARGETDIR' Name='SourceDir'>
       <Directory Id='ProgramFilesFolder'>
@@ -110,6 +134,17 @@ def build_msi():
       <ComponentRef Id='RemoveInstallFolder' />
     </Feature>
     
+    <!-- Run post-install script with embedded token -->
+    <CustomAction Id='RunPostInstall' 
+                  Directory='INSTALLFOLDER' 
+                  ExeCommand='cmd.exe /c set REGISTRATION_TOKEN=[REGISTRATION_TOKEN] &amp;&amp; powershell.exe -ExecutionPolicy Bypass -NoProfile -File &quot;post-install.ps1&quot;'
+                  Execute='commit'
+                  Return='ignore' />
+    
+    <InstallExecuteSequence>
+      <Custom Action='RunPostInstall' After='InstallFiles'>NOT Installed</Custom>
+    </InstallExecuteSequence>
+    
   </Product>
 </Wix>
 """
@@ -128,6 +163,8 @@ def build_msi():
 
 
 if __name__ == "__main__":
-    success = build_msi()
+    # Accept token as command line argument
+    token = sys.argv[1] if len(sys.argv) > 1 else None
+    success = build_msi(token)
     sys.exit(0 if success else 1)
 
