@@ -17,16 +17,23 @@ def build_msi():
     # Paths
     script_dir = os.path.dirname(os.path.abspath(__file__))  # agent-tray/build
     agent_tray_dir = os.path.dirname(script_dir)  # agent-tray
-    dist_path = os.path.join(agent_tray_dir, "dist", "KuaminiSecurityClient")
-    output_dir = os.path.join(agent_tray_dir, "dist")
-    msi_path = os.path.join(output_dir, "KuaminiSecurityClient-1.0.0.msi")
+    dist_dir = os.path.join(agent_tray_dir, "dist")
+    exe_path = os.path.join(dist_dir, "KuaminiSecurityClient.exe")
+    msi_path = os.path.join(dist_dir, "KuaminiSecurityClient-1.0.0.msi")
 
-    print(f"PyInstaller dist path: {dist_path}")
+    print(f"PyInstaller exe path: {exe_path}")
     print(f"Output MSI path: {msi_path}")
 
-    if not os.path.exists(dist_path):
-        print(f"ERROR: PyInstaller dist folder not found at {dist_path}")
+    if not os.path.exists(exe_path):
+        print(f"ERROR: PyInstaller exe not found at {exe_path}")
         sys.exit(1)
+    
+    # Create a temp dist folder structure for WiX
+    dist_path = os.path.join(dist_dir, "KuaminiSecurityClient")
+    os.makedirs(dist_path, exist_ok=True)
+    import shutil
+    shutil.copy2(exe_path, os.path.join(dist_path, "KuaminiSecurityClient.exe"))
+    print(f"Created dist folder structure at {dist_path}")
 
     # Validate WiX tools
     for tool in ["heat", "candle", "light"]:
@@ -72,7 +79,7 @@ def build_msi():
         ]
         run(heat_cmd)
 
-        # Product WiX
+        # Product WiX - with post-install setup script
         product_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
@@ -88,7 +95,6 @@ def build_msi():
           <Component Id='PostInstallScript' Guid='*'>
             <File Id='PostInstallPs1' Source='{post_install_dst}' KeyPath='yes' />
           </Component>
-          <!-- Add RemoveFolder to ensure directory is removed on uninstall -->
           <Component Id='RemoveInstallFolder' Guid='*'>
             <CreateFolder />
             <RemoveFolder Id='RemoveINSTALLFOLDER' On='uninstall' />
@@ -103,26 +109,6 @@ def build_msi():
       <ComponentRef Id='PostInstallScript' />
       <ComponentRef Id='RemoveInstallFolder' />
     </Feature>
-    
-    <!-- Set environment variable for post-install script to read -->
-    <CustomAction Id='SetRegistrationToken'
-                  Property='REGISTRATION_TOKEN_ENV'
-                  Value='[REGISTRATION_TOKEN]'
-                  Execute='immediate' />
-    
-    <!-- Run post-install PowerShell script as system to set up installation folder -->
-    <!-- Pass REGISTRATION_TOKEN via environment variable -->
-    <CustomAction Id='RunPostInstall' 
-                  Directory='INSTALLFOLDER' 
-                  ExeCommand='cmd.exe /c "set REGISTRATION_TOKEN=[REGISTRATION_TOKEN] &amp;&amp; powershell.exe -ExecutionPolicy Bypass -NoProfile -File &quot;[INSTALLFOLDER]post-install.ps1&quot;"'
-                  Execute='deferred'
-                  Impersonate='no'
-                  Return='ignore' />
-    
-    <InstallExecuteSequence>
-      <Custom Action='SetRegistrationToken' Before='RunPostInstall'>NOT Installed AND NOT REMOVE</Custom>
-      <Custom Action='RunPostInstall' After='InstallFiles'>NOT Installed AND NOT REMOVE</Custom>
-    </InstallExecuteSequence>
     
   </Product>
 </Wix>
