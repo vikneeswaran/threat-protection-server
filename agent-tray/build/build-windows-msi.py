@@ -79,6 +79,9 @@ def build_msi():
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
     <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{{0}}.cab' />
     
+    <!-- Property for registration token (can be passed via msiexec REGISTRATION_TOKEN="token") -->
+    <Property Id='REGISTRATION_TOKEN' Secure='yes' />
+    
     <Directory Id='TARGETDIR' Name='SourceDir'>
       <Directory Id='ProgramFilesFolder'>
         <Directory Id='INSTALLFOLDER' Name='KuaminiSecurityClient'>
@@ -101,16 +104,23 @@ def build_msi():
       <ComponentRef Id='RemoveInstallFolder' />
     </Feature>
     
+    <!-- Set environment variable for post-install script to read -->
+    <CustomAction Id='SetRegistrationToken'
+                  Property='REGISTRATION_TOKEN_ENV'
+                  Value='[REGISTRATION_TOKEN]'
+                  Execute='immediate' />
+    
     <!-- Run post-install PowerShell script as system to set up installation folder -->
-    <!-- User-specific setup (startup registry, config creation) is handled by scheduled task -->
+    <!-- Pass REGISTRATION_TOKEN via environment variable -->
     <CustomAction Id='RunPostInstall' 
                   Directory='INSTALLFOLDER' 
-                  ExeCommand='powershell.exe -ExecutionPolicy Bypass -NoProfile -File "[INSTALLFOLDER]post-install.ps1"'
+                  ExeCommand='cmd.exe /c "set REGISTRATION_TOKEN=[REGISTRATION_TOKEN] &amp;&amp; powershell.exe -ExecutionPolicy Bypass -NoProfile -File &quot;[INSTALLFOLDER]post-install.ps1&quot;"'
                   Execute='deferred'
                   Impersonate='no'
                   Return='ignore' />
     
     <InstallExecuteSequence>
+      <Custom Action='SetRegistrationToken' Before='RunPostInstall'>NOT Installed AND NOT REMOVE</Custom>
       <Custom Action='RunPostInstall' After='InstallFiles'>NOT Installed AND NOT REMOVE</Custom>
     </InstallExecuteSequence>
     

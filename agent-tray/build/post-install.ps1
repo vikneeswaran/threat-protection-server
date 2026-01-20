@@ -4,6 +4,15 @@
 
 $ErrorActionPreference = 'Continue'
 
+# Read registration token from MSI property (passed via command line or MSI UI)
+$REGISTRATION_TOKEN = $env:REGISTRATION_TOKEN
+if (-not $REGISTRATION_TOKEN) {
+    # Try reading from command-line argument (for manual installs)
+    if ($args.Count -gt 0) {
+        $REGISTRATION_TOKEN = $args[0]
+    }
+}
+
 # Prefer the directory of this script first
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
@@ -53,16 +62,43 @@ if (-not (Test-Path $ConfigDir)) {
 
 if (-not (Test-Path $ConfigFile)) {
     try {
-        # Create config JSON without UTF-8 BOM (use ASCII encoding to avoid BOM)
-        # JSON content as string
-        $DefaultConfig = @{
+        # Decode account_id from registration token if provided
+        $account_id = $null
+        if ($REGISTRATION_TOKEN) {
+            try {
+                $cleaned = $REGISTRATION_TOKEN.Replace("`n","").Replace(" ","")
+                $decoded = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($cleaned))
+                $tokenObj = $decoded | ConvertFrom-Json
+                $account_id = if ($tokenObj.accountId) { $tokenObj.accountId } elseif ($tokenObj.account_id) { $tokenObj.account_id } else { $null }
+                Write-Host "Decoded account_id from token: $account_id" -ForegroundColor Green
+            } catch {
+                Write-Host "Warning: Could not decode account_id from token: $_" -ForegroundColor Yellow
+            }
+        }
+        
+        # Create config JSON without UTF-8 BOM
+        $configObj = @{
             api_base = 'https://kuaminisystems.com/api/agent'
             console_url = 'https://kuaminisystems.com/securityAgent'
             auto_register = $true
             heartbeat_interval = 60
-        } | ConvertTo-Json -Depth 10
+        }
         
-        # Write using ASCII to prevent UTF-8 BOM that causes JSON parse errors
+        # Add registration_token if provided
+        if ($REGISTRATION_TOKEN) {
+            $configObj['registration_token'] = $REGISTRATION_TOKEN
+            Write-Host "Added registration_token to config" -ForegroundColor Green
+        }
+        
+        # Add account_id if decoded
+        if ($account_id) {
+            $configObj['account_id'] = $account_id
+            Write-Host "Added account_id to config: $account_id" -ForegroundColor Green
+        }
+        
+        $DefaultConfig = $configObj | ConvertTo-Json -Depth 10
+        
+        # Write using UTF8 encoding (no BOM) to prevent JSON parse errors
         [System.IO.File]::WriteAllText($ConfigFile, $DefaultConfig, [System.Text.Encoding]::UTF8)
         Write-Host "Created config at: $ConfigFile" -ForegroundColor Green
     } catch {
