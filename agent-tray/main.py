@@ -316,6 +316,17 @@ def get_network_info() -> Tuple[str | None, str | None]:
 
 
 def register(config):
+    # Ensure account_id is populated from token if present
+    if not config.get("account_id"):
+        decoded = _decode_account_id_from_token(config.get("registration_token"))
+        if decoded:
+            config["account_id"] = decoded
+            try:
+                save_config(config)
+                logging.info("Persisted account_id from token before register: %s", decoded)
+            except Exception as e:
+                logging.warning("Failed to persist account_id before register: %s", e)
+
     def _os_version():
         # mac/linux: prefer uname.release; windows: use platform helpers since sys.getwindowsversion may differ
         try:
@@ -347,6 +358,22 @@ def register(config):
         logging.info("Registration response body: %s", resp.text)
         
         resp.raise_for_status()
+
+        # Persist endpoint_id and account_id from response if provided
+        try:
+            body = resp.json()
+            endpoint_id = body.get("endpoint_id") or body.get("endpointId")
+            if endpoint_id:
+                config["endpoint_id"] = endpoint_id
+                logging.info("Persisted endpoint_id: %s", endpoint_id)
+            account_id = body.get("account_id") or body.get("accountId")
+            if account_id:
+                config["account_id"] = account_id
+                logging.info("Persisted account_id from response: %s", account_id)
+            save_config(config)
+        except Exception as e:
+            logging.warning("Could not persist registration response fields: %s", e)
+
         # Persist account_id if missing, derived from token
         if not config.get("account_id") and config.get("registration_token"):
             derived = _decode_account_id_from_token(config.get("registration_token"))
@@ -393,6 +420,28 @@ def heartbeat(config):
         return True, resp.json()
     except Exception as exc:
         logging.exception("Heartbeat failed: %s", exc)
+
+        # If endpoint not found, attempt re-registration once and retry heartbeat
+        try:
+            status = exc.response.status_code if hasattr(exc, "response") and exc.response is not None else None
+        except Exception:
+            status = None
+
+        if status == 404:
+            logging.warning("Heartbeat 404: attempting re-registration")
+            ok_reg, res_reg = register(config)
+            logging.info("Re-register result after 404: ok=%s res=%s", ok_reg, res_reg)
+            if ok_reg:
+                try:
+                    logging.info("Retrying heartbeat after re-registration...")
+                    resp_retry = requests.post(url, json=payload, timeout=15)
+                    if resp_retry.status_code < 400:
+                        return True, resp_retry.json()
+                    else:
+                        logging.error("Retry heartbeat HTTP %s: %s", resp_retry.status_code, resp_retry.text)
+                except Exception as exc_retry:
+                    logging.exception("Retry heartbeat failed: %s", exc_retry)
+
         return False, str(exc)
 
 
