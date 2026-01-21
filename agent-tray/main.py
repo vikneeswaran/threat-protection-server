@@ -283,7 +283,7 @@ def load_config():
             except Exception as e:
                 logging.warning("Failed to read token file: %s", e)
     
-    return {
+    cfg = {
         "api_base": os.environ.get("API_BASE") or "https://kuaminisystems.com/api/agent",
         "registration_token": token_from_file or os.environ.get("REGISTRATION_TOKEN"),
         "agent_id": os.environ.get("AGENT_ID") or str(uuid.uuid4()),
@@ -291,6 +291,15 @@ def load_config():
         "console_url": os.environ.get("CONSOLE_URL", "https://kuaminisystems.com/securityAgent"),
         "heartbeat_interval": int(os.environ.get("HEARTBEAT_INTERVAL", DEFAULT_HEARTBEAT_INTERVAL)),
     }
+    
+    # Derive account_id from token if not already set
+    if not cfg.get("account_id") and cfg.get("registration_token"):
+        derived = _decode_account_id_from_token(cfg.get("registration_token"))
+        if derived:
+            cfg["account_id"] = derived
+            logging.info("Derived account_id from token: %s", cfg["account_id"])
+    
+    return cfg
 
 
 def save_config(cfg: dict):
