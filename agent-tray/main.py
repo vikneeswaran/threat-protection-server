@@ -98,12 +98,30 @@ def verify_installation():
     config_file = config_dir / "config.json"
     if not config_file.exists():
         try:
+            # Try to read registration token from install directory
+            token_from_file = None
+            if getattr(sys, 'frozen', False):
+                install_dir = Path(sys.executable).parent
+                token_file = install_dir / "registration_token.txt"
+                if token_file.exists():
+                    try:
+                        token_from_file = token_file.read_text(encoding='utf-8').strip()
+                        print(f"[Installation Fix] Found registration token in: {token_file}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"[Installation Fix] Failed to read token file: {e}", file=sys.stderr)
+            
             default_config = {
                 "api_base": "https://kuaminisystems.com/api/agent",
                 "console_url": "https://kuaminisystems.com/securityAgent",
                 "auto_register": True,
                 "heartbeat_interval": 60
             }
+            
+            # Include registration token if found
+            if token_from_file:
+                default_config["registration_token"] = token_from_file
+                print(f"[Installation Fix] Added registration token to config", file=sys.stderr)
+            
             config_file.write_text(json.dumps(default_config, indent=2))
             print(f"[Installation Fix] Created default config file: {config_file}", file=sys.stderr)
         except Exception as e:
