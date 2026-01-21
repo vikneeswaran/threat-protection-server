@@ -104,6 +104,25 @@ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep 2
 Start-Process explorer.exe
 
+# Force-clean any remaining registry entries that Control Panel might still see
+if (-not $Silent) { Write-Host "[*] Force-cleaning registry cache..." -ForegroundColor Gray }
+@("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall","HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall") | ForEach-Object {
+    if (Test-Path $_) {
+        Get-ChildItem $_ -ErrorAction SilentlyContinue | ForEach-Object {
+            $itemProps = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($itemProps -and $itemProps.DisplayName -like "*Kuamini*") {
+                try {
+                    Remove-Item $_.PSPath -Force -Recurse -ErrorAction SilentlyContinue
+                } catch {}
+            }
+        }
+    }
+}
+
+# Clear Windows Add/Remove Programs cache
+if (-not $Silent) { Write-Host "[*] Clearing Control Panel cache..." -ForegroundColor Gray }
+Remove-Item "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*Kuamini*" -Force -ErrorAction SilentlyContinue
+
 # Final verification
 $remainingProcs = Get-Process | Where-Object { $_.Name -like "*Kuamini*" } -ErrorAction SilentlyContinue
 $remainingMSI = Get-ItemProperty 'HKLM:\SOFTWARE\*\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\*\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like '*Kuamini*' }
@@ -120,8 +139,7 @@ if (-not $Silent) {
             Write-Host "  - Could not remove:" -ForegroundColor Gray
             foreach ($p in $failedPaths) { Write-Host "    * $p" -ForegroundColor Gray }
         }
-        Write-Host "`n  These require a system restart to fully clean." -ForegroundColor Yellow
-        Write-Host "  After restart, agent will be completely removed." -ForegroundColor Gray
+        Write-Host "`n  If Control Panel entry persists, restart Windows or uninstall manually." -ForegroundColor Yellow
     }
     Write-Host ""
     pause
