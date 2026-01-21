@@ -100,13 +100,16 @@ def build_msi(registration_token=None):
         ]
         run(heat_cmd)
 
-        # Product WiX - Installation with scheduled task for auto-start
+        # Product WiX - Use registry Run keys for reliable auto-start
         product_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
     <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{{0}}.cab' />
-    
+
+    <!-- Allow upgrades over existing installs -->
+    <MajorUpgrade DowngradeErrorMessage='A newer version of Kuamini Security Client is already installed.' />
+
     <Directory Id='TARGETDIR' Name='SourceDir'>
       <Directory Id='ProgramFilesFolder'>
         <Directory Id='INSTALLFOLDER' Name='KuaminiSecurityClient'>
@@ -115,26 +118,25 @@ def build_msi(registration_token=None):
             <RemoveFolder Id='RemoveINSTALLFOLDER' On='uninstall' />
             <RegistryValue Root='HKCU' Key='Software\\Kuamini\\SecurityClient' Name='installed' Type='integer' Value='1' KeyPath='yes' />
           </Component>
+          <!-- Auto-start for all users (machine-wide) -->
+          <Component Id='AgentStartupHKLM' Guid='*'>
+            <RegistryValue Root='HKLM' Key='Software\\Microsoft\\Windows\\CurrentVersion\\Run' Name='KuaminiSecurityClient' Type='string' Value='"[INSTALLFOLDER]KuaminiSecurityClient.exe"' KeyPath='yes' />
+          </Component>
+          <!-- Auto-start for current user as fallback -->
+          <Component Id='AgentStartupHKCU' Guid='*'>
+            <RegistryValue Root='HKCU' Key='Software\\Microsoft\\Windows\\CurrentVersion\\Run' Name='KuaminiSecurityClient' Type='string' Value='"[INSTALLFOLDER]KuaminiSecurityClient.exe"' KeyPath='yes' />
+          </Component>
         </Directory>
       </Directory>
     </Directory>
-    
+
     <Feature Id='DefaultFeature' Level='1'>
       <ComponentGroupRef Id='AppFiles' />
       <ComponentRef Id='RemoveInstallFolder' />
+      <ComponentRef Id='AgentStartupHKLM' />
+      <ComponentRef Id='AgentStartupHKCU' />
     </Feature>
-    
-    <!-- Custom actions to create/remove scheduled task -->
-    <CustomAction Id='CreateScheduledTask' Directory='INSTALLFOLDER' Execute='deferred' Impersonate='no' Return='ignore'
-                  ExeCommand='cmd.exe /c schtasks /create /tn "KuaminiSecurityClient" /tr "[INSTALLFOLDER]KuaminiSecurityClient.exe" /sc onlogon /rl highest /f' />
-    <CustomAction Id='RemoveScheduledTask' Directory='INSTALLFOLDER' Execute='deferred' Impersonate='no' Return='ignore'
-                  ExeCommand='cmd.exe /c schtasks /delete /tn "KuaminiSecurityClient" /f' />
-    
-    <InstallExecuteSequence>
-      <Custom Action='CreateScheduledTask' After='InstallFiles'>NOT Installed</Custom>
-      <Custom Action='RemoveScheduledTask' Before='RemoveFiles'>Installed</Custom>
-    </InstallExecuteSequence>
-    
+
   </Product>
 </Wix>
 """
