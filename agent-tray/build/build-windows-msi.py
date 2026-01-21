@@ -102,7 +102,7 @@ def build_msi(registration_token=None):
 
         # Product WiX - Use registry Run keys for reliable auto-start
         product_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
-<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi' xmlns:util='http://schemas.microsoft.com/wix/UtilExtension'>
   <Product Id='*' Name='Kuamini Security Client' Language='1033' Version='1.0.0' Manufacturer='Kuamini Systems' UpgradeCode='8B5F8A9E-3D4C-4F1A-9E2B-7C6D5E4F3A2B'>
     <Package InstallerVersion='500' Compressed='yes' InstallScope='perMachine' />
     <MediaTemplate EmbedCab='yes' CabinetTemplate='cab{{0}}.cab' />
@@ -130,13 +130,23 @@ def build_msi(registration_token=None):
       </Directory>
     </Directory>
 
+
     <Feature Id='DefaultFeature' Level='1'>
       <ComponentGroupRef Id='AppFiles' />
       <ComponentRef Id='RemoveInstallFolder' />
       <ComponentRef Id='AgentStartupHKLM' />
       <ComponentRef Id='AgentStartupHKCU' />
+      
     </Feature>
 
+    <!-- Launch the tray app once right after install completes -->
+    <Property Id='WixShellExecTarget' Value='[INSTALLFOLDER]KuaminiSecurityClient.exe' />
+    <CustomAction Id='LaunchKuaminiClient' BinaryKey='WixCA' DllEntry='WixShellExec' Impersonate='yes' />
+
+    <InstallExecuteSequence>
+      <!-- Run only on initial install -->
+      <Custom Action='LaunchKuaminiClient' After='InstallFinalize'>NOT Installed</Custom>
+    </InstallExecuteSequence>
   </Product>
 </Wix>
 """
@@ -144,13 +154,24 @@ def build_msi(registration_token=None):
             f.write(product_xml)
 
         # Compile
-        run(["candle", "-dSourceDir=" + dist_path, "-o", app_wixobj, app_wxs])
-        run(["candle", "-dSourceDir=" + dist_path, "-o", product_wixobj, product_wxs])
+        run(["candle", "-ext", "WixUtilExtension", "-dSourceDir=" + dist_path, "-o", app_wixobj, app_wxs])
+        run(["candle", "-ext", "WixUtilExtension", "-dSourceDir=" + dist_path, "-o", product_wixobj, product_wxs])
 
         # Link
-        run(["light", "-o", msi_path, product_wixobj, app_wixobj, "-b", dist_path])
+        run(["light", "-ext", "WixUtilExtension", "-o", msi_path, product_wixobj, app_wixobj, "-b", dist_path])
 
     print(f"MSI created successfully: {msi_path}")
+    # Publish MSI to web-accessible folder for download
+    try:
+        project_root = os.path.dirname(agent_tray_dir)
+        public_tray_dir = os.path.join(project_root, "public", "tray")
+        os.makedirs(public_tray_dir, exist_ok=True)
+        dest_path = os.path.join(public_tray_dir, os.path.basename(msi_path))
+        import shutil
+        shutil.copy2(msi_path, dest_path)
+        print(f"Published MSI to {dest_path}")
+    except Exception as e:
+        print(f"WARNING: Failed to publish MSI to public/tray: {e}")
     return True
 
 
