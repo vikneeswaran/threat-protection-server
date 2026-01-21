@@ -1,4 +1,4 @@
-﻿param([switch]$Silent)
+param([switch]$Silent)
 $ErrorActionPreference = "Continue"
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) { Write-Host "ERROR: Requires Administrator" -ForegroundColor Yellow; pause; exit 1 }
