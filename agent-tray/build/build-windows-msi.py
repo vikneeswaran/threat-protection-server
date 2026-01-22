@@ -18,7 +18,7 @@ def main():
         print(f"Error: PowerShell build script not found: {ps_script}")
         sys.exit(1)
     
-    # Get source directory (parent of parent of build)
+    # Get source directory (repo root)
     source_dir = script_dir.parent.parent
     
     # Check prerequisites
@@ -29,11 +29,17 @@ def main():
         print(f"Error: Executable not found: {exe_path}")
         print("Please run PyInstaller first: pyinstaller main.py --onedir --windowed")
         sys.exit(1)
-    
+
     if not config_path.exists():
-        print(f"Error: Config file not found: {config_path}")
-        print("Please run: python agent-tray/generate_config.py")
-        sys.exit(1)
+        print(f"Config file not found, generating default: {config_path}")
+        gen_script = source_dir / "agent-tray" / "generate_config.py"
+        if not gen_script.exists():
+            print("Error: generate_config.py is missing; cannot create config")
+            sys.exit(1)
+        result = subprocess.run([sys.executable, str(gen_script)], cwd=source_dir)
+        if result.returncode != 0 or not config_path.exists():
+            print("Error: Failed to generate config.json")
+            sys.exit(1)
     
     print("Building Kuamini Security Client Windows MSI...")
     print(f"  Executable: {exe_path}")
