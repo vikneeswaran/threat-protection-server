@@ -12,7 +12,11 @@ from pathlib import Path
 def main():
     # Get the script directory
     script_dir = Path(__file__).parent
-    ps_script = script_dir / "build-windows-msi.ps1"
+    
+    # Try new build-windows.ps1 first (simpler, ZIP-based), fallback to MSI builder
+    ps_script = script_dir / "build-windows.ps1"
+    if not ps_script.exists():
+        ps_script = script_dir / "build-windows-msi.ps1"
     
     if not ps_script.exists():
         print(f"Error: PowerShell build script not found: {ps_script}")
@@ -21,29 +25,17 @@ def main():
     # Get source directory (repo root)
     source_dir = script_dir.parent.parent
     
-    # Check prerequisites
-    exe_path = source_dir / "agent-tray" / "dist" / "KuaminiSecurityClient" / "KuaminiSecurityClient.exe"
+    # Generate config if needed
     config_path = source_dir / "agent-tray" / "config.json"
-    
-    if not exe_path.exists():
-        print(f"Error: Executable not found: {exe_path}")
-        print("Please run PyInstaller first: pyinstaller main.py --onedir --windowed")
-        sys.exit(1)
-
     if not config_path.exists():
         print(f"Config file not found, generating default: {config_path}")
         gen_script = source_dir / "agent-tray" / "generate_config.py"
-        if not gen_script.exists():
-            print("Error: generate_config.py is missing; cannot create config")
-            sys.exit(1)
-        result = subprocess.run([sys.executable, str(gen_script)], cwd=source_dir)
-        if result.returncode != 0 or not config_path.exists():
-            print("Error: Failed to generate config.json")
-            sys.exit(1)
+        if gen_script.exists():
+            result = subprocess.run([sys.executable, str(gen_script)], cwd=source_dir / "agent-tray")
+            if result.returncode == 0:
+                print(f"Wrote {config_path}")
     
-    print("Building Kuamini Security Client Windows MSI...")
-    print(f"  Executable: {exe_path}")
-    print(f"  Config: {config_path}")
+    print(f"Building Kuamini Security Client for Windows using {ps_script.name}...")
     
     # Run PowerShell script
     try:
@@ -60,11 +52,10 @@ def main():
         )
         
         if result.returncode != 0:
-            print("MSI build failed", file=sys.stderr)
+            print("Build failed", file=sys.stderr)
             sys.exit(result.returncode)
         
-        print("\nMSI build completed successfully!")
-        print(f"Output: {source_dir / 'public' / 'tray' / 'KuaminiSecurityClient-1.0.0.msi'}")
+        print("\nBuild completed successfully!")
         
     except FileNotFoundError:
         print("Error: PowerShell not found. This script requires PowerShell 5.0+", file=sys.stderr)

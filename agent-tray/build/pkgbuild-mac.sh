@@ -28,6 +28,12 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
   python -m pip install pyinstaller
 fi
 
+# Clean dist directory to prevent PyInstaller errors
+if [ -d "${DIST_DIR}/KuaminiSecurityClient" ]; then
+  echo "Cleaning existing dist directory..."
+  rm -rf "${DIST_DIR}/KuaminiSecurityClient"
+fi
+
 pyinstaller --clean "${SPEC_FILE}"
 
 if [ ! -d "${DIST_DIR}/${APP_NAME}" ]; then

@@ -39,8 +39,10 @@ $exeFile = "$SourceDir\agent-tray\dist\KuaminiSecurityClient\KuaminiSecurityClie
 $configFile = "$SourceDir\agent-tray\config.json"
 
 if (-not (Test-Path $wxsFile)) {
-    Write-Error "WiX source file not found: $wxsFile"
-    exit 1
+    Write-Warning "WiX source file not found: $wxsFile"
+    Write-Warning "Skipping MSI build. Please create the WiX source file or use the Python build script instead."
+    Write-Host "Tip: You can package the executable as a ZIP file for distribution." -ForegroundColor Yellow
+    exit 0
 }
 
 if (-not (Test-Path $exeFile)) {

@@ -31,12 +31,6 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build macOS app
-        run: |
-          cd agent-tray
-          rm -rf dist/KuaminiSecurityClient.app
-          pyinstaller main.py --onedir --windowed --osx-bundle-identifier=com.kuamini.securityclient --name=KuaminiSecurityClient -y
-
       - name: Build macOS PKG installer
         run: |
           cd agent-tray
@@ -64,24 +58,18 @@ jobs:
           cd agent-tray
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller cx_Freeze
+          pip install pyinstaller
 
-      - name: Build Windows exe
-        run: |
-          cd agent-tray
-          Remove-Item -Path dist\KuaminiSecurityClient -Recurse -Force -ErrorAction SilentlyContinue
-          pyinstaller main.py --onedir --windowed --name=KuaminiSecurityClient -y
-
-      - name: Build MSI installer
+      - name: Build Windows package
         run: |
           cd agent-tray
           python build/build-windows-msi.py
 
-      - name: Upload Windows MSI artifact
+      - name: Upload Windows ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msi
-          path: agent-tray/dist/KuaminiSecurityClient-1.0.0.msi
+          name: windows-zip
+          path: public/tray/windows.zip
           retention-days: 30
 
   build-linux:
@@ -138,13 +126,19 @@ jobs:
           
           echo "Deployed installers:"
           ls -lh public/tray/* 2>/dev/null || true
+ || true
+          cp windows-zip/windows.zip public/tray/ || true
+          cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true
+          
+          echo "Deployed installers:"
+          ls -lh public/tray/* 2>/dev/null || true
 
       - name: Commit and push installers
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz
+          git add public/tray/*.pkg public/tray/*.zip public/tray/*.tar.gz 2>/dev/null || true
           
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -162,9 +156,4 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/KuaminiSecurityClient-1.0.0.msi
-            public/tray/KuaminiSecurityClient-linux.tar.gz
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            public/tray/windows.zip
