@@ -10,6 +10,20 @@ from pathlib import Path
 from typing import Tuple
 import uuid
 
+# --- SINGLETON ENFORCEMENT ---
+def is_another_instance_running():
+    import psutil
+    this_pid = os.getpid()
+    exe_name = "KuaminiSecurityClient.exe"
+    count = 0
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if proc.info["name"] == exe_name and proc.info["pid"] != this_pid:
+                count += 1
+        except Exception:
+            continue
+    return count > 0
+
 # Import PIL first and add Pillow 10+ compatibility patch for pystray
 try:
     from PIL import Image, ImageDraw
