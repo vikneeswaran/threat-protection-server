@@ -322,6 +322,7 @@ def load_config():
         "account_id": os.environ.get("ACCOUNT_ID"),
         "console_url": os.environ.get("CONSOLE_URL", "https://kuaminisystems.com/securityAgent"),
         "heartbeat_interval": int(os.environ.get("HEARTBEAT_INTERVAL", DEFAULT_HEARTBEAT_INTERVAL)),
+        "auto_register": True,
     }
     
     # Derive account_id from token if not already set
@@ -398,6 +399,15 @@ def register(config):
             except Exception as e:
                 logging.warning("Failed to persist account_id before register: %s", e)
 
+    # Validate configuration before attempting registration
+    if not config.get("registration_token"):
+        logging.error("Registration aborted: no registration_token in config")
+        return False, "Missing registration_token"
+    
+    if not config.get("agent_id"):
+        logging.error("Registration aborted: no agent_id in config")
+        return False, "Missing agent_id"
+
     def _os_version():
         # mac/linux: prefer uname.release; windows: use platform helpers since sys.getwindowsversion may differ
         try:
@@ -422,12 +432,20 @@ def register(config):
         api_url = config.get('api_base') or "https://kuaminisystems.com/api/agent"
         register_url = f"{api_url}/register"
         logging.info("Attempting registration to: %s", register_url)
-        logging.info("Registration payload: %s", payload)
+        logging.debug("Registration payload: %s", {k: v if k != 'token' else '***' for k, v in payload.items()})
         
         resp = requests.post(register_url, json=payload, timeout=10)
         logging.info("Registration response status: %s", resp.status_code)
-        logging.info("Registration response body: %s", resp.text)
         
+        if resp.status_code >= 400:
+            try:
+                error_detail = resp.json().get("error") or resp.text
+            except:
+                error_detail = resp.text
+            logging.error("Registration HTTP %s: %s", resp.status_code, error_detail)
+            return False, f"HTTP {resp.status_code}: {error_detail}"
+        
+        logging.info("Registration response: %s", resp.text[:200])
         resp.raise_for_status()
 
         # Persist endpoint_id and account_id from response if provided
@@ -465,6 +483,11 @@ def heartbeat(config):
     ip, mac = get_network_info()
     agent_id = config.get("agent_id") or None
     account_id = config.get("account_id") or None
+    
+    if not agent_id:
+        logging.error("Heartbeat failed: missing agent_id")
+        return False, "Missing agent_id"
+    
     payload = {
         "agent_id": agent_id,
         "account_id": account_id,
@@ -478,19 +501,22 @@ def heartbeat(config):
     }
     try:
         url = f"{config['api_base']}/heartbeat"
-        logging.info("Sending heartbeat to %s with payload: %s", url, payload)
+        logging.debug("Sending heartbeat to %s", url)
+        logging.debug("Heartbeat payload: agent_id=%s account_id=%s ip=%s", agent_id, account_id, ip)
         resp = requests.post(url, json=payload, timeout=15)
         if resp.status_code >= 400:
             # Log response body for easier troubleshooting
             try:
-                body = resp.text
+                body = resp.json()
+                error_msg = body.get("error", resp.text)
             except Exception:
-                body = "<no body>"
-            logging.error("Heartbeat HTTP %s: %s", resp.status_code, body)
+                error_msg = resp.text
+            logging.error("✗ Heartbeat HTTP %s: %s", resp.status_code, error_msg)
             resp.raise_for_status()
+        logging.info("✓ Heartbeat successful (HTTP %s)", resp.status_code)
         return True, resp.json()
     except Exception as exc:
-        logging.exception("Heartbeat failed: %s", exc)
+        logging.exception("✗ Heartbeat failed: %s", exc)
 
         # If endpoint not found, attempt re-registration once and retry heartbeat
         try:
@@ -527,8 +553,10 @@ def tray_main():
     # Create icon with error handling
     try:
         icon = pystray.Icon("KuaminiThreatProtectAgent")
+        logging.info("✓ Tray icon object created successfully")
     except Exception as e:
-        logging.error("Failed to create pystray icon: %s", e)
+        logging.error("✗ Failed to create pystray icon: %s", e, exc_info=True)
+        logging.warning("Falling back to background-only mode (no systray)")
         # Fallback to background-only mode
         background_agent_mode(config)
         return
@@ -592,12 +620,13 @@ def tray_main():
     # Auto-register on startup (works with or without registration_token)
     if config.get("auto_register"):
         set_status("Registering...")
+        logging.info("Auto-registration enabled, attempting registration")
         ok, res = register(config)
         if ok:
-            logging.info("Auto-registration successful: %s", res)
+            logging.info("✓ Auto-registration successful: %s", res)
             set_status("Registered, preparing heartbeat")
         else:
-            logging.warning("Auto-registration failed: %s", res)
+            logging.warning("✗ Auto-registration failed: %s", res)
             set_status("Registration failed, retrying on heartbeat")
     
     threading.Thread(target=heartbeat_loop, daemon=True).start()
@@ -605,10 +634,10 @@ def tray_main():
     
     # Run the tray icon with error recovery
     try:
-        logging.info("Starting tray icon...")
+        logging.info("Starting tray icon message loop...")
         icon.run()
     except Exception as e:
-        logging.warning("Tray icon failed: %s. Continuing in background mode...", e)
+        logging.warning("✗ Tray icon failed: %s. Continuing in background mode...", e, exc_info=True)
         # Continue running background operations even if icon fails
         try:
             while not stop_event.is_set():
