@@ -48,10 +48,11 @@ for ($i = 0; $i -lt 3; $i++) {
 taskkill /F /T /IM KuaminiSecurityClient.exe 2>$null | Out-Null
 Start-Sleep 1
 
-# Remove registry startup entries
+# Remove registry startup entries (both 64-bit and 32-bit hives)
 if (-not $Silent) { Write-Host "[*] Removing startup entries..." -ForegroundColor Gray }
 Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "KuaminiSecurityClient" -Force -ErrorAction SilentlyContinue
 Remove-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "KuaminiSecurityClient" -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" -Name "KuaminiSecurityClient" -Force -ErrorAction SilentlyContinue
 
 # Remove registry keys
 if (-not $Silent) { Write-Host "[*] Cleaning registry..." -ForegroundColor Gray }
