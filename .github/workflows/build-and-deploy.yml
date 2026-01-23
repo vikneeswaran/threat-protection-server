@@ -142,14 +142,18 @@ jobs:
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+          git config --global pull.rebase false
           
+          # Pull latest main, preferring current artifacts on conflict (avoids binary rebase issues)
+          git fetch origin main
+          git pull --no-rebase --strategy=ours origin main || true
+
           git add public/tray/*.pkg public/tray/*.zip public/tray/*.tar.gz 2>/dev/null || true
-          
+
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
             git commit -m "build: update installers from latest code"
-            git pull --rebase origin main
             git push origin main
           fi
         env:
