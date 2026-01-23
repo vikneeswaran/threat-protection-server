@@ -29,12 +29,12 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
 fi
 
 # Clean dist directory to prevent PyInstaller errors
-if [ -d "${DIST_DIR}/KuaminiSecurityClient" ]; then
+if [ -d "${DIST_DIR}/KuaminiSecurityClient" ] || [ -d "${DIST_DIR}/${APP_NAME}" ]; then
   echo "Cleaning existing dist directory..."
-  rm -rf "${DIST_DIR}/KuaminiSecurityClient"
+  rm -rf "${DIST_DIR}/KuaminiSecurityClient" "${DIST_DIR}/${APP_NAME}"
 fi
 
-pyinstaller --clean "${SPEC_FILE}"
+pyinstaller --clean --noconfirm "${SPEC_FILE}"
 
 if [ ! -d "${DIST_DIR}/${APP_NAME}" ]; then
   echo "Error: ${DIST_DIR}/${APP_NAME} not found after PyInstaller build" >&2
