@@ -161,7 +161,7 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/windows.zipKuaminiSecurityClient-1.0.0.msi
+            public/tray/KuaminiSecurityClient-1.0.0.msi
             public/tray/KuaminiSecurityClient-linux.tar.gz
           draft: false
           prerelease: false
