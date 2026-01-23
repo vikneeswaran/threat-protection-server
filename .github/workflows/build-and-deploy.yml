@@ -19,55 +19,72 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      deploy:
-        needs: [build-macos, build-windows, build-linux]
-        runs-on: ubuntu-latest
-        if: github.event_name == 'push'
-        steps:
-          - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-          - name: Download all artifacts
-            uses: actions/download-artifact@v4
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-          - name: Deploy to public/tray
-            run: |
-              mkdir -p public/tray
-              cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/ || true
-              cp windows-zip/windows.zip public/tray/ || true
-              cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true
-          
-              echo "Deployed installers:"
-              ls -lh public/tray/* 2>/dev/null || true
+      - name: Build macOS app
+        run: |
+          cd agent-tray
+          pyinstaller KuaminiSecurityClient-mac.spec
 
-          - name: Commit and push installers
-            run: |
-              git config --global user.email "github-actions[bot]@users.noreply.github.com"
-              git config --global user.name "github-actions[bot]"
-          
-              git add public/tray/*.pkg public/tray/*.zip public/tray/*.tar.gz 2>/dev/null || true
-          
-              if git diff --cached --quiet; then
-                echo "No changes to commit"
-              else
-                git commit -m "build: update installers from latest code"
-                git pull --rebase origin main
-                git push origin main
-              fi
-            env:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create macOS package
+        run: |
+          cd agent-tray/build
+          chmod +x pkgbuild-mac.sh
+          ./pkgbuild-mac.sh
 
-          - name: Create Release
-            uses: softprops/action-gh-release@v1
-            if: startsWith(github.ref, 'refs/tags/')
-            with:
-              files: |
-                public/tray/KuaminiSecurityClient-1.0.0.pkg
-                public/tray/windows.zip
-                public/tray/KuaminiSecurityClient-linux.tar.gz
-              draft: false
-              prerelease: false
-            env:
-              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg
+          path: agent-tray/build/KuaminiSecurityClient-1.0.0.pkg
+          retention-days: 30
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd agent-tray
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Windows executable
+        run: |
+          cd agent-tray
+          pyinstaller KuaminiSecurityClient-win.spec
+
+      - name: Create Windows MSI
+        run: |
+          cd agent-tray/build
+          powershell -ExecutionPolicy Bypass -File build-windows-msi.ps1
+
+      - name: Upload Windows MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi
+          path: agent-tray/build/KuaminiSecurityClient-1.0.0.msi
+          retention-days: 30
+
+  build-linux:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -114,14 +131,8 @@ jobs:
       - name: Deploy to public/tray
         run: |
           mkdir -p public/tray
-          cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/
-          cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/
-          cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/
-          
-          echo "Deployed installers:"
-          ls -lh public/tray/* 2>/dev/null || true
- || true
-          cp windows-zip/windows.zip public/tray/ || true
+          cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/ || true
+          cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/ || true
           cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true
           
           echo "Deployed installers:"
@@ -150,4 +161,9 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/windows.zip
+            public/tray/windows.zipKuaminiSecurityClient-1.0.0.msi
+            public/tray/KuaminiSecurityClient-linux.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
