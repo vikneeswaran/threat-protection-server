@@ -70,7 +70,9 @@ export async function POST(request: NextRequest) {
     let recommendedAction = "alert"
 
     // Check threat action policies
-    const threatActionPolicy = policies?.find((p: any) => p.policy?.type === "threat_actions")
+    const threatActionPolicy: any = Array.isArray(policies) 
+      ? policies.find((p: any) => p.policy?.type === "threat_actions")
+      : null
 
     if (threatActionPolicy?.policy?.settings) {
       const settings = threatActionPolicy.policy.settings as Record<string, any>

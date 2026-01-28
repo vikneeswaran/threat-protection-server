@@ -10,7 +10,7 @@ export function Footer() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     // Handle newsletter signup
-    console.log("Newsletter signup:", email)
+    console.info("Newsletter signup:", email)
     setEmail("")
   }
 

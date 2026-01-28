@@ -15,7 +15,7 @@ export async function GET() {
   for (const key of required) {
     const present = typeof process.env[key] !== "undefined" && process.env[key] !== ""
     env[key] = !!present
-    if (!present) missing.push(key)
+    if (!present) {missing.push(key)}
   }
 
   return NextResponse.json({ ok: missing.length === 0, env, missing })

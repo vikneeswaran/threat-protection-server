@@ -39,7 +39,7 @@ export default function LoginPage() {
         email,
         password,
       })
-      if (error) throw error
+      if (error) {throw error}
       router.push("/securityAgent/dashboard")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
@@ -60,7 +60,7 @@ export default function LoginPage() {
           redirectTo: `${window.location.origin}/securityAgent/auth/callback`,
         },
       })
-      if (error) throw error
+      if (error) {throw error}
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
       setIsGitHubLoading(false)

@@ -32,7 +32,7 @@ export async function POST(request: Request) {
         break
       }
 
-      if (!pageData || pageData.users.length < perPage) break
+      if (!pageData || pageData.users.length < perPage) {break}
       page += 1
     }
 

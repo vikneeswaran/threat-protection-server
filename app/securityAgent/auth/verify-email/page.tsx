@@ -33,7 +33,7 @@ export default function VerifyEmailPage() {
             "https://kuaminisystems.com/securityAgent/auth/callback",
         },
       })
-      if (error) throw error
+      if (error) {throw error}
       toast({ title: "Verification sent", description: "Please check your inbox and spam folder." })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to resend verification"

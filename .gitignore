@@ -5,6 +5,11 @@ node_modules/
 
 # Testing
 coverage/
+.vitest/
+*.test-result.json
+test-results/
+playwright-report/
+.nyc_output/
 
 # Production build
 .next/

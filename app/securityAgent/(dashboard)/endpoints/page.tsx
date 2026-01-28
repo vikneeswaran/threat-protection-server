@@ -53,7 +53,7 @@ export default async function EndpointsPage({
   const { data: endpoints, error: endpointsError } = await query
 
   if (endpointsError) {
-    console.log("[v0] Endpoints fetch error:", endpointsError.message)
+    console.info("[v0] Endpoints fetch error:", endpointsError.message)
   }
 
   // Compute actual status based on last_seen_at
@@ -70,7 +70,7 @@ export default async function EndpointsPage({
       .eq("status", "detected")
 
     if (threatsError) {
-      console.log("[v0] Threats fetch error:", threatsError.message)
+      console.info("[v0] Threats fetch error:", threatsError.message)
     }
 
     if (threats) {

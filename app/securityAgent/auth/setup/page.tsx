@@ -24,7 +24,7 @@ export default function SetupPage() {
 
   useEffect(() => {
     const checkUserAndProfile = async () => {
-      if (hasRedirected.current) return
+      if (hasRedirected.current) {return}
 
       try {
         const {
@@ -33,7 +33,7 @@ export default function SetupPage() {
         } = await supabase.auth.getUser()
 
         if (authError) {
-          console.log("[v0] Auth error:", authError.message)
+          console.info("[v0] Auth error:", authError.message)
           setIsCheckingProfile(false)
           setError("Authentication error. Please try logging in again.")
           return
@@ -60,7 +60,7 @@ export default function SetupPage() {
           .maybeSingle()
 
         if (profileError) {
-          console.log("[v0] Profile check error:", profileError.message)
+          console.info("[v0] Profile check error:", profileError.message)
           setIsCheckingProfile(false)
           return
         }
@@ -73,7 +73,7 @@ export default function SetupPage() {
 
         setIsCheckingProfile(false)
       } catch (err) {
-        console.log("[v0] Setup check error:", err)
+        console.info("[v0] Setup check error:", err)
         setIsCheckingProfile(false)
         setError("Failed to check profile status. Please try again.")
       }

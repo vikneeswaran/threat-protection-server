@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import crypto from "crypto"
 
@@ -17,8 +16,10 @@ function base64UrlDecode(input: string) {
 
 function getClientIp(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-for")
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown"
-  return request.ip || "unknown"
+  if (forwarded) {return forwarded.split(",")[0]?.trim() || "unknown"}
+  const realIp = request.headers.get("x-real-ip")
+  if (realIp) {return realIp.trim()}
+  return "unknown"
 }
 
 function isRateLimited(key: string) {

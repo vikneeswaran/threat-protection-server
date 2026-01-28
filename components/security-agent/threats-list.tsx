@@ -66,7 +66,7 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
   const canManage = ["super_admin", "admin", "operator"].includes(userRole)
 
   const handleAction = async () => {
-    if (!actionDialog.threat || !actionDialog.action) return
+    if (!actionDialog.threat || !actionDialog.action) {return}
     setIsLoading(true)
 
     const supabase = createClient()
@@ -93,7 +93,7 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
         })
         .eq("id", actionDialog.threat.id)
 
-      if (threatError) throw threatError
+      if (threatError) {throw threatError}
 
       // Record the action
       await supabase.from("threat_actions").insert({

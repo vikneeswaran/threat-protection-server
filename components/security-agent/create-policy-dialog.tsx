@@ -113,7 +113,7 @@ export function CreatePolicyDialog({ accountId, userId }: CreatePolicyDialogProp
         created_by: userId,
       })
 
-      if (error) throw error
+      if (error) {throw error}
 
       // Create audit log
       await supabase.from("audit_logs").insert({

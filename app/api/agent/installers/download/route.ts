@@ -47,7 +47,9 @@ function getClientIp(request: NextRequest) {
   if (forwarded) {
     return forwarded.split(",")[0]?.trim() || "unknown"
   }
-  return request.ip || "unknown"
+  const realIp = request.headers.get("x-real-ip")
+  if (realIp) {return realIp.trim()}
+  return "unknown"
 }
 
 function isRateLimited(key: string) {
@@ -315,8 +317,10 @@ async function generateMacOSInstaller(_distPath: string, token: string, accountI
     
     try {
       const { stdout, stderr } = await execAsync(`"${scriptPath}" "${token}" "${outputPkg}"`, { env })
-      if (stdout) console.log("generate-custom-pkg stdout:\n", stdout)
-      if (stderr) console.warn("generate-custom-pkg stderr:\n", stderr)
+      if (stdout) {
+        console.info("generate-custom-pkg stdout:\n", stdout)
+      }
+      if (stderr) {console.warn("generate-custom-pkg stderr:\n", stderr)}
     } catch (e: any) {
       console.error("generate-custom-pkg failed:", e?.stderr || e?.message || e)
       console.warn("Falling back to static base PKG; postinstall will download account-specific config")

@@ -71,7 +71,7 @@ export function CreateSubAccountDialog({ parentAccount, userId }: CreateSubAccou
         .select()
         .single()
 
-      if (accountError) throw accountError
+      if (accountError) {throw accountError}
 
       // Update parent account's allocated licenses
       const { error: updateError } = await supabase
@@ -81,7 +81,7 @@ export function CreateSubAccountDialog({ parentAccount, userId }: CreateSubAccou
         })
         .eq("id", parentAccount.id)
 
-      if (updateError) throw updateError
+      if (updateError) {throw updateError}
 
       // Create license allocation record
       await supabase.from("license_allocations").insert({

@@ -47,9 +47,9 @@ export function EndpointsList({ endpoints, userRole }: EndpointsListProps) {
   const [removingId, setRemovingId] = useState<string | null>(null)
 
   const handleRemove = async (endpoint: EndpointWithThreats) => {
-    if (removingId) return
+    if (removingId) {return}
     const confirmed = window.confirm(`Uninstall and remove ${endpoint.hostname}?`)
-    if (!confirmed) return
+    if (!confirmed) {return}
     setRemovingId(endpoint.id)
     try {
       const res = await fetch("/securityAgent/api/agent/uninstall", {

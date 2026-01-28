@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     } catch (parseErr) {
       const raw = await request.text()
       try {
-        const repaired = raw.replace(/("token"\s*:\s*")([^"]*)(")/s, (_, p1, p2, p3) => p1 + String(p2).replace(/\s+/g, "") + p3)
+        const repaired = raw.replace(/("token"\s*:\s*")([^"]*)(")/g, (_, p1, p2, p3) => p1 + String(p2).replace(/\s+/g, "") + p3)
         body = JSON.parse(repaired)
         console.warn("Repaired JSON body by cleaning token whitespace")
       } catch (repairErr) {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       }
       
       accountId = defaultAccount.id
-      console.log("Assigned default account for token-less registration:", accountId)
+      console.info("Assigned default account for token-less registration:", accountId)
     }
 
     // Check if endpoint already exists — prefer `agent_id` when provided, otherwise fall back to mac+hostname

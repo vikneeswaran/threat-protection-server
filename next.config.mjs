@@ -11,7 +11,7 @@ const nextConfig = {
     root: __dirnameESM,
   },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   images: {
     unoptimized: true,

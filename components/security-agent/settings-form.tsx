@@ -34,7 +34,7 @@ export function SettingsForm({ accountId, settings, lockedSettings, userRole, us
   const isLocked = (key: string) => lockedSettings.includes(key)
 
   const handleSave = async () => {
-    if (!canEdit) return
+    if (!canEdit) {return}
     setIsLoading(true)
 
     const supabase = createClient()
@@ -47,7 +47,7 @@ export function SettingsForm({ accountId, settings, lockedSettings, userRole, us
         })
         .eq("account_id", accountId)
 
-      if (error) throw error
+      if (error) {throw error}
 
       // Audit log
       await supabase.from("audit_logs").insert({

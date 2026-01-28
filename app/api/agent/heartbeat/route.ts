@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { agent_id, account_id, status, system_info } = body
+    const { agent_id, account_id, status, system_info: _system_info } = body
 
     if (!agent_id) {
       return NextResponse.json({ error: "Missing required field: agent_id" }, { status: 400 })
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     // First, try to find endpoint by agent_id
     let endpoint: any = null
-    let findError: any = null
+    const _findError: any = null
 
     // Build query to find endpoint
     let query = supabaseAdmin
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Now we have the account_id from the database
-    const dbAccountId = foundByAgentId.account_id
+    const _dbAccountId = foundByAgentId.account_id
 
     // Update endpoint with heartbeat info
     const { data: updated, error: updateError } = await supabaseAdmin

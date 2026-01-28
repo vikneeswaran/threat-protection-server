@@ -55,7 +55,7 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
   const isExpired = account.license_expires_at ? new Date(account.license_expires_at) < new Date() : false
 
   const handleAllocate = async () => {
-    if (!selectedAccount || !quantity) return
+    if (!selectedAccount || !quantity) {return}
     setIsLoading(true)
 
     const supabase = createClient()
@@ -64,14 +64,14 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
     try {
       // Update sub-account licenses
       const targetAccount = subAccounts.find((a) => a.id === selectedAccount)
-      if (!targetAccount) throw new Error("Account not found")
+      if (!targetAccount) {throw new Error("Account not found")}
 
       const { error: subError } = await supabase
         .from("accounts")
         .update({ total_licenses: targetAccount.total_licenses + qty })
         .eq("id", selectedAccount)
 
-      if (subError) throw subError
+      if (subError) {throw subError}
 
       // Update parent account's allocated licenses
       const { error: parentError } = await supabase
@@ -79,7 +79,7 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
         .update({ allocated_licenses: account.allocated_licenses + qty })
         .eq("id", account.id)
 
-      if (parentError) throw parentError
+      if (parentError) {throw parentError}
 
       // Create allocation record
       await supabase.from("license_allocations").insert({
