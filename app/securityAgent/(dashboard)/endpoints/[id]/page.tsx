@@ -31,7 +31,7 @@ export default async function EndpointDetailPage({
   }
 
   // Add computed status
-  const endpointWithComputedStatus = withComputedStatus(endpoint)
+  const _endpointWithComputedStatus = withComputedStatus(endpoint)
 
   // Get endpoint threats
   const { data: threats } = await supabase

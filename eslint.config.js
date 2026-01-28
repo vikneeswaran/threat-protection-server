@@ -68,7 +68,6 @@ export default [
         Headers: 'readonly',
         Blob: 'readonly',
         URL: 'readonly',
-        URLSearchParams: 'readonly',
         alert: 'readonly',
         // DOM types
         HTMLElement: 'readonly',

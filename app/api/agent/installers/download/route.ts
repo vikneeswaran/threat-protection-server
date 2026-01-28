@@ -361,7 +361,7 @@ async function generateMacOSInstaller(_distPath: string, token: string, accountI
   }
 }
 
-async function generateWindowsInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
+async function _generateWindowsInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
     const bundlePath = await resolveBundlePath([
@@ -371,7 +371,7 @@ async function generateWindowsInstaller(_distPath: string, token: string, accoun
     ])
     const bundleFileName = path.basename(bundlePath)
     const bundleHash = await getFileSha256(bundlePath)
-    const bundleIsZip = bundleFileName.toLowerCase().endsWith(".zip")
+    const _bundleIsZip = bundleFileName.toLowerCase().endsWith(".zip")
 
     // For Windows, we'll create a self-extracting archive with embedded config
     // This is a simplified approach - in production you'd want to use WiX or Inno Setup
@@ -479,7 +479,7 @@ Write-Host "Check the system tray for the Kuamini Security Client icon." -Foregr
   }
 }
 
-async function generateLinuxInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
+async function _generateLinuxInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
     const bundlePath = await resolveBundlePath([
@@ -489,7 +489,7 @@ async function generateLinuxInstaller(_distPath: string, token: string, accountI
     ])
     const bundleFileName = path.basename(bundlePath)
     const bundleHash = await getFileSha256(bundlePath)
-    const bundleIsZip = bundleFileName.toLowerCase().endsWith(".zip")
+    const _bundleIsZip = bundleFileName.toLowerCase().endsWith(".zip")
 
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
 
@@ -501,7 +501,7 @@ async function generateLinuxInstaller(_distPath: string, token: string, accountI
 set -e
 
 EXPECTED_HASH="${bundleHash}"
-BUNDLE_IS_ZIP=${bundleIsZip ? 1 : 0}
+BUNDLE_IS_ZIP=${_bundleIsZip ? 1 : 0}
 TMP_BUNDLE=$(mktemp)
 
 echo "Installing Kuamini Threat Protection Agent..."

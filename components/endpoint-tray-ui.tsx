@@ -45,7 +45,7 @@ export function EndpointTrayUI({ endpointId, hostname }: TrayUIProps) {
           protectionStatus: threatCount > 0 ? "at-risk" : agentRunning ? "protected" : "offline",
           criticalThreats,
         })
-      } catch (error) {
+      } catch {
         setStatus((prev) => ({ ...prev, agentRunning: false, protectionStatus: "offline" }))
       }
     }

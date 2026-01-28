@@ -64,8 +64,8 @@ export default function ScriptPage() {
               timestamp: Date.now(),
             }),
           )
-        } catch (e) {
-          console.error("Failed to fetch account:", e)
+        } catch (_e) {
+          console.error("Failed to fetch account:", _e)
           setError("Failed to load account information")
           setLoading(false)
           return
@@ -73,7 +73,7 @@ export default function ScriptPage() {
       } else {
         try {
           tokenData = JSON.parse(atob(token))
-        } catch (e) {
+        } catch {
           setError("Invalid token format. Please go back and try again.")
           setLoading(false)
           return
@@ -144,14 +144,14 @@ send_heartbeat() {
   RESPONSE=$(curl -s -X POST "$API_URL/heartbeat" \
     -H "Content-Type: application/json" \
     -d "{
-      \"agent_id\": \"$AGENT_ID\",
-      \"status\": \"online\",
-      \"system_info\": {
-        \"hostname\": \"$(hostname)\",
-        \"os\": \"$(uname -s)\",
-        \"os_version\": \"$(sw_vers -productVersion 2>/dev/null || uname -r)\",
-        \"cpu_usage\": $(top -l 1 | grep \"CPU usage\" | awk '{print $3}' | tr -d '%' || echo \"0\"),
-        \"memory_usage\": $(vm_stat | awk '/Pages active/ {print $3}' | tr -d '.' || echo \"0\")
+      "agent_id": "$AGENT_ID",
+      "status": "online",
+      "system_info": {
+        "hostname": "$(hostname)",
+        "os": "$(uname -s)",
+        "os_version": "$(sw_vers -productVersion 2>/dev/null || uname -r)",
+        "cpu_usage": $(top -l 1 | grep "CPU usage" | awk '{print $3}' | tr -d '%' || echo "0"),
+        "memory_usage": $(vm_stat | awk '/Pages active/ {print $3}' | tr -d '.' || echo "0")
       }
     }")
   
@@ -175,11 +175,11 @@ OS_VERSION=$(sw_vers -productVersion 2>/dev/null || uname -r)
 REGISTER_RESPONSE=$(curl -s -X POST "$API_BASE_URL/register" \
   -H "Content-Type: application/json" \
   -d "{
-    \"token\": \"$REGISTRATION_TOKEN\",
-    \"agent_id\": \"$AGENT_ID\",
-    \"hostname\": \"$HOSTNAME\",
-    \"os\": \"macos\",
-    \"os_version\": \"$OS_VERSION\"
+    "token": "$REGISTRATION_TOKEN",
+    "agent_id": "$AGENT_ID",
+    "hostname": "$HOSTNAME",
+    "os": "macos",
+    "os_version": "$OS_VERSION"
   }")
 
 echo "Registration response: $REGISTER_RESPONSE"
@@ -293,14 +293,14 @@ send_heartbeat() {
   RESPONSE=$(curl -s -X POST "$API_URL/heartbeat" \
     -H "Content-Type: application/json" \
     -d "{
-      \"agent_id\": \"$AGENT_ID\",
-      \"status\": \"online\",
-      \"system_info\": {
-        \"hostname\": \"$(hostname)\",
-        \"os\": \"linux\",
-        \"os_version\": \"$(uname -r)\",
-        \"cpu_usage\": $CPU_USAGE,
-        \"memory_usage\": $MEM_USAGE
+      "agent_id": "$AGENT_ID",
+      "status": "online",
+      "system_info": {
+        "hostname": "$(hostname)",
+        "os": "linux",
+        "os_version": "$(uname -r)",
+        "cpu_usage": $CPU_USAGE,
+        "memory_usage": $MEM_USAGE
       }
     }")
   
@@ -324,11 +324,11 @@ OS_VERSION=$(uname -r)
 REGISTER_RESPONSE=$(curl -s -X POST "$API_BASE_URL/register" \
   -H "Content-Type: application/json" \
   -d "{
-    \"token\": \"$REGISTRATION_TOKEN\",
-    \"agent_id\": \"$AGENT_ID\",
-    \"hostname\": \"$HOSTNAME\",
-    \"os\": \"linux\",
-    \"os_version\": \"$OS_VERSION\"
+    "token": "$REGISTRATION_TOKEN",
+    "agent_id": "$AGENT_ID",
+    "hostname": "$HOSTNAME",
+    "os": "linux",
+    "os_version": "$OS_VERSION"
   }")
 
 echo "Registration response: $REGISTER_RESPONSE"

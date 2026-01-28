@@ -6,7 +6,7 @@ const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, proces
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { endpoint_id, status, agent_version, ip_address, system_info } = body
+    const { endpoint_id, status, agent_version, ip_address, system_info: _system_info } = body
 
     if (!endpoint_id) {
       return NextResponse.json({ error: "Endpoint ID is required" }, { status: 400 })

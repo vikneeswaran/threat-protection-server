@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,15 +15,12 @@ interface InstallersPageProps {
   account: Account
 }
 
-export function InstallersPage({ profile, account }: InstallersPageProps) {
-  const router = useRouter()
+export function InstallersPage({ profile: _profile, account }: InstallersPageProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
-  const [baseUrl, setBaseUrl] = useState("")
   const [registrationToken, setRegistrationToken] = useState("")
   const [downloadingInstaller, setDownloadingInstaller] = useState<string | null>(null)
 
   useEffect(() => {
-    setBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com")
     // Generate token only once on client side to avoid hydration mismatch
     const token = Buffer.from(
       JSON.stringify({
@@ -41,10 +37,6 @@ export function InstallersPage({ profile, account }: InstallersPageProps) {
     setCopiedCommand(commandType)
     toast.success("Copied to clipboard!")
     setTimeout(() => setCopiedCommand(null), 2000)
-  }
-
-  const openScriptPage = (os: string) => {
-    router.push(`/securityAgent/installers/script/${os}?token=${registrationToken}`)
   }
 
   const downloadInstaller = async (platform: string) => {

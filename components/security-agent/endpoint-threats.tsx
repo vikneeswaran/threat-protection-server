@@ -31,7 +31,7 @@ const statusColors = {
   resolved: "bg-green-500/10 text-green-600 dark:text-green-400",
 }
 
-export function EndpointThreats({ threats, endpointId, userRole }: EndpointThreatsProps) {
+export function EndpointThreats({ threats, endpointId: _endpointId, userRole }: EndpointThreatsProps) {
   const canManage = ["super_admin", "admin", "operator"].includes(userRole)
 
   if (threats.length === 0) {

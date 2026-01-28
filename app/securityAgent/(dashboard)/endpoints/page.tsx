@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 import { EndpointsList } from "@/components/security-agent/endpoints-list"
 import { EndpointFilters } from "@/components/security-agent/endpoint-filters"
-import { withComputedStatuses, computeEndpointStatus } from "@/lib/endpoint-status"
+import { withComputedStatuses } from "@/lib/endpoint-status"
 
 export default async function EndpointsPage({
   searchParams,

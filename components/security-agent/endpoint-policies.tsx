@@ -14,6 +14,8 @@ interface EndpointPoliciesProps {
   userRole: UserRole
 }
 
+export function EndpointPolicies({ assignedPolicies, endpointId: _endpointId, userRole }: EndpointPoliciesProps) {
+
 const policyTypeLabels: Record<string, string> = {
   real_time_protection: "Real-time Protection",
   scheduled_scan: "Scheduled Scan",
@@ -23,8 +25,7 @@ const policyTypeLabels: Record<string, string> = {
   device_control: "Device Control",
 }
 
-export function EndpointPolicies({ assignedPolicies, endpointId, userRole }: EndpointPoliciesProps) {
-  const canManage = ["super_admin", "admin", "operator"].includes(userRole)
+const canManage = ["super_admin", "admin", "operator"].includes(userRole)
 
   if (assignedPolicies.length === 0) {
     return (

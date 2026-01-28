@@ -11,8 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { useToast } from "@/hooks/use-toast"
-import { ToastAction } from "@/components/ui/toast"
 import { Shield } from "lucide-react"
 
 export default function RegisterPage() {
@@ -23,8 +21,6 @@ export default function RegisterPage() {
   const [organizationName, setOrganizationName] = useState("")
   const [licenseTier, setLicenseTier] = useState("free")
   const [error, setError] = useState<string | null>(null)
-  const [infoMessage, setInfoMessage] = useState<string | null>(null)
-    const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 

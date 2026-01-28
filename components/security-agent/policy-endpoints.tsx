@@ -20,7 +20,7 @@ const statusColors = {
   disconnected: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
 }
 
-export function PolicyEndpoints({ assignedEndpoints, policyId, userRole }: PolicyEndpointsProps) {
+export function PolicyEndpoints({ assignedEndpoints, policyId: _policyId, userRole }: PolicyEndpointsProps) {
   const canManage = ["super_admin", "admin", "operator"].includes(userRole)
 
   if (assignedEndpoints.length === 0) {
