@@ -69,6 +69,31 @@ $wixObj = "$PSScriptRoot\KuaminiSecurityClient.wixobj"
 $internalObj = "$PSScriptRoot\InternalFiles.wixobj"
 $internalWxs = "$PSScriptRoot\InternalFiles.wxs"
 
+# Check if InternalFiles.wxs exists, if not generate it using heat
+if (-not (Test-Path $internalWxs)) {
+    Write-Host "Generating InternalFiles.wxs from _internal folder..." -ForegroundColor Yellow
+    $internalDir = "$SourceDir\agent-tray\dist\KuaminiSecurityClient\_internal"
+    if (Test-Path $internalDir) {
+        try {
+            # Use heat.exe to generate file references
+            & heat dir $internalDir -cg InternalFiles -gg -sf -srd -o $internalWxs 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✓ InternalFiles.wxs generated successfully" -ForegroundColor Green
+                # Fix the source paths to be relative to build directory
+                $content = Get-Content $internalWxs -Raw
+                $content = $content -replace 'Source="SourceDir\\', 'Source="..\dist\KuaminiSecurityClient\_internal\'
+                Set-Content $internalWxs $content
+            } else {
+                Write-Host "Warning: Could not generate InternalFiles.wxs with heat" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "Warning: heat.exe not available, building without Python runtime" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Warning: _internal folder not found at $internalDir" -ForegroundColor Yellow
+    }
+}
+
 # Compile main WiX file
 $candleArgs = @(
     $wxsFile,
@@ -92,7 +117,7 @@ if (Test-Path $internalWxs) {
         exit 1
     }
 } else {
-    Write-Warning "InternalFiles.wxs not found. Skipping Python runtime inclusion."
+    Write-Warning "InternalFiles.wxs not found. Building MSI without Python runtime."
 }
 
 Write-Host "WiX compilation successful" -ForegroundColor Green
@@ -100,9 +125,14 @@ Write-Host "WiX compilation successful" -ForegroundColor Green
 # Link to create MSI
 Write-Host "Linking MSI package..." -ForegroundColor Cyan
 $msiFile = "$OutputDir\KuaminiSecurityClient-$Version.msi"
-$lightArgs = @(
-    $wixObj,
-    $internalObj,
+$lightArgs = @($wixObj)
+
+# Only include internal files if they were compiled
+if (Test-Path $internalObj) {
+    $lightArgs += $internalObj
+}
+
+$lightArgs += @(
     "-out", $msiFile,
     "-ext", "WixUIExtension",
     "-cultures:en-us"
@@ -132,6 +162,10 @@ if (Test-Path $msiFile) {
 }
 
 # Clean up temporary files
-Remove-Item $wixObj -ErrorAction SilentlyContinue
-Remove-Item $internalObj -ErrorAction SilentlyContinue
+if (Test-Path $wixObj) {
+    Remove-Item $wixObj -ErrorAction SilentlyContinue
+}
+if (Test-Path $internalObj) {
+    Remove-Item $internalObj -ErrorAction SilentlyContinue
+}
 Write-Host "Build completed successfully!" -ForegroundColor Green
