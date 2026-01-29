@@ -66,6 +66,10 @@ if (-not (Test-Path $OutputDir)) {
 # Compile WiX source to .wixobj
 Write-Host "Compiling WiX source..." -ForegroundColor Cyan
 $wixObj = "$PSScriptRoot\KuaminiSecurityClient.wixobj"
+$internalObj = "$PSScriptRoot\InternalFiles.wixobj"
+$internalWxs = "$PSScriptRoot\InternalFiles.wxs"
+
+# Compile main WiX file
 $candleArgs = @(
     $wxsFile,
     "-out", $wixObj,
@@ -75,9 +79,22 @@ $candleArgs = @(
 
 & candle @candleArgs
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Candle compilation failed"
+    Write-Error "Candle compilation of main WiX failed"
     exit 1
 }
+
+# Compile internal files WiX file
+if (Test-Path $internalWxs) {
+    Write-Host "Compiling internal files WiX source..." -ForegroundColor Cyan
+    & candle $internalWxs -out $internalObj
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Candle compilation of internal files WiX failed"
+        exit 1
+    }
+} else {
+    Write-Warning "InternalFiles.wxs not found. Skipping Python runtime inclusion."
+}
+
 Write-Host "WiX compilation successful" -ForegroundColor Green
 
 # Link to create MSI
@@ -85,6 +102,7 @@ Write-Host "Linking MSI package..." -ForegroundColor Cyan
 $msiFile = "$OutputDir\KuaminiSecurityClient-$Version.msi"
 $lightArgs = @(
     $wixObj,
+    $internalObj,
     "-out", $msiFile,
     "-ext", "WixUIExtension",
     "-cultures:en-us"
@@ -115,4 +133,5 @@ if (Test-Path $msiFile) {
 
 # Clean up temporary files
 Remove-Item $wixObj -ErrorAction SilentlyContinue
+Remove-Item $internalObj -ErrorAction SilentlyContinue
 Write-Host "Build completed successfully!" -ForegroundColor Green

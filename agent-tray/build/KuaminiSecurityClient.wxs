@@ -28,6 +28,7 @@
       <ComponentRef Id="ConfigFileComponent" />
       <ComponentRef Id="RegistryAutoLaunchComponent" />
       <ComponentRef Id="ProgramMenuComponent" />
+      <ComponentGroupRef Id="InternalFiles" />
     </Feature>
     
     <!-- Main executable component -->
