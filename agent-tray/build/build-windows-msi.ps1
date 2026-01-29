@@ -76,21 +76,15 @@ if (-not (Test-Path $internalWxs)) {
     if (Test-Path $internalDir) {
         try {
             # Use heat.exe to generate file references
-            & heat dir $internalDir -cg InternalFiles -gg -sf -srd -o $internalWxs 2>$null
+            & heat dir "$internalDir" -cg InternalFiles -gg -sf -srd -o "$internalWxs" 2>$null
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ InternalFiles.wxs generated successfully" -ForegroundColor Green
+                Write-Host "InternalFiles.wxs generated successfully" -ForegroundColor Green
                 # Fix the source paths to be relative to build directory
-                $content = Get-Content $internalWxs -Raw
-                $content = $content -replace 'Source="SourceDir\\', 'Source="..\dist\KuaminiSecurityClient\_internal\'
-                Set-Content $internalWxs $content
-            } else {
-                Write-Host "Warning: Could not generate InternalFiles.wxs with heat" -ForegroundColor Yellow
+                (Get-Content "$internalWxs") -replace 'Source="SourceDir\\', 'Source="..\\dist\\KuaminiSecurityClient\\_internal\\' | Set-Content "$internalWxs"
             }
         } catch {
-            Write-Host "Warning: heat.exe not available, building without Python runtime" -ForegroundColor Yellow
+            Write-Host "Warning: heat.exe not available" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "Warning: _internal folder not found at $internalDir" -ForegroundColor Yellow
     }
 }
 
@@ -108,16 +102,14 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Compile internal files WiX file
+# Compile internal files WiX file if it exists
+$internalObjToLink = ""
 if (Test-Path $internalWxs) {
     Write-Host "Compiling internal files WiX source..." -ForegroundColor Cyan
-    & candle $internalWxs -out $internalObj
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Candle compilation of internal files WiX failed"
-        exit 1
+    & candle "$internalWxs" -out "$internalObj"
+    if ($LASTEXITCODE -eq 0) {
+        $internalObjToLink = $internalObj
     }
-} else {
-    Write-Warning "InternalFiles.wxs not found. Building MSI without Python runtime."
 }
 
 Write-Host "WiX compilation successful" -ForegroundColor Green
@@ -127,9 +119,8 @@ Write-Host "Linking MSI package..." -ForegroundColor Cyan
 $msiFile = "$OutputDir\KuaminiSecurityClient-$Version.msi"
 $lightArgs = @($wixObj)
 
-# Only include internal files if they were compiled
-if (Test-Path $internalObj) {
-    $lightArgs += $internalObj
+if ($internalObjToLink) {
+    $lightArgs += $internalObjToLink
 }
 
 $lightArgs += @(
