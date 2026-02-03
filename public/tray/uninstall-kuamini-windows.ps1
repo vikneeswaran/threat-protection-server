@@ -34,9 +34,9 @@ if (-not $isAdmin) {
 
 if (-not $Silent) {
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════════════════════════╗"
-    Write-Host "║  Kuamini Security Client - Advanced Uninstaller v3.1       ║"
-    Write-Host "╚════════════════════════════════════════════════════════════╝"
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "  Kuamini Security Client - Advanced Uninstaller v3.1" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -74,10 +74,10 @@ if ($AGENT_ID) {
         Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post `
             -Body (@{agent_id = $AGENT_ID} | ConvertTo-Json) `
             -ContentType "application/json" -TimeoutSec 10 -ErrorAction Stop | Out-Null
-        if (-not $Silent) { Write-Host "    ✓ Agent deregistered" -ForegroundColor Green }
+        if (-not $Silent) { Write-Host "    [OK] Agent deregistered" -ForegroundColor Green }
     }
     catch {
-        if (-not $Silent) { Write-Host "    ⚠ Could not deregister (may already be gone)" -ForegroundColor Yellow }
+        if (-not $Silent) { Write-Host "    [WARN] Could not deregister (may already be gone)" -ForegroundColor Yellow }
     }
 }
 
@@ -97,7 +97,7 @@ for ($i = 0; $i -lt 4; $i++) {
     Start-Sleep -Milliseconds 300
 }
 
-if (-not $Silent) { Write-Host "    ✓ Processes terminated" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Processes terminated" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 4: UNINSTALL MSI INSTANCES
@@ -132,7 +132,7 @@ foreach ($regPath in @(
 }
 
 if ($uninstalled -gt 0 -and -not $Silent) {
-    Write-Host "    ✓ Removed $uninstalled MSI installation(s)" -ForegroundColor Green
+    Write-Host "    [OK] Removed $uninstalled MSI installation(s)" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -150,7 +150,7 @@ if (-not $Silent) { Write-Host "[*] Removing scheduled tasks..." -ForegroundColo
     Unregister-ScheduledTask -TaskName $_ -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 }
 
-if (-not $Silent) { Write-Host "    ✓ Scheduled tasks removed" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Scheduled tasks removed" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 6: REMOVE STARTUP ENTRIES
@@ -168,7 +168,7 @@ if (-not $Silent) { Write-Host "[*] Removing startup registry entries..." -Foreg
     Remove-ItemProperty $_ -Name "KuaminiAgentTray" -Force -ErrorAction SilentlyContinue | Out-Null
 }
 
-if (-not $Silent) { Write-Host "    ✓ Startup entries removed" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Startup entries removed" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 7: REMOVE REGISTRY KEYS
@@ -188,7 +188,7 @@ if (-not $Silent) { Write-Host "[*] Cleaning registry..." -ForegroundColor Gray 
     }
 }
 
-if (-not $Silent) { Write-Host "    ✓ Registry cleaned" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Registry cleaned" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 8: REMOVE INSTALLATION FILES (AGGRESSIVE)
@@ -232,12 +232,12 @@ foreach ($path in $installPaths) {
             }
             
             Remove-Item $path -Recurse -Force -ErrorAction Stop
-            Write-Host "      ✓ Removed directly" -ForegroundColor Green
+            Write-Host "      [OK] Removed directly" -ForegroundColor Green
             $removedCount++
             continue
         }
         catch {
-            Write-Host "      ⚠ Direct removal failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+            Write-Host "      [WARN] Direct removal failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
         }
     }
     
@@ -258,12 +258,12 @@ foreach ($path in $installPaths) {
             }
             
             Remove-Item $path -Recurse -Force -ErrorAction Stop
-            Write-Host "      ✓ Removed after taking ownership" -ForegroundColor Green
+            Write-Host "      [OK] Removed after taking ownership" -ForegroundColor Green
             $removedCount++
             continue
         }
         catch {
-            Write-Host "      ⚠ Takeown strategy failed" -ForegroundColor DarkYellow
+            Write-Host "      [WARN] Takeown strategy failed" -ForegroundColor DarkYellow
         }
     }
     
@@ -277,12 +277,12 @@ foreach ($path in $installPaths) {
             
             Remove-Item $tempPath -Recurse -Force -ErrorAction Stop
             
-            Write-Host "      ✓ Removed via temp directory" -ForegroundColor Green
+            Write-Host "      [OK] Removed via temp directory" -ForegroundColor Green
             $removedCount++
             continue
         }
         catch {
-            Write-Host "      ⚠ Move strategy failed" -ForegroundColor DarkYellow
+            Write-Host "      [WARN] Move strategy failed" -ForegroundColor DarkYellow
         }
     }
     
@@ -297,7 +297,7 @@ REM Schedule deletion on reboot
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations /t REG_MULTI_SZ /d "$path" /f >nul 2>&1
 "@ | Out-Null
             
-            Write-Host "      ✓ Scheduled for next reboot" -ForegroundColor Yellow
+            Write-Host "      [WARN] Scheduled for next reboot" -ForegroundColor Yellow
             $failedPaths += $path
             continue
         }
@@ -306,13 +306,13 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRe
     
     # All strategies failed
     if (Test-Path $path) {
-        Write-Host "      ✗ Could not remove" -ForegroundColor Red
+        Write-Host "      [FAIL] Could not remove" -ForegroundColor Red
         $failedPaths += $path
     }
 }
 
 if (-not $Silent) {
-    Write-Host "    Summary: Removed $removedCount folder(s)" -ForegroundColor Green
+    Write-Host "    [OK] Summary: Removed $removedCount folder(s)" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -325,7 +325,7 @@ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue | Out-Null
 Start-Sleep -Seconds 1
 Start-Process explorer.exe -ErrorAction SilentlyContinue | Out-Null
 
-if (-not $Silent) { Write-Host "    ✓ Explorer restarted" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Explorer restarted" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 10: CLEAN CONTROL PANEL CACHE
@@ -345,7 +345,7 @@ if (-not $Silent) { Write-Host "[*] Cleaning Control Panel cache..." -Foreground
     }
 }
 
-if (-not $Silent) { Write-Host "    ✓ Cache cleaned" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Cache cleaned" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 11: FINAL VERIFICATION
@@ -368,26 +368,26 @@ if (-not $Silent) {
     Write-Host ""
     
     if ($remainingProcs.Count -eq 0 -and $remainingFolders.Count -eq 0 -and $remainingMSI.Count -eq 0) {
-        Write-Host "╔════════════════════════════════════════════════════════════╗"
-        Write-Host "║  ✓ UNINSTALL COMPLETE - System is clean                   ║"
-        Write-Host "╚════════════════════════════════════════════════════════════╝"
+        Write-Host "============================================================" -ForegroundColor Green
+        Write-Host "  [OK] UNINSTALL COMPLETE - System is clean" -ForegroundColor Green
+        Write-Host "============================================================" -ForegroundColor Green
         Write-Host ""
     }
     else {
-        Write-Host "╔════════════════════════════════════════════════════════════╗"
-        Write-Host "║  ⚠ UNINSTALL COMPLETED WITH ISSUES                        ║"
-        Write-Host "╚════════════════════════════════════════════════════════════╝"
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  [WARN] UNINSTALL COMPLETED WITH ISSUES" -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host ""
         
         if ($remainingProcs.Count -gt 0) {
-            Write-Host "  ⚠ Processes still running ($($remainingProcs.Count))" -ForegroundColor Yellow
+            Write-Host "  [WARN] Processes still running ($($remainingProcs.Count))" -ForegroundColor Yellow
             foreach ($proc in $remainingProcs) {
                 Write-Host "    - $($proc.Name) (PID: $($proc.Id))" -ForegroundColor Gray
             }
         }
         
         if ($remainingFolders.Count -gt 0) {
-            Write-Host "  ⚠ Folders not removed ($($remainingFolders.Count))" -ForegroundColor Yellow
+            Write-Host "  [WARN] Folders not removed ($($remainingFolders.Count))" -ForegroundColor Yellow
             foreach ($folder in $remainingFolders) {
                 Write-Host "    - $folder" -ForegroundColor Gray
             }
@@ -398,7 +398,7 @@ if (-not $Silent) {
         }
         
         if ($remainingMSI.Count -gt 0) {
-            Write-Host "  ⚠ MSI entries in registry ($($remainingMSI.Count))" -ForegroundColor Yellow
+            Write-Host "  [WARN] MSI entries in registry ($($remainingMSI.Count))" -ForegroundColor Yellow
             foreach ($app in $remainingMSI) {
                 Write-Host "    - $($app.DisplayName)" -ForegroundColor Gray
             }

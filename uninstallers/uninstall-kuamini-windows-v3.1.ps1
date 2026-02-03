@@ -34,9 +34,9 @@ if (-not $isAdmin) {
 
 if (-not $Silent) {
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════════════════════════╗"
-    Write-Host "║  Kuamini Security Client - Advanced Uninstaller v3.1       ║"
-    Write-Host "╚════════════════════════════════════════════════════════════╝"
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "  Kuamini Security Client - Advanced Uninstaller v3.1" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -74,10 +74,10 @@ if ($AGENT_ID) {
         Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post `
             -Body (@{agent_id = $AGENT_ID} | ConvertTo-Json) `
             -ContentType "application/json" -TimeoutSec 10 -ErrorAction Stop | Out-Null
-        if (-not $Silent) { Write-Host "    ✓ Agent deregistered" -ForegroundColor Green }
+        if (-not $Silent) { Write-Host "    [OK] Agent deregistered" -ForegroundColor Green }
     }
     catch {
-        if (-not $Silent) { Write-Host "    ⚠ Could not deregister (may already be gone)" -ForegroundColor Yellow }
+        if (-not $Silent) { Write-Host "    [WARN] Could not deregister (may already be gone)" -ForegroundColor Yellow }
     }
 }
 
@@ -368,15 +368,15 @@ if (-not $Silent) {
     Write-Host ""
     
     if ($remainingProcs.Count -eq 0 -and $remainingFolders.Count -eq 0 -and $remainingMSI.Count -eq 0) {
-        Write-Host "╔════════════════════════════════════════════════════════════╗"
-        Write-Host "║  ✓ UNINSTALL COMPLETE - System is clean                   ║"
-        Write-Host "╚════════════════════════════════════════════════════════════╝"
+        Write-Host "============================================================" -ForegroundColor Green
+        Write-Host "  [OK] UNINSTALL COMPLETE - System is clean" -ForegroundColor Green
+        Write-Host "============================================================" -ForegroundColor Green
         Write-Host ""
     }
     else {
-        Write-Host "╔════════════════════════════════════════════════════════════╗"
-        Write-Host "║  ⚠ UNINSTALL COMPLETED WITH ISSUES                        ║"
-        Write-Host "╚════════════════════════════════════════════════════════════╝"
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  [WARN] UNINSTALL COMPLETED WITH ISSUES" -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host ""
         
         if ($remainingProcs.Count -gt 0) {
