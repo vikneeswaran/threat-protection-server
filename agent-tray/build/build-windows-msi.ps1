@@ -1,6 +1,6 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$RegistrationToken,
+    [Parameter(Mandatory = $false)]
+    [string]$RegistrationToken = "placeholder-token",
 
     [Parameter(Mandatory = $false)]
     [string]$Version = "1.0.5"

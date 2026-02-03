@@ -16,7 +16,7 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function GET(request: NextRequest) {
   try {
-    // 1. Extract and validate query parameters
+    // Extract query parameters
     const { searchParams } = new URL(request.url)
     const token = searchParams.get('token')
     const accountId = searchParams.get('accountId')
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 2. Validate token format (basic check)
+    // Validate token format (basic check)
     if (token.length < 20) {
       return NextResponse.json(
         { error: 'Invalid token format' },
@@ -36,11 +36,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 3. Optional: Verify token is valid (can be enhanced to decode JWT/base64)
-    // For now, we trust that tokens are pre-validated by the console UI
-    // that generated the download link.
+    // Log for audit purposes (accountId may be used for logging)
+    console.log(`[Installer Download] Token: ${token.substring(0, 20)}..., Account: ${accountId || 'not-provided'}`)
 
-    // 4. Serve pre-built MSI from public/tray/
+    // Serve pre-built MSI from public/tray/
     // The MSI is pre-built during the build process WITHOUT any token
     // The installer script (install-kuamini-windows-cli.ps1) handles token creation
     // after MSI installation completes
@@ -55,7 +54,7 @@ export async function GET(request: NextRequest) {
       
       if (session.data.session?.user) {
         // Log to audit trail
-        console.log(
+        console.info(
           `[Installer Download] User: ${session.data.session.user.email}, ` +
           `AccountId: ${accountId || 'not-provided'}, Token: ${token.substring(0, 20)}...`
         )

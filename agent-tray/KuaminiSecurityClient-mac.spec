@@ -4,7 +4,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('build/autostart/macos/com.kuamini.securityclient.plist', '.')],
+    datas=[],
     hiddenimports=[
         'pystray',
         'psutil',

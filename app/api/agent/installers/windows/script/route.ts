@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 /**
  * GET /api/agent/installers/windows/script
@@ -35,13 +37,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Read the base installer script template
-    const fs = require('fs')
-    const path = require('path')
-    const scriptPath = path.join(process.cwd(), 'public', 'tray', 'install-kuamini-windows-cli.ps1')
+    const scriptPath = join(process.cwd(), 'public', 'tray', 'install-kuamini-windows-cli.ps1')
     
     let scriptContent: string
     try {
-      scriptContent = fs.readFileSync(scriptPath, 'utf-8')
+      scriptContent = readFileSync(scriptPath, 'utf-8')
     } catch (error) {
       console.error('Failed to read installer script:', error)
       return NextResponse.json(
@@ -51,7 +51,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Replace the token parameter default or inject it
-    // The script will use this token automatically if no -Token parameter is provided
     const tokenEmbeddedScript = scriptContent.replace(
       /param\(\s*\[Parameter\(Mandatory\s*=\s*\$false\)\]\s*\[string\]\$Token,/,
       `param(
@@ -98,8 +97,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const token = body.token
+    const body = await request.json() as Record<string, unknown>
+    const token = body.token as string | null
 
     if (!token) {
       return NextResponse.json(
@@ -117,13 +116,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Read the base installer script template
-    const fs = require('fs')
-    const path = require('path')
-    const scriptPath = path.join(process.cwd(), 'public', 'tray', 'install-kuamini-windows-cli.ps1')
+    const scriptPath = join(process.cwd(), 'public', 'tray', 'install-kuamini-windows-cli.ps1')
     
     let scriptContent: string
     try {
-      scriptContent = fs.readFileSync(scriptPath, 'utf-8')
+      scriptContent = readFileSync(scriptPath, 'utf-8')
     } catch (error) {
       console.error('Failed to read installer script:', error)
       return NextResponse.json(
