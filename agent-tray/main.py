@@ -63,6 +63,22 @@ except ImportError as e:
 
 DEFAULT_HEARTBEAT_INTERVAL = 60
 
+def get_log_path() -> Path:
+    """Get the path for the agent log file - define early so setup_logging can use it."""
+    try:
+        if sys.platform == "darwin":
+            base = Path.home() / "Library" / "Logs" / "KuaminiSecurityClient"
+        elif os.name == "nt":
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "KuaminiSecurityClient"
+        else:
+            base = Path.home() / ".local" / "share" / "KuaminiSecurityClient"
+        base.mkdir(parents=True, exist_ok=True)
+        return base / "agent.log"
+    except Exception:
+        # fallback to current directory
+        return Path("agent.log")
+
+
 def setup_ca_bundle():
     """Configure CA bundle path for requests library in PyInstaller bundled apps."""
     if getattr(sys, 'frozen', False):
@@ -114,12 +130,15 @@ def verify_installation():
         try:
             # Try to read registration token from install directory
             token_from_file = None
+            token_file_path = None
             if getattr(sys, 'frozen', False):
                 install_dir = Path(sys.executable).parent
-                token_file = install_dir / "registration_token.txt"
+                # Check for registration.token (created by MSI build)
+                token_file = install_dir / "registration.token"
                 if token_file.exists():
                     try:
                         token_from_file = token_file.read_text(encoding='utf-8').strip()
+                        token_file_path = token_file
                         print(f"[Installation Fix] Found registration token in: {token_file}", file=sys.stderr)
                     except Exception as e:
                         print(f"[Installation Fix] Failed to read token file: {e}", file=sys.stderr)
@@ -131,6 +150,10 @@ def verify_installation():
                 "heartbeat_interval": 60
             }
             
+            # Generate fresh agent_id for this installation
+            import uuid
+            default_config["agent_id"] = str(uuid.uuid4())
+            
             # Include registration token if found
             if token_from_file:
                 default_config["registration_token"] = token_from_file
@@ -138,6 +161,14 @@ def verify_installation():
             
             config_file.write_text(json.dumps(default_config, indent=2))
             print(f"[Installation Fix] Created default config file: {config_file}", file=sys.stderr)
+            
+            # Delete registration.token after consuming it
+            if token_file_path and token_file_path.exists():
+                try:
+                    token_file_path.unlink()
+                    print(f"[Installation Fix] Deleted consumed registration token file", file=sys.stderr)
+                except Exception as e:
+                    print(f"[Installation Fix] Could not delete token file: {e}", file=sys.stderr)
         except Exception as e:
             issues.append(f"Could not create config file: {e}")
     
@@ -161,10 +192,18 @@ setup_ca_bundle()
 
 def get_config_path() -> Path:
     """Find config.json in multiple locations for PyInstaller compatibility and pre-configured installers."""
-    # 1. Bundled config in app Resources folder (for pre-configured installers)
+    # 1. User data directory (~/.kuamini/config.json) - prioritize user config which was created on first run
+    user_config = Path.home() / ".kuamini" / "config.json"
+    if user_config.exists():
+        return user_config
+    
+    # 2. Check next to executable (Windows installer uses this)
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         exe_dir = Path(sys.executable).parent
+        candidate = exe_dir / "config.json"
+        if candidate.exists():
+            logging.info("Found config next to executable: %s", candidate)
+            return candidate
         
         # Check for bundled config in Resources folder (macOS .app structure)
         resources_dir = exe_dir.parent / "Resources"
@@ -172,23 +211,11 @@ def get_config_path() -> Path:
         if bundled_config.exists():
             logging.info("Found bundled config at: %s", bundled_config)
             # Copy to user directory if not exists
-            user_config = Path.home() / ".kuamini" / "config.json"
-            if not user_config.exists():
-                user_config.parent.mkdir(parents=True, exist_ok=True)
-                import shutil
-                shutil.copy2(bundled_config, user_config)
-                logging.info("Copied bundled config to user directory: %s", user_config)
+            user_config.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copy2(bundled_config, user_config)
+            logging.info("Copied bundled config to user directory: %s", user_config)
             return user_config
-        
-        # Check next to executable
-        candidate = exe_dir / "config.json"
-        if candidate.exists():
-            return candidate
-    
-    # 2. User data directory (~/.kuamini/config.json)
-    user_config = Path.home() / ".kuamini" / "config.json"
-    if user_config.exists():
-        return user_config
     
     # 3. Next to the script (for development)
     script_dir = Path(__file__).parent
@@ -196,24 +223,9 @@ def get_config_path() -> Path:
     if candidate.exists():
         return candidate
     
-    # 4. Fallback: use user dir for new config
+    # 4. Fallback: use user dir (verify_installation should have created it)
     user_config.parent.mkdir(parents=True, exist_ok=True)
     return user_config
-
-
-def get_log_path() -> Path:
-    try:
-        if sys.platform == "darwin":
-            base = Path.home() / "Library" / "Logs" / "KuaminiSecurityClient"
-        elif os.name == "nt":
-            base = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "KuaminiSecurityClient"
-        else:
-            base = Path.home() / ".local" / "share" / "KuaminiSecurityClient"
-        base.mkdir(parents=True, exist_ok=True)
-        return base / "agent.log"
-    except Exception:
-        # fallback to current directory
-        return Path("agent.log")
 
 
 def setup_logging():
@@ -401,8 +413,17 @@ def register(config):
 
     # Validate configuration before attempting registration
     if not config.get("registration_token"):
-        logging.error("Registration aborted: no registration_token in config")
-        return False, "Missing registration_token"
+        logging.warning("Registration skipped: no registration_token in config. This is expected during fresh install before token injection.")
+        # Clear stale endpoint/account info when no token available
+        if config.get("endpoint_id") or config.get("account_id"):
+            logging.info("Clearing stale endpoint_id and account_id since registration_token is empty")
+            config["endpoint_id"] = ""
+            config["account_id"] = ""
+            try:
+                save_config(config)
+            except Exception as e:
+                logging.warning("Failed to clear stale IDs: %s", e)
+        return False, "No registration_token available - skipping registration"
     
     if not config.get("agent_id"):
         logging.error("Registration aborted: no agent_id in config")
@@ -704,18 +725,56 @@ if __name__ == "__main__":
             stream.flush()
         except Exception:
             pass
+    
+    def log_to_emergency_file(msg: str):
+        """Write to emergency log file even if regular logging fails."""
+        try:
+            import datetime
+            if os.name == "nt":
+                log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "KuaminiSecurityClient"
+            else:
+                log_dir = Path.home() / ".local" / "share" / "KuaminiSecurityClient"
+            
+            log_dir.mkdir(parents=True, exist_ok=True)
+            error_log = log_dir / "startup_errors.log"
+            
+            with open(error_log, "a", encoding="utf-8") as f:
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"[{timestamp}] {msg}\n")
+                f.flush()
+        except Exception as e:
+            safe_print(f"[ERROR] Could not write to emergency log: {e}")
 
     # Ensure all output is captured, even on early crashes
     safe_print("[STARTUP] Agent starting...")
+    log_to_emergency_file("Agent starting...")
+    
+    # Check for singleton enforcement early
+    try:
+        if is_another_instance_running():
+            msg = "Another instance is already running. Exiting."
+            safe_print(f"[STARTUP] {msg}")
+            log_to_emergency_file(msg)
+            sys.exit(0)
+    except Exception as e:
+        msg = f"Failed to check for running instances: {e}"
+        safe_print(f"[WARNING] {msg}")
+        log_to_emergency_file(msg)
     
     try:
         safe_print("[STARTUP] About to call tray_main()")
+        log_to_emergency_file("Calling tray_main()")
         tray_main()
     except KeyboardInterrupt:
-        safe_print("[SHUTDOWN] Received keyboard interrupt")
+        msg = "Received keyboard interrupt"
+        safe_print(f"[SHUTDOWN] {msg}")
+        log_to_emergency_file(msg)
     except Exception as e:
         # Ensure unexpected exceptions are logged, even before setup_logging
-        safe_print(f"[ERROR] Exception before setup_logging: {type(e).__name__}: {e}")
+        msg = f"Exception before setup_logging: {type(e).__name__}: {e}"
+        safe_print(f"[ERROR] {msg}")
+        log_to_emergency_file(msg)
+        
         import traceback
         stream = sys.stderr or sys.stdout
         if stream:
@@ -725,10 +784,19 @@ if __name__ == "__main__":
             except Exception:
                 pass
         
+        # Write full traceback to emergency log
+        try:
+            tb_str = traceback.format_exc()
+            log_to_emergency_file(f"Full traceback:\n{tb_str}")
+        except Exception:
+            pass
+        
         # Try to also setup logging and log the error
         try:
             setup_logging()
             logging.exception("Fatal error: %s", e)
         except Exception as log_error:
-            print(f"[ERROR] Failed to setup logging: {log_error}", file=sys.stderr)
+            msg = f"Failed to setup logging: {log_error}"
+            print(f"[ERROR] {msg}", file=sys.stderr)
+            log_to_emergency_file(msg)
             sys.stderr.flush()

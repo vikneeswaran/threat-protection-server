@@ -1,162 +1,144 @@
-# PowerShell script to build Windows MSI installer using WiX Toolset
-# Prerequisites: WiX Toolset 3.14+ installed and in PATH
-# This script compiles the WiX source and links the MSI package
-
 param(
-    [string]$SourceDir,
-    [string]$OutputDir,
-    [string]$Version = "1.0.0"
+    [Parameter(Mandatory = $true)]
+    [string]$RegistrationToken,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Version = "1.0.5"
 )
 
 $ErrorActionPreference = "Stop"
 
-# Set defaults if not provided
-if (-not $SourceDir) {
-    $tempPath = Resolve-Path "$PSScriptRoot\..\.." -ErrorAction SilentlyContinue
-    if ($tempPath) {
-        $SourceDir = $tempPath.Path
-    } else {
-        $SourceDir = $PSScriptRoot
-    }
-}
-if (-not $OutputDir) {
-    $OutputDir = "$SourceDir\agent-tray\dist"
+$versionParts = $Version.Split('.')
+switch ($versionParts.Count) {
+    1 { $productVersion = "$Version.0.0.0" }
+    2 { $productVersion = "$Version.0.0" }
+    3 { $productVersion = "$Version.0" }
+    default { $productVersion = $Version }
 }
 
-# Verify WiX Toolset is installed
-try {
-    Get-Command candle -ErrorAction Stop | Out-Null
-    Get-Command light -ErrorAction Stop | Out-Null
-    Write-Host "WiX Toolset found" -ForegroundColor Green
-} catch {
-    Write-Error "WiX Toolset not found. Please install WiX Toolset 3.14 or later and add it to PATH"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$agentDir = Split-Path -Parent $scriptDir
+$projectRoot = Split-Path -Parent $agentDir
+$distDir = Join-Path $agentDir "dist\KuaminiSecurityClient"
+$internalDir = Join-Path $distDir "_internal"
+$configTemplate = Join-Path $agentDir "config.json"
+$configTemp = Join-Path $scriptDir "config-temp.json"
+$internalWxs = Join-Path $scriptDir "InternalFiles.wxs"
+$wxsMain = Join-Path $scriptDir "KuaminiSecurityClient.wxs"
+$exePath = Join-Path $distDir "KuaminiSecurityClient.exe"
+$heatPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin\heat.exe"
+$candlePath = "C:\Program Files (x86)\WiX Toolset v3.14\bin\candle.exe"
+$lightPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin\light.exe"
+$objDir = Join-Path $scriptDir "obj"
+$msiOutput = Join-Path $agentDir "dist\KuaminiSecurityClient-$Version.msi"
+$publicTrayDir = Join-Path $projectRoot "public\tray"
+
+Write-Host "================================================"
+Write-Host "Building MSI Installer v$Version"
+Write-Host "Product Version: $productVersion"
+Write-Host "================================================"
+
+if (-not (Test-Path $exePath)) {
+    Write-Host "ERROR: Executable not found at $exePath" -ForegroundColor Red
     exit 1
 }
 
-# Verify source files exist
-$wxsFile = "$PSScriptRoot\KuaminiSecurityClient.wxs"
-$exeFile = "$SourceDir\agent-tray\dist\KuaminiSecurityClient\KuaminiSecurityClient.exe"
-$configFile = "$SourceDir\agent-tray\config.json"
-
-if (-not (Test-Path $wxsFile)) {
-    Write-Warning "WiX source file not found: $wxsFile"
-    Write-Warning "Skipping MSI build. Please create the WiX source file or use the Python build script instead."
-    Write-Host "Tip: You can package the executable as a ZIP file for distribution." -ForegroundColor Yellow
-    exit 0
-}
-
-if (-not (Test-Path $exeFile)) {
-    Write-Error "Executable not found: $exeFile"
+if (-not (Test-Path $configTemplate)) {
+    Write-Host "ERROR: Config template not found at $configTemplate" -ForegroundColor Red
     exit 1
 }
 
-if (-not (Test-Path $configFile)) {
-    Write-Error "Config file not found: $configFile"
+if (-not (Test-Path $internalDir)) {
+    Write-Host "ERROR: _internal directory not found at $internalDir" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Building Kuamini Security Client MSI Installer..." -ForegroundColor Cyan
-Write-Host "Source files verified" -ForegroundColor Green
-
-# Create output directory if it doesn't exist
-if (-not (Test-Path $OutputDir)) {
-    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+if (-not (Test-Path $heatPath)) {
+    Write-Host "ERROR: Heat.exe not found at $heatPath" -ForegroundColor Red
+    exit 1
 }
 
-# Compile WiX source to .wixobj
-Write-Host "Compiling WiX source..." -ForegroundColor Cyan
-$wixObj = "$PSScriptRoot\KuaminiSecurityClient.wixobj"
-$internalObj = "$PSScriptRoot\InternalFiles.wixobj"
-$internalWxs = "$PSScriptRoot\InternalFiles.wxs"
+if (-not (Test-Path $candlePath)) {
+    Write-Host "ERROR: Candle.exe not found at $candlePath" -ForegroundColor Red
+    exit 1
+}
 
-# Check if InternalFiles.wxs exists, if not generate it using heat
-if (-not (Test-Path $internalWxs)) {
-    Write-Host "Generating InternalFiles.wxs from _internal folder..." -ForegroundColor Yellow
-    $internalDir = "$SourceDir\agent-tray\dist\KuaminiSecurityClient\_internal"
-    if (Test-Path $internalDir) {
-        try {
-            # Use heat.exe to generate file references
-            & heat dir "$internalDir" -cg InternalFiles -gg -sf -srd -o "$internalWxs" 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "InternalFiles.wxs generated successfully" -ForegroundColor Green
-                # Fix the source paths to be relative to build directory
-                (Get-Content "$internalWxs") -replace 'Source="SourceDir\\', 'Source="..\\dist\\KuaminiSecurityClient\\_internal\\' | Set-Content "$internalWxs"
-            }
-        } catch {
-            Write-Host "Warning: heat.exe not available" -ForegroundColor Yellow
+if (-not (Test-Path $lightPath)) {
+    Write-Host "ERROR: Light.exe not found at $lightPath" -ForegroundColor Red
+    exit 1
+}
+
+$config = Get-Content $configTemplate -Raw | ConvertFrom-Json
+# The config.json template is only used to extract account_id from token for logging
+# The actual MSI will not include config.json - it will be created at runtime by the app
+
+# Clean up any old config.json from dist folder
+Remove-Item (Join-Path $distDir "config.json") -Force -ErrorAction SilentlyContinue
+
+# Save the embedded token to a separate file (not config.json) - app will read this on first run
+$tokenFile = Join-Path $distDir "registration.token"
+Set-Content $tokenFile $RegistrationToken -Encoding UTF8 -NoNewline
+
+# Extract account_id and agent_id for logging purposes
+$logAccountId = "<not yet set>"
+$logAgentId = "<will be generated at install>"
+
+if ($RegistrationToken.Length -gt 40) {
+    try {
+        $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($RegistrationToken))
+        $tokenObj = $decoded | ConvertFrom-Json
+        if ($tokenObj.accountId) {
+            $logAccountId = $tokenObj.accountId
         }
+    } catch {
+        Write-Host "WARNING: Could not parse registration token for logging" -ForegroundColor Yellow
     }
 }
 
-# Compile main WiX file
-$candleArgs = @(
-    $wxsFile,
-    "-out", $wixObj,
-    ("-dSourceDir=" + $SourceDir),
-    ("-dVersion=" + $Version)
-)
+if (-not (Test-Path $objDir)) {
+    New-Item -ItemType Directory -Path $objDir | Out-Null
+}
 
-& candle @candleArgs
+& $heatPath dir $internalDir -cg InternalFiles -gg -dr INTERNALFOLDER -sf -srd -o $internalWxs
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Candle compilation of main WiX failed"
+    Write-Host "ERROR: Heat.exe failed" -ForegroundColor Red
     exit 1
 }
 
-# Compile internal files WiX file if it exists
-$internalObjToLink = ""
-if (Test-Path $internalWxs) {
-    Write-Host "Compiling internal files WiX source..." -ForegroundColor Cyan
-    & candle "$internalWxs" -out "$internalObj"
-    if ($LASTEXITCODE -eq 0) {
-        $internalObjToLink = $internalObj
-    }
-}
-
-Write-Host "WiX compilation successful" -ForegroundColor Green
-
-# Link to create MSI
-Write-Host "Linking MSI package..." -ForegroundColor Cyan
-$msiFile = "$OutputDir\KuaminiSecurityClient-$Version.msi"
-$lightArgs = @($wixObj)
-
-if ($internalObjToLink) {
-    $lightArgs += $internalObjToLink
-}
-
-$lightArgs += @(
-    "-out", $msiFile,
-    "-ext", "WixUIExtension",
-    "-cultures:en-us"
-)
-
-& light @lightArgs
+& $candlePath "-dProductVersion=$productVersion" -out "$objDir\" $wxsMain
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Light linking failed"
-    exit 1
-}
-Write-Host "MSI linking successful" -ForegroundColor Green
-
-# Verify MSI was created
-if (Test-Path $msiFile) {
-    $fileSize = (Get-Item $msiFile).Length / 1MB
-    Write-Host ("MSI created successfully: " + $msiFile) -ForegroundColor Green
-    $sizeStr = [Math]::Round($fileSize, 2)
-    Write-Host ("File size: " + $sizeStr + " MB") -ForegroundColor Green
-    
-    # Copy to public/tray directory
-    $publicPath = "$PSScriptRoot\..\..\public\tray\KuaminiSecurityClient-$Version.msi"
-    Copy-Item $msiFile $publicPath -Force
-    Write-Host ("MSI copied to: " + $publicPath) -ForegroundColor Green
-} else {
-    Write-Error "MSI file was not created"
+    Write-Host "ERROR: Candle.exe failed for KuaminiSecurityClient.wxs" -ForegroundColor Red
     exit 1
 }
 
-# Clean up temporary files
-if (Test-Path $wixObj) {
-    Remove-Item $wixObj -ErrorAction SilentlyContinue
+& $candlePath -out "$objDir\" $internalWxs
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Candle.exe failed for InternalFiles.wxs" -ForegroundColor Red
+    exit 1
 }
-if (Test-Path $internalObj) {
-    Remove-Item $internalObj -ErrorAction SilentlyContinue
+
+& $lightPath -out $msiOutput `
+    -b $internalDir `
+    (Join-Path $objDir "KuaminiSecurityClient.wixobj") `
+    (Join-Path $objDir "InternalFiles.wixobj") `
+    -ext WixUIExtension
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Light.exe failed" -ForegroundColor Red
+    exit 1
 }
-Write-Host "Build completed successfully!" -ForegroundColor Green
+
+if (-not (Test-Path $msiOutput)) {
+    Write-Host "ERROR: MSI was not created at $msiOutput" -ForegroundColor Red
+    exit 1
+}
+
+if (Test-Path $publicTrayDir) {
+    Copy-Item $msiOutput (Join-Path $publicTrayDir "KuaminiSecurityClient-$Version.msi") -Force
+}
+
+Remove-Item $configTemp -Force -ErrorAction SilentlyContinue
+
+Write-Host "Build completed successfully"
+Write-Host "MSI: $msiOutput"
+Write-Host "Account ID (from token): $logAccountId"
+Write-Host "Agent ID: $logAgentId (will be generated on first app run)"

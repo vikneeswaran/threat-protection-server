@@ -1,62 +1,54 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <!-- Product definition -->
-  <Product Id="*" Name="Kuamini Security Client" Language="1033" Version="1.0.0.0" 
+  <Product Id="*" Name="Kuamini Security Client" Language="1033" Version="$(var.ProductVersion)"
            Manufacturer="Kuamini Systems" UpgradeCode="12345678-1234-1234-1234-123456789012">
-    
     <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
-    
-    <!-- Automatic upgrade logic -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." 
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Major upgrade logic -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
                   AllowSameVersionUpgrades="yes"
                   Schedule="afterInstallInitialize" />
-    
-    <!-- Media for embedding executable -->
-    <Media Id="1" Cabinet="KuaminiSecurityClient.cab" EmbedCab="yes" />
-    
-    <!-- Set installation directory -->
+
+    <!-- Define installation directories -->
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder">
-        <Directory Id="INSTALLFOLDER" Name="Kuamini Security Client" />
+        <Directory Id="INSTALLFOLDER" Name="Kuamini Security Client">
+          <Directory Id="INTERNALFOLDER" Name="_internal" />
+        </Directory>
       </Directory>
       <Directory Id="ProgramMenuFolder" />
+      <Directory Id="DesktopFolder" />
     </Directory>
-    
-    <!-- Define features to install -->
+
+    <!-- Features -->
     <Feature Id="ProductFeature" Title="Kuamini Security Client" Level="1">
-      <ComponentRef Id="MainExecutableComponent" />
-      <ComponentRef Id="ConfigFileComponent" />
-      <ComponentRef Id="RegistryAutoLaunchComponent" />
-      <ComponentRef Id="ProgramMenuComponent" />
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="RegistrationTokenFile" />
       <ComponentGroupRef Id="InternalFiles" />
+      <ComponentRef Id="RegistryAutoStart" />
     </Feature>
-    
-    <!-- Main executable component -->
-    <Component Id="MainExecutableComponent" Guid="87654321-4321-4321-4321-210987654321" Directory="INSTALLFOLDER">
-      <File Id="KuaminiSecurityClientEXE" Name="KuaminiSecurityClient.exe" Source="..\dist\KuaminiSecurityClient\KuaminiSecurityClient.exe" KeyPath="yes" />
-    </Component>
-    
-    <!-- Config file component -->
-    <Component Id="ConfigFileComponent" Guid="11111111-1111-1111-1111-111111111111" Directory="INSTALLFOLDER">
-      <File Id="ConfigFile" Name="config.json" Source="..\config.json" />
-    </Component>
-    
-    <!-- Registry auto-launch component -->
-    <Component Id="RegistryAutoLaunchComponent" Guid="22222222-2222-2222-2222-222222222222" Directory="INSTALLFOLDER">
-      <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run">
-        <RegistryValue Type="string" Name="KuaminiSecurityClient" Value="[INSTALLFOLDER]KuaminiSecurityClient.exe" />
-      </RegistryKey>
-    </Component>
-    
-    <!-- Program menu shortcut component -->
-    <Component Id="ProgramMenuComponent" Guid="33333333-3333-3333-3333-333333333333" Directory="ProgramMenuFolder">
-      <Shortcut Id="KuaminiSecurityClientShortcut" Name="Kuamini Security Client" Target="[INSTALLFOLDER]KuaminiSecurityClient.exe" />
-      <RemoveFolder Id="ProgramMenuFolder" On="uninstall" />
-      <RegistryValue Root="HKCU" Key="Software\Kuamini\KuaminiSecurityClient" Name="installed" Type="integer" Value="1" KeyPath="yes" />
-    </Component>
-    
-    <!-- UI configuration -->
-    <UIRef Id="WixUI_InstallDir" />
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- Main executable -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="87654321-1234-1234-1234-123456789012">
+        <File Id="KuaminiSecurityClient_exe" Name="KuaminiSecurityClient.exe"
+              Source="..\dist\KuaminiSecurityClient\KuaminiSecurityClient.exe" />
+      </Component>
+      <Component Id="RegistrationTokenFile" Guid="22222222-3333-4444-5555-666666666666">
+        <File Id="registration_token" Name="registration.token"
+              Source="..\dist\KuaminiSecurityClient\registration.token" KeyPath="yes" />
+      </Component>
+      <Component Id="RegistryAutoStart" Guid="99999999-8888-7777-6666-555555555555">
+        <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" ForceCreateOnInstall="yes">
+          <RegistryValue Type="string" Name="KuaminiSecurityClient"
+                         Value="&quot;[INSTALLFOLDER]KuaminiSecurityClient.exe&quot;" />
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+
+    <!-- UI -->
+    <UIRef Id="WixUI_Minimal" />
+    <UIRef Id="WixUI_ErrorProgressText" />
   </Product>
 </Wix>
