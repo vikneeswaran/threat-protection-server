@@ -41,13 +41,11 @@ export async function GET(request: NextRequest) {
     // that generated the download link.
 
     // 4. Serve pre-built MSI from public/tray/
-    // The MSI is pre-built during the build process with placeholder token
-    // and needs to be regenerated with the actual token
-    // 
-    // For now: serve the pre-built version
-    // Future: dynamically build MSI with token embedded
+    // The MSI is pre-built during the build process WITHOUT any token
+    // The installer script (install-kuamini-windows-cli.ps1) handles token creation
+    // after MSI installation completes
     
-    const msiFileName = 'KuaminiSecurityClient-1.0.0.msi'
+    const msiFileName = 'KuaminiSecurityClient-1.0.5.msi'
     const msiPath = `/tray/${msiFileName}`
 
     // 5. Log this download for audit purposes

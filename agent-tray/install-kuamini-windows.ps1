@@ -426,6 +426,36 @@ function Main {
         exit 1
     }
     
+    # Step 5.5: Write actual registration token to file (agent looks for this)
+    Write-Log "Writing registration token to installation directory..." "INFO"
+    try {
+        # Determine actual install path (may be x86 or not depending on Windows version)
+        $actualInstallPath = $InstallPath
+        if (-not (Test-Path $actualInstallPath)) {
+            # Check if it was installed to x86 instead
+            $x86Path = $InstallPath.Replace("Program Files", "Program Files (x86)")
+            if (Test-Path $x86Path) {
+                $actualInstallPath = $x86Path
+                Write-Log "Found installation at x86 path: $actualInstallPath" "INFO"
+            }
+        }
+        
+        # Write token to registration.token file
+        if (Test-Path $actualInstallPath) {
+            $tokenFile = Join-Path $actualInstallPath "registration.token"
+            Set-Content -Path $tokenFile -Value $Token -Encoding UTF8 -Force
+            Write-Log "✓ Registration token file created/updated: $tokenFile" "SUCCESS"
+        }
+        else {
+            Write-ErrorLog "Install directory not found at: $actualInstallPath"
+            exit 1
+        }
+    }
+    catch {
+        Write-ErrorLog "Failed to write registration token: $($_.Exception.Message)"
+        exit 1
+    }
+    
     # Step 6: Verify installation
     Write-Host ""
     if (-not (Test-Installation -AgentId $agentId)) {
