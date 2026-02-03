@@ -24,7 +24,6 @@
     <!-- Features -->
     <Feature Id="ProductFeature" Title="Kuamini Security Client" Level="1">
       <ComponentRef Id="MainExecutable" />
-      <ComponentRef Id="RegistrationTokenFile" />
       <ComponentGroupRef Id="InternalFiles" />
       <ComponentRef Id="RegistryAutoStart" />
     </Feature>
@@ -33,11 +32,7 @@
     <DirectoryRef Id="INSTALLFOLDER">
       <Component Id="MainExecutable" Guid="87654321-1234-1234-1234-123456789012">
         <File Id="KuaminiSecurityClient_exe" Name="KuaminiSecurityClient.exe"
-              Source="$(var.SourceDir)\KuaminiSecurityClient.exe" />
-      </Component>
-      <Component Id="RegistrationTokenFile" Guid="22222222-3333-4444-5555-666666666666">
-        <File Id="registration_token" Name="registration.token"
-              Source="$(var.SourceDir)\registration.token" KeyPath="yes" />
+              Source="$(var.SourceDir)\KuaminiSecurityClient.exe" KeyPath="yes" />
       </Component>
       <Component Id="RegistryAutoStart" Guid="99999999-8888-7777-6666-555555555555">
         <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" ForceCreateOnInstall="yes">
