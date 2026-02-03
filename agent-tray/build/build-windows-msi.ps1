@@ -68,8 +68,7 @@ if (-not (Test-Path $lightPath)) {
     exit 1
 }
 
-$config = Get-Content $configTemplate -Raw | ConvertFrom-Json
-# The config.json template is only used to extract account_id from token for logging
+# The config.json template is only used for reference
 # The actual MSI will not include config.json - it will be created at runtime by the app
 
 # Clean up any old config.json from dist folder

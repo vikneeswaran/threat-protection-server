@@ -86,20 +86,19 @@ function Get-InstallationState {
     Write-Log "Detecting installation state..." "INFO"
     
     $state = @{
-        "exists"       = $false
-        "install_path" = $null
-        "config_path"  = $null
+        "exists"        = $false
+        "install_paths" = @()
+        "config_path"   = $null
         "registry_keys" = @()
-        "processes"    = @()
+        "processes"     = @()
     }
     
-    # Check installation directories
+    # Check installation directories - collect ALL matching paths
     foreach ($path in $script:INSTALL_PATHS) {
         if (Test-Path $path) {
             $state.exists = $true
-            $state.install_path = $path
+            $state.install_paths += $path
             Write-Log "Found installation at: $path" "INFO"
-            break
         }
     }
     
@@ -219,7 +218,7 @@ function Stop-AgentProcesses {
         # Kill main executable
         $processes = Get-Process -Name "KuaminiSecurityClient" -ErrorAction SilentlyContinue
         if ($processes.Count -gt 0) {
-            Write-Log "Attempt $attempts/$maxAttempts: Stopping KuaminiSecurityClient.exe..." "INFO"
+            Write-Log "Attempt ${attempts}/${maxAttempts}: Stopping KuaminiSecurityClient.exe..." "INFO"
             $processes | Stop-Process -Force -ErrorAction SilentlyContinue
             Start-Sleep -Milliseconds 500
         }
@@ -231,7 +230,7 @@ function Stop-AgentProcesses {
         })
         
         if ($pythonProcs.Count -gt 0) {
-            Write-Log "Attempt $attempts/$maxAttempts: Stopping Python processes..." "INFO"
+            Write-Log "Attempt ${attempts}/${maxAttempts}: Stopping Python processes..." "INFO"
             $pythonProcs | Stop-Process -Force -ErrorAction SilentlyContinue
             Start-Sleep -Milliseconds 500
         }
@@ -305,7 +304,8 @@ function Remove-AgentFiles {
     
     Write-Log "Removing agent files..." "INFO"
     
-    $filePaths = @($InstallState.install_path) + $script:LOG_PATHS | Where-Object { $_ }
+    # Combine all install paths with log paths for removal
+    $filePaths = @($InstallState.install_paths) + $script:LOG_PATHS | Where-Object { $_ }
     
     foreach ($path in $filePaths) {
         if (Test-Path $path) {
@@ -400,9 +400,18 @@ function Test-UninstallComplete {
         $issues += "Processes still running: $($remaining.Id -join ', ')"
     }
     
-    # Check installation directory
-    if ($InstallState.install_path -and (Test-Path $InstallState.install_path)) {
-        $issues += "Installation directory still exists: $($InstallState.install_path)"
+    # Check ALL installation directories
+    foreach ($path in $InstallState.install_paths) {
+        if (Test-Path $path) {
+            $issues += "Installation directory still exists: $path"
+        }
+    }
+    
+    # Also check all known install paths for any leftovers
+    foreach ($path in $script:INSTALL_PATHS) {
+        if ($path -notin $InstallState.install_paths -and (Test-Path $path)) {
+            $issues += "Leftover installation directory found: $path"
+        }
     }
     
     # Check config files

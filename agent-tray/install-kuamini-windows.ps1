@@ -128,13 +128,13 @@ function Test-Prerequisites {
     return $true
 }
 
-function Decode-Token {
+function ConvertFrom-JSONToken {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Token
     )
     
-    Write-Log "Decoding registration token..." "INFO"
+    Write-Log "Parsing registration token..." "INFO"
     
     try {
         # Try base64 decoding
@@ -142,7 +142,7 @@ function Decode-Token {
         $decoded = [System.Text.Encoding]::UTF8.GetString($bytes)
         $tokenData = ConvertFrom-Json $decoded
         
-        Write-Log "Token decoded successfully" "INFO"
+        Write-Log "Token parsed successfully" "INFO"
         Write-Log "Account ID from token: $($tokenData.accountId)" "INFO"
         
         return $tokenData
@@ -179,7 +179,6 @@ function Get-InstallerMSI {
         
         Write-Log "Download URL: $downloadUrl" "INFO"
         
-        $progressUri = $downloadUrl
         Invoke-WebRequest -Uri $downloadUrl -OutFile $msiPath -TimeoutSec 300 -ErrorAction Stop
         
         if (-not (Test-Path $msiPath)) {
@@ -266,7 +265,6 @@ function Install-MSI {
         
         # Add token property if provided
         if ($RegistrationToken) {
-            $encodedToken = [Uri]::EscapeDataString($RegistrationToken)
             $msiArgs += "REGISTRATIONTOKEN=`"$RegistrationToken`""
         }
         
@@ -409,7 +407,7 @@ function Main {
     Write-Host ""
     
     # Step 2: Decode token (optional, for logging)
-    $tokenData = Decode-Token -Token $Token
+    $tokenData = ConvertFrom-JSONToken -Token $Token
     
     # Step 3: Download MSI
     Write-Host ""
