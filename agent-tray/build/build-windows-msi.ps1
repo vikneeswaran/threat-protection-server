@@ -105,7 +105,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-& $candlePath "-dProductVersion=$productVersion" -out "$objDir\" $wxsMain
+& $candlePath "-dProductVersion=$productVersion" "-dSourceDir=$distDir" -out "$objDir\" $wxsMain
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Candle.exe failed for KuaminiSecurityClient.wxs" -ForegroundColor Red
     exit 1

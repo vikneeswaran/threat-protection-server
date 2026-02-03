@@ -89,6 +89,7 @@ def setup_ca_bundle():
         # Try common cert bundle paths in this order:
         possible_paths = [
             resources_dir / "certifi" / "cacert.pem",
+            exe_dir / "certifi" / "cacert.pem",  # PyInstaller may place it here
             Path("/etc/ssl/certs/ca-certificates.crt"),
             Path("/etc/ssl/cert.pem"),
         ]
@@ -99,7 +100,8 @@ def setup_ca_bundle():
                 print(f"[CA Bundle] Set to: {cert_path}", file=sys.stderr)
                 return
         
-        print("[CA Bundle] No cert bundle found, using requests defaults", file=sys.stderr)
+        # If no bundle found, let requests use system defaults (Windows handles this well)
+        print("[CA Bundle] No custom cert bundle found, requests will use system defaults", file=sys.stderr)
 
 def verify_installation():
     """Verify that the app bundle was installed correctly and fix common installation issues."""
@@ -115,8 +117,16 @@ def verify_installation():
         if not app_path.exists():
             issues.append("App bundle not found in /Applications")
     
+    # Determine config directory based on OS
+    if os.name == "nt":
+        # Windows: use LOCALAPPDATA
+        localappdata = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        config_dir = localappdata / "KuaminiSecurityClient"
+    else:
+        # macOS/Linux: use ~/.kuamini
+        config_dir = Path.home() / ".kuamini"
+    
     # Check config directory and create if missing
-    config_dir = Path.home() / ".kuamini"
     if not config_dir.exists():
         try:
             config_dir.mkdir(parents=True, exist_ok=True)
@@ -133,15 +143,17 @@ def verify_installation():
             token_file_path = None
             if getattr(sys, 'frozen', False):
                 install_dir = Path(sys.executable).parent
-                # Check for registration.token (created by MSI build)
-                token_file = install_dir / "registration.token"
-                if token_file.exists():
-                    try:
-                        token_from_file = token_file.read_text(encoding='utf-8').strip()
-                        token_file_path = token_file
-                        print(f"[Installation Fix] Found registration token in: {token_file}", file=sys.stderr)
-                    except Exception as e:
-                        print(f"[Installation Fix] Failed to read token file: {e}", file=sys.stderr)
+                # Check for registration.token (created by MSI build) - try both names
+                for token_filename in ["registration.token", "registration_token.txt"]:
+                    token_file = install_dir / token_filename
+                    if token_file.exists():
+                        try:
+                            token_from_file = token_file.read_text(encoding='utf-8').strip()
+                            token_file_path = token_file
+                            print(f"[Installation Fix] Found registration token in: {token_file}", file=sys.stderr)
+                            break
+                        except Exception as e:
+                            print(f"[Installation Fix] Failed to read token file {token_filename}: {e}", file=sys.stderr)
             
             default_config = {
                 "api_base": "https://kuaminisystems.com/api/agent",
@@ -192,6 +204,17 @@ setup_ca_bundle()
 
 def get_config_path() -> Path:
     """Find config.json in multiple locations for PyInstaller compatibility and pre-configured installers."""
+    # Windows-specific paths first (LOCALAPPDATA is more reliable for APP data)
+    if os.name == "nt":
+        localappdata = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        win_config = localappdata / "KuaminiSecurityClient" / "config.json"
+        if win_config.exists():
+            return win_config
+        # Also check user home .kuamini as fallback
+        user_config_alt = Path.home() / ".kuamini" / "config.json"
+        if user_config_alt.exists():
+            return user_config_alt
+    
     # 1. User data directory (~/.kuamini/config.json) - prioritize user config which was created on first run
     user_config = Path.home() / ".kuamini" / "config.json"
     if user_config.exists():
@@ -223,9 +246,15 @@ def get_config_path() -> Path:
     if candidate.exists():
         return candidate
     
-    # 4. Fallback: use user dir (verify_installation should have created it)
-    user_config.parent.mkdir(parents=True, exist_ok=True)
-    return user_config
+    # 4. Fallback: use Windows-specific path if on Windows, otherwise user home
+    if os.name == "nt":
+        localappdata = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        config_dir = localappdata / "KuaminiSecurityClient"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir / "config.json"
+    else:
+        user_config.parent.mkdir(parents=True, exist_ok=True)
+        return user_config
 
 
 def setup_logging():
