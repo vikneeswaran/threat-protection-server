@@ -20,7 +20,7 @@ PROJECT_ROOT="$( dirname "$( dirname "$SCRIPT_DIR" )" )"
 AGENT_ROOT="$( dirname "$SCRIPT_DIR" )"
 
 # Paths
-APP_BUNDLE="${AGENT_ROOT}/dist/KuaminiSecurityClient/KuaminiSecurityClient.app"
+APP_BUNDLE="${AGENT_ROOT}/dist/KuaminiSecurityClient.app"
 BUILD_DIR="${SCRIPT_DIR}"
 PACKAGE_DIR="${BUILD_DIR}/pkgtmp"
 SCRIPTS_DIR="${PACKAGE_DIR}/scripts"
