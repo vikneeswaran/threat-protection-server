@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Log for audit purposes (accountId may be used for logging)
-    console.log(`[Installer Download] Token: ${token.substring(0, 20)}..., Account: ${accountId || 'not-provided'}`)
+    console.info(`[Installer Download] Token: ${token.substring(0, 20)}..., Account: ${accountId || 'not-provided'}`)
 
     // Serve pre-built MSI from public/tray/
     // The MSI is pre-built during the build process WITHOUT any token
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { token, accountId, accountName, consoleUrl, apiBaseUrl } = body
+    const { token, accountId } = body
 
     // Validate required fields
     if (!token || !accountId) {
