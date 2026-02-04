@@ -314,6 +314,7 @@ async function serveWindowsInstaller(
     const tokenizedName = `KuaminiSecurityClient-${accountId}.msi`
     const tokenizedPath = path.join(basePath, tokenizedName)
 
+    // First, try to read from filesystem (for local dev and early builds)
     try {
       await fs.access(tokenizedPath)
       const data = await fs.readFile(tokenizedPath)
@@ -326,7 +327,7 @@ async function serveWindowsInstaller(
         accountId,
         ip: clientIp,
         userAgent,
-        details: { platform: "windows", sha256, static: false, tokenized: true },
+        details: { platform: "windows", sha256, static: false, tokenized: true, source: "filesystem" },
       })
 
       return new NextResponse(data, {
@@ -337,9 +338,48 @@ async function serveWindowsInstaller(
         },
       })
     } catch {
-      // Not yet built; trigger on-demand build
+      // Not in filesystem; try GitHub API (for Vercel deployments after on-demand build)
     }
 
+    // Try to fetch from GitHub
+    if (INSTALLER_BUILD_GH_TOKEN) {
+      try {
+        const githubUrl = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/contents/public/tray/${tokenizedName}?ref=main`
+        const response = await fetch(githubUrl, {
+          headers: {
+            "Authorization": `Bearer ${INSTALLER_BUILD_GH_TOKEN}`,
+            "Accept": "application/vnd.github.v3.raw",
+          },
+        })
+
+        if (response.ok) {
+          const msiData = await response.arrayBuffer()
+          const sha256 = crypto.createHash("sha256").update(Buffer.from(msiData)).digest("hex")
+
+          void safeAuditLog({
+            action: "installer_download",
+            entityType: "installer",
+            entityId: accountId,
+            accountId,
+            ip: clientIp,
+            userAgent,
+            details: { platform: "windows", sha256, static: false, tokenized: true, source: "github" },
+          })
+
+          return new NextResponse(msiData, {
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Disposition": `attachment; filename="${tokenizedName}"`,
+              "X-Checksum-SHA256": sha256,
+            },
+          })
+        }
+      } catch (githubError) {
+        console.warn("Failed to fetch MSI from GitHub:", githubError)
+      }
+    }
+
+    // Not yet built; trigger on-demand build
     const dispatch = await triggerWindowsBuild({ token, accountId, accountName })
     if (!dispatch.ok) {
       console.error("Windows installer build dispatch failed:", dispatch.error)
