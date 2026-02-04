@@ -152,6 +152,75 @@ function ConvertFrom-TokenJSON {
     }
 }
 
+function Validate-RegistrationToken {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Token
+    )
+    
+    Write-Log "Validating registration token..." "INFO"
+    
+    # Check 1: Token is not empty
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        Write-ErrorLog "Token cannot be empty"
+        return $false
+    }
+    
+    # Check 2: Try to base64 decode
+    try {
+        $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Token))
+        Write-Log "✓ Token is valid base64" "SUCCESS"
+    }
+    catch {
+        Write-ErrorLog "Token is not valid base64 encoding: $($_.Exception.Message)"
+        return $false
+    }
+    
+    # Check 3: Decoded content is JSON
+    try {
+        $tokenObj = $decoded | ConvertFrom-Json -ErrorAction Stop
+        Write-Log "✓ Token is valid JSON" "SUCCESS"
+    }
+    catch {
+        Write-ErrorLog "Token does not decode to valid JSON: $($_.Exception.Message)"
+        return $false
+    }
+    
+    # Check 4: Required fields exist
+    $requiredFields = @("accountId", "timestamp")
+    foreach ($field in $requiredFields) {
+        if (-not $tokenObj.PSObject.Properties.Name -contains $field) {
+            Write-ErrorLog "Token missing required field: $field"
+            return $false
+        }
+    }
+    Write-Log "✓ Token contains all required fields (accountId, timestamp)" "SUCCESS"
+    
+    # Check 5: Validate timestamp is reasonable (within last 30 days)
+    try {
+        $givenTimestamp = [long]$tokenObj.timestamp
+        $currentTimestamp = [long](Get-Date -UFormat %s) * 1000  # Convert to milliseconds
+        $ageDays = ($currentTimestamp - $givenTimestamp) / (1000 * 60 * 60 * 24)
+        
+        if ($ageDays -gt 30) {
+            Write-Log "WARNING: Token is $([Math]::Round($ageDays, 1)) days old (generated more than 30 days ago)" "WARN"
+        }
+        elseif ($ageDays -lt -1) {
+            Write-ErrorLog "Token timestamp is in the future (may be a clock synchronization issue)"
+            return $false
+        }
+        else {
+            Write-Log "✓ Token timestamp is valid (age: $([Math]::Round($ageDays, 1)) days)" "SUCCESS"
+        }
+    }
+    catch {
+        Write-Log "Could not validate token timestamp: $($_.Exception.Message)" "WARN"
+    }
+    
+    Write-Log "[OK] Token validation passed" "SUCCESS"
+    return $true
+}
+
 # ============================================================================
 # PREREQUISITES
 # ============================================================================
@@ -444,6 +513,13 @@ function Main {
     # Step 2: Get token
     $actualToken = Get-TokenFromConsole
     if (-not $actualToken) {
+        exit 1
+    }
+    
+    # Step 2.5: Validate token format and content
+    Write-Host ""
+    if (-not (Validate-RegistrationToken -Token $actualToken)) {
+        Write-ErrorLog "Installation cannot proceed without a valid token"
         exit 1
     }
     
