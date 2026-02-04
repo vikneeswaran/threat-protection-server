@@ -53,8 +53,7 @@
     </DirectoryRef>
 
     <CustomAction Id="StartAgent"
-                  Execute="deferred"
-                  Impersonate="no"
+                  Execute="immediate"
                   Directory="INSTALLFOLDER"
                   ExeCommand="KuaminiSecurityClient.exe"
                   Return="asyncNoWait" />
