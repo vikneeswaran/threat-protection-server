@@ -1,10 +1,18 @@
 # Vercel build exclusions - reduce deployment size
-# Exclude large binary files that will be fetched from GitHub API at runtime
+# Keep base installer as fallback, but exclude account-specific builds
 
-public/tray/*.msi
-public/tray/*.pkg
-public/tray/*.tar.gz
-public/tray/*.zip
+# Allow base installers (fallback), exclude tokenized & other builds
+public/tray/KuaminiSecurityClient-*.msi
+public/tray/KuaminiSecurityClient-*.pkg
+public/tray/KuaminiSecurityClient-*.tar.gz
+public/tray/KuaminiSecurityClient-*.zip
+public/tray/KuaminiSecurityClient-*-linux.tar.gz
+
+# Allow base non-tokenized installer files as fallback
+# These will be served when GitHub fetch fails
+!public/tray/KuaminiSecurityClient-1.0.0.msi
+!public/tray/KuaminiSecurityClient-1.0.0.pkg
+!public/tray/KuaminiSecurityClient-linux.tar.gz
 
 # Exclude build artifacts
 agent-tray/dist/**
