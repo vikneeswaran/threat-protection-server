@@ -70,11 +70,11 @@ jobs:
 
           git add "public/tray/KuaminiSecurityClient-${{ inputs.accountId }}.msi"
 
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
+          if (git diff --cached --quiet) {
+            Write-Host "No changes to commit"
+          } else {
             git commit -m "build: windows msi for account ${{ inputs.accountId }}"
             git push origin main
-          fi
+          }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
