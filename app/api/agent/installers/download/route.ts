@@ -345,6 +345,8 @@ async function serveWindowsInstaller(
     if (INSTALLER_BUILD_GH_TOKEN) {
       try {
         const githubUrl = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/contents/public/tray/${tokenizedName}?ref=main`
+        console.log(`[Windows Installer] Attempting GitHub API fetch from: ${githubUrl}`)
+        
         const response = await fetch(githubUrl, {
           headers: {
             "Authorization": `Bearer ${INSTALLER_BUILD_GH_TOKEN}`,
@@ -352,8 +354,12 @@ async function serveWindowsInstaller(
           },
         })
 
+        console.log(`[Windows Installer] GitHub API response status: ${response.status}`)
+
         if (response.ok) {
           const msiData = await response.arrayBuffer()
+          console.log(`[Windows Installer] Successfully fetched MSI from GitHub, size: ${msiData.byteLength} bytes`)
+          
           const sha256 = crypto.createHash("sha256").update(Buffer.from(msiData)).digest("hex")
 
           void safeAuditLog({
@@ -373,10 +379,15 @@ async function serveWindowsInstaller(
               "X-Checksum-SHA256": sha256,
             },
           })
+        } else {
+          const errorText = await response.text()
+          console.warn(`[Windows Installer] GitHub API error (${response.status}): ${errorText}`)
         }
       } catch (githubError) {
         console.warn("Failed to fetch MSI from GitHub:", githubError)
       }
+    } else {
+      console.warn("[Windows Installer] INSTALLER_BUILD_GH_TOKEN not configured")
     }
 
     // Not yet built; trigger on-demand build
