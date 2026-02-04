@@ -39,7 +39,7 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
     setTimeout(() => setCopiedCommand(null), 2000)
   }
 
-  const downloadInstaller = async (platform: string) => {
+  const downloadInstaller = async (platform: string, attempt = 0) => {
     try {
       setDownloadingInstaller(platform)
       toast.info(`Generating ${platform} installer...`)
@@ -50,6 +50,22 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
           method: "GET",
         },
       )
+
+      if (response.status === 202) {
+        const retryAfterHeader = response.headers.get("Retry-After")
+        const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : 15
+        const maxAttempts = 8
+
+        if (attempt >= maxAttempts) {
+          throw new Error("Installer build is taking longer than expected. Please try again in a minute.")
+        }
+
+        toast.info(`Installer is being prepared. Retrying in ${retryAfter}s...`)
+        setTimeout(() => {
+          void downloadInstaller(platform, attempt + 1)
+        }, retryAfter * 1000)
+        return
+      }
 
       if (!response.ok) {
         const error = await response.json()

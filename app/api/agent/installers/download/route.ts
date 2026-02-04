@@ -16,6 +16,10 @@ const TOKEN_TTL_SECONDS = Number(process.env.INSTALLER_TOKEN_TTL_SECONDS ?? 7 * 
 const RATE_LIMIT_WINDOW_MS = Number(process.env.INSTALLER_RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000) // default 10m
 const RATE_LIMIT_MAX_REQUESTS = Number(process.env.INSTALLER_RATE_LIMIT_MAX ?? 30)
 
+const INSTALLER_BUILD_GH_TOKEN = process.env.INSTALLER_BUILD_GH_TOKEN
+const INSTALLER_BUILD_GH_REPO = process.env.INSTALLER_BUILD_GH_REPO ?? "vikneeswaran/threat-protection-agent"
+const INSTALLER_BUILD_WORKFLOW = process.env.INSTALLER_BUILD_WORKFLOW ?? "build-windows-msi-on-demand.yml"
+
 // In-memory rate-limit buckets (per IP); best-effort for serverless
 const rateLimitBuckets = new Map<string, number[]>()
 
@@ -120,6 +124,44 @@ async function resolveBundlePath(candidates: string[]) {
   throw new Error(`Bundle not found. Tried: ${candidates.join(", ")}`)
 }
 
+async function triggerWindowsBuild(params: {
+  token: string
+  accountId: string
+  accountName: string
+}) {
+  if (!INSTALLER_BUILD_GH_TOKEN) {
+    return { ok: false, error: "Missing INSTALLER_BUILD_GH_TOKEN" }
+  }
+
+  const url = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/actions/workflows/${INSTALLER_BUILD_WORKFLOW}/dispatches`
+  const body = {
+    ref: "main",
+    inputs: {
+      token: params.token,
+      accountId: params.accountId,
+      accountName: params.accountName,
+    },
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${INSTALLER_BUILD_GH_TOKEN}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    return { ok: false, error: `Dispatch failed: ${response.status} ${text}` }
+  }
+
+  return { ok: true }
+}
+
 export async function GET(request: NextRequest) {
   try {
     if (!TOKEN_SECRET) {
@@ -210,7 +252,7 @@ export async function GET(request: NextRequest) {
       case "macos":
         return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "windows":
-        return await serveStaticInstaller("windows", accountId, clientIp, request.headers.get("user-agent"))
+        return await serveWindowsInstaller(accountId, account.name, registrationToken, clientIp, request.headers.get("user-agent"))
       case "linux":
         return await serveStaticInstaller("linux", accountId, clientIp, request.headers.get("user-agent"))
       default:
@@ -257,6 +299,64 @@ async function serveStaticInstaller(platform: string, accountId: string, clientI
   } catch (error) {
     console.error(`Error serving static ${platform} installer:`, error)
     return NextResponse.json({ error: `Installer not available for ${platform}` }, { status: 404 })
+  }
+}
+
+async function serveWindowsInstaller(
+  accountId: string,
+  accountName: string,
+  token: string,
+  clientIp?: string,
+  userAgent?: string | null,
+) {
+  try {
+    const basePath = path.join(process.cwd(), "public", "tray")
+    const tokenizedName = `KuaminiSecurityClient-${accountId}.msi`
+    const tokenizedPath = path.join(basePath, tokenizedName)
+
+    try {
+      await fs.access(tokenizedPath)
+      const data = await fs.readFile(tokenizedPath)
+      const sha256 = await getFileSha256(tokenizedPath)
+
+      void safeAuditLog({
+        action: "installer_download",
+        entityType: "installer",
+        entityId: accountId,
+        accountId,
+        ip: clientIp,
+        userAgent,
+        details: { platform: "windows", sha256, static: false, tokenized: true },
+      })
+
+      return new NextResponse(data, {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": `attachment; filename="${tokenizedName}"`,
+          "X-Checksum-SHA256": sha256,
+        },
+      })
+    } catch {
+      // Not yet built; trigger on-demand build
+    }
+
+    const dispatch = await triggerWindowsBuild({ token, accountId, accountName })
+    if (!dispatch.ok) {
+      console.error("Windows installer build dispatch failed:", dispatch.error)
+      return NextResponse.json({ error: "Windows installer is being prepared. Please retry shortly." }, { status: 202, headers: { "Retry-After": "15" } })
+    }
+
+    return NextResponse.json(
+      {
+        status: "building",
+        message: "Windows installer is being prepared. Please retry in ~30 seconds.",
+        retryAfter: 15,
+      },
+      { status: 202, headers: { "Retry-After": "15" } },
+    )
+  } catch (error) {
+    console.error("Error preparing Windows installer:", error)
+    return NextResponse.json({ error: "Windows installer not available" }, { status: 404 })
   }
 }
 

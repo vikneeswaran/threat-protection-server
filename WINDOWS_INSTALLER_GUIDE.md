@@ -35,6 +35,12 @@ This guide provides complete instructions for deploying and using the new robust
 - Future-proof for on-demand MSI generation
 - Logs downloads for audit trail
 
+### 4. **Console Download Endpoint** (`app/api/agent/installers/download/route.ts`)
+- `GET /api/agent/installers/download?platform=windows&accountId=ID`
+- Used by the "Download Installer" button in the console UI
+- For Windows, triggers an on-demand MSI build if a tokenized MSI is not present
+- Tokenized MSI is stored as `public/tray/KuaminiSecurityClient-<accountId>.msi`
+
 ### 4. **Enhanced Agent Code** (`agent-tray/main.py`)
 - **Better Windows path detection**: Prioritizes `%LOCALAPPDATA%\KuaminiSecurityClient\` on Windows
 - **Improved token handling**: Checks both `registration.token` and `registration_token.txt`
@@ -101,9 +107,9 @@ Users can install via two methods:
 
 1. Log into Kuamini Console: `https://kuaminisystems.com/securityAgent`
 2. Go to **Installers** → **Windows**
-3. Click "Generate Windows Installer"
-4. Download the MSI file
-5. Run: `msiexec /i KuaminiSecurityClient-1.0.0.msi`
+3. Click "Download Installer"
+4. The console generates an account-specific MSI (may take ~30-60 seconds on first request)
+5. Run: `msiexec /i KuaminiSecurityClient-<accountId>.msi`
 6. Agent starts automatically and registers with console
 
 #### **Method B: Scripted Installation**
