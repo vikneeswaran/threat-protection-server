@@ -185,12 +185,13 @@ jobs:
           git fetch origin main
           git pull --no-rebase --strategy=ours origin main || true
 
-          git add public/tray/*.pkg public/tray/*.zip public/tray/*.tar.gz 2>/dev/null || true
+          # Add all installer files (binary and scripts)
+          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz public/tray/*.ps1 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "build: update installers from latest code"
+            git commit -m "build: update installers from latest code ($(date -u +%Y-%m-%d))"
             git push origin main
           fi
         env:

@@ -112,23 +112,51 @@ function Get-TokenFromConsole {
     Write-Host "╚════════════════════════════════════════════════════════════╝"
     Write-Host ""
     
+    # Check if token provided via parameter (highest priority)
     if ($Token) {
         Write-Log "Token provided via parameter" "INFO"
         return $Token
     }
     
-    Write-Log "No token provided. Please enter your registration token:" "INFO"
+    # Check if token in environment variable (for CI/CD)
+    if ($env:KUAMINI_TOKEN) {
+        Write-Log "Token provided via environment variable" "INFO"
+        return $env:KUAMINI_TOKEN
+    }
+    
+    # Prompt user for token (interactive mode)
+    Write-Log "No token provided via parameter or environment variable." "WARN"
+    Write-Log "Please enter your registration token:" "INFO"
     Write-Log "(Token is available in the Kuamini Security Console)" "INFO"
     Write-Host ""
     
-    $tokenInput = Read-Host "Enter registration token"
+    $maxRetries = 3
+    $attempts = 0
     
-    if (-not $tokenInput) {
-        Write-ErrorLog "No token provided. Installation cannot continue."
-        exit 1
+    while ($attempts -lt $maxRetries) {
+        $tokenInput = Read-Host "Enter registration token (or 'skip' to register without pre-configured token)"
+        
+        if ($tokenInput -eq "skip") {
+            Write-Log "Proceeding without pre-configured token. Agent will register automatically." "INFO"
+            return $null
+        }
+        
+        if ($tokenInput) {
+            return $tokenInput
+        }
+        
+        $attempts++
+        if ($attempts -lt $maxRetries) {
+            Write-Log "Token cannot be empty. Please try again ($attempts/$maxRetries)" "WARN"
+        }
     }
     
-    return $tokenInput
+    Write-ErrorLog "No valid token provided after $maxRetries attempts. Installation cannot continue."
+    Write-Host ""
+    Write-Host "To install with a token, run:" -ForegroundColor Cyan
+    Write-Host "  .\install-kuamini-windows-cli.ps1 -Token `"your-token-here`"" -ForegroundColor Gray
+    Write-Host ""
+    exit 1
 }
 
 function ConvertFrom-TokenJSON {
@@ -512,15 +540,17 @@ function Main {
     
     # Step 2: Get token
     $actualToken = Get-TokenFromConsole
-    if (-not $actualToken) {
-        exit 1
-    }
+    # Token can be null if user skipped (will use auto-registration)
     
-    # Step 2.5: Validate token format and content
+    # Step 2.5: Validate token format and content (if provided)
     Write-Host ""
-    if (-not (Validate-RegistrationToken -Token $actualToken)) {
-        Write-ErrorLog "Installation cannot proceed without a valid token"
-        exit 1
+    if ($actualToken) {
+        if (-not (Validate-RegistrationToken -Token $actualToken)) {
+            Write-ErrorLog "Installation cannot proceed without a valid token"
+            exit 1
+        }
+    } else {
+        Write-Log "No token provided. Agent will register using console-generated token." "INFO"
     }
     
     # Step 3: Check prerequisites
