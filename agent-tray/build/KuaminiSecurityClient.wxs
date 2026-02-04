@@ -52,8 +52,11 @@
       </Component>
     </DirectoryRef>
 
-    <CustomAction Id="StartAgent" FileKey="KuaminiSecurityClient_exe"
-                  Execute="deferred" Return="asyncNoWait" Impersonate="yes" />
+    <CustomAction Id="StartAgent"
+                  Execute="deferred"
+                  Impersonate="no"
+                  ExeCommand="[INSTALLFOLDER]KuaminiSecurityClient.exe"
+                  Return="asyncNoWait" />
 
     <InstallExecuteSequence>
       <Custom Action="StartAgent" After="InstallFinalize">NOT Installed</Custom>
