@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'agent-tray/**'
+      - 'public/tray/install-kuamini-windows-cli.ps1'
+      - 'public/tray/install-windows.cmd'
       - '.github/workflows/build-and-deploy.yml'
   workflow_dispatch:
 
@@ -172,6 +174,11 @@ jobs:
           cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/ || true
           cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true
           
+          # Publish installer script with a stable name for console downloads
+          if [ -f public/tray/install-kuamini-windows-cli.ps1 ]; then
+            cp public/tray/install-kuamini-windows-cli.ps1 public/tray/install.ps1
+          fi
+          
           echo "Deployed installers:"
           ls -lh public/tray/* 2>/dev/null || true
 
@@ -186,7 +193,7 @@ jobs:
           git pull --no-rebase --strategy=ours origin main || true
 
           # Add all installer files (binary and scripts)
-          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz public/tray/*.ps1 2>/dev/null || true
+          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz public/tray/*.ps1 public/tray/*.cmd 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
