@@ -24,6 +24,8 @@
     <!-- Features -->
     <Feature Id="ProductFeature" Title="Kuamini Security Client" Level="1">
       <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="RegistrationTokenFile" />
+      <ComponentRef Id="RegistrationMetaFile" />
       <ComponentGroupRef Id="InternalFiles" />
       <ComponentRef Id="RegistryAutoStart" />
     </Feature>
@@ -34,6 +36,14 @@
         <File Id="KuaminiSecurityClient_exe" Name="KuaminiSecurityClient.exe"
               Source="$(var.SourceDir)\KuaminiSecurityClient.exe" KeyPath="yes" />
       </Component>
+      <Component Id="RegistrationTokenFile" Guid="B15E7A76-9B87-45D6-9D7D-0D8C1B8F1F11">
+        <File Id="KuaminiSecurityClient_token" Name="registration.token"
+              Source="$(var.SourceDir)\registration.token" KeyPath="yes" />
+      </Component>
+      <Component Id="RegistrationMetaFile" Guid="8D19F8E0-2E61-4D8B-B5A0-7CE7C3C0935E">
+        <File Id="KuaminiSecurityClient_regmeta" Name="registration.json"
+              Source="$(var.SourceDir)\registration.json" KeyPath="yes" />
+      </Component>
       <Component Id="RegistryAutoStart" Guid="99999999-8888-7777-6666-555555555555">
         <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" ForceCreateOnInstall="yes">
           <RegistryValue Type="string" Name="KuaminiSecurityClient"
@@ -41,6 +51,13 @@
         </RegistryKey>
       </Component>
     </DirectoryRef>
+
+    <CustomAction Id="StartAgent" FileKey="KuaminiSecurityClient_exe"
+                  Execute="deferred" Return="asyncNoWait" Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="StartAgent" After="InstallFinalize">NOT Installed</Custom>
+    </InstallExecuteSequence>
 
     <!-- UI -->
     <UIRef Id="WixUI_Minimal" />

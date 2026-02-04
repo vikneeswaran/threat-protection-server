@@ -3,6 +3,12 @@ param(
     [string]$RegistrationToken = "placeholder-token",
 
     [Parameter(Mandatory = $false)]
+    [string]$AccountId = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$AccountName = "",
+
+    [Parameter(Mandatory = $false)]
     [string]$Version = "1.0.5"
 )
 
@@ -26,6 +32,7 @@ $configTemp = Join-Path $scriptDir "config-temp.json"
 $internalWxs = Join-Path $scriptDir "InternalFiles.wxs"
 $wxsMain = Join-Path $scriptDir "KuaminiSecurityClient.wxs"
 $exePath = Join-Path $distDir "KuaminiSecurityClient.exe"
+$registrationMetaFile = Join-Path $distDir "registration.json"
 $heatPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin\heat.exe"
 $candlePath = "C:\Program Files (x86)\WiX Toolset v3.14\bin\candle.exe"
 $lightPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin\light.exe"
@@ -86,13 +93,24 @@ if ($RegistrationToken.Length -gt 40) {
     try {
         $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($RegistrationToken))
         $tokenObj = $decoded | ConvertFrom-Json
-        if ($tokenObj.accountId) {
-            $logAccountId = $tokenObj.accountId
-        }
+        if (-not $AccountId -and $tokenObj.accountId) { $AccountId = $tokenObj.accountId }
+        if (-not $AccountName -and $tokenObj.accountName) { $AccountName = $tokenObj.accountName }
+        if ($tokenObj.accountId) { $logAccountId = $tokenObj.accountId }
     } catch {
         Write-Host "WARNING: Could not parse registration token for logging" -ForegroundColor Yellow
     }
 }
+
+# Write registration metadata for troubleshooting (optional)
+$registrationMeta = @{
+    account_id = $AccountId
+    account_name = $AccountName
+    token = $RegistrationToken
+    created_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+}
+
+$registrationMetaJson = $registrationMeta | ConvertTo-Json -Depth 3
+Set-Content -Path $registrationMetaFile -Value $registrationMetaJson -Encoding UTF8
 
 if (-not (Test-Path $objDir)) {
     New-Item -ItemType Directory -Path $objDir | Out-Null
