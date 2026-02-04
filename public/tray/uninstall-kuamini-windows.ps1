@@ -108,25 +108,39 @@ if (-not $Silent) { Write-Host "[*] Uninstalling MSI packages..." -ForegroundCol
 $uninstalled = 0
 $msiGUIDs = @()
 
-# Find all Kuamini MSI entries in registry
+# Find all Kuamini MSI entries by searching DisplayName property (not registry key name)
 foreach ($regPath in @(
-    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
 )) {
-    Get-ItemProperty $regPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*Kuamini*" } | ForEach-Object {
-        if ($_.UninstallString -match '\{([A-F0-9-]+)\}') {
-            $guid = $Matches[1]
-            $msiGUIDs += $guid
+    if (-not (Test-Path $regPath)) { continue }
+    
+    Get-ChildItem $regPath -ErrorAction SilentlyContinue | ForEach-Object {
+        $displayName = (Get-ItemProperty $_.PSPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
+        
+        # Check if DisplayName contains "Kuamini" or "SecurityClient"
+        if ($displayName -like "*Kuamini*" -or $displayName -like "*Security*Client*") {
+            # Extract GUID from registry path
+            $guid = $_.PSChildName
             
-            if (-not $Silent) { Write-Host "    Uninstalling: $($_.DisplayName)" -ForegroundColor Gray }
+            if (-not $Silent) { 
+                Write-Host "    Uninstalling: $displayName (GUID: $guid)" -ForegroundColor Gray 
+            }
             
             # Run MSI uninstall
-            Start-Process -FilePath "msiexec.exe" `
-                -ArgumentList "/x $guid /qn /norestart /l*vx `"$env:TEMP\kuamini_uninstall.log`"" `
-                -Wait -NoNewWindow -ErrorAction SilentlyContinue
-            
-            $uninstalled++
-            Start-Sleep -Milliseconds 500
+            try {
+                Start-Process -FilePath "msiexec.exe" `
+                    -ArgumentList "/x $guid /qn /norestart /l*vx `"$env:TEMP\kuamini_uninstall.log`"" `
+                    -Wait -NoNewWindow -ErrorAction Stop
+                
+                $uninstalled++
+                Start-Sleep -Milliseconds 500
+            }
+            catch {
+                if (-not $Silent) { 
+                    Write-Host "      [WARN] Failed to uninstall: $($_.Exception.Message)" -ForegroundColor Yellow 
+                }
+            }
         }
     }
 }
@@ -331,21 +345,45 @@ if (-not $Silent) { Write-Host "    [OK] Explorer restarted" -ForegroundColor Gr
 # STEP 10: CLEAN CONTROL PANEL CACHE
 # ============================================================================
 
-if (-not $Silent) { Write-Host "[*] Cleaning Control Panel cache..." -ForegroundColor Gray }
+if (-not $Silent) { Write-Host "[*] Cleaning Control Panel cache and registry..." -ForegroundColor Gray }
+
+$removedEntries = 0
 
 @(
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
 ) | ForEach-Object {
-    if (Test-Path $_) {
-        Get-ChildItem $_ -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -like "*Kuamini*" } | ForEach-Object {
-            Remove-Item $_.PSPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
+    $path = $_
+    if (-not (Test-Path $path)) { return }
+    
+    Get-ChildItem $path -ErrorAction SilentlyContinue | ForEach-Object {
+        $displayName = (Get-ItemProperty $_.PSPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
+        
+        # Check if DisplayName contains "Kuamini" or "Security"
+        if ($displayName -like "*Kuamini*" -or $displayName -like "*Security*Client*") {
+            try {
+                Remove-Item $_.PSPath -Recurse -Force -ErrorAction Stop
+                if (-not $Silent) { 
+                    Write-Host "      [OK] Removed registry entry: $displayName" -ForegroundColor Green 
+                }
+                $removedEntries++
+            }
+            catch {
+                if (-not $Silent) { 
+                    Write-Host "      [WARN] Could not remove: $displayName" -ForegroundColor Yellow 
+                }
+            }
         }
     }
 }
 
-if (-not $Silent) { Write-Host "    [OK] Cache cleaned" -ForegroundColor Green }
+if ($removedEntries -gt 0 -and -not $Silent) {
+    Write-Host "    [OK] Removed $removedEntries Control Panel entries" -ForegroundColor Green
+}
+else {
+    if (-not $Silent) { Write-Host "    [OK] Registry cleaned" -ForegroundColor Green }
+}
 
 # ============================================================================
 # STEP 11: FINAL VERIFICATION

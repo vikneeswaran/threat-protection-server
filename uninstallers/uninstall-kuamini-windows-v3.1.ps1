@@ -132,7 +132,7 @@ foreach ($regPath in @(
 }
 
 if ($uninstalled -gt 0 -and -not $Silent) {
-    Write-Host "    ✓ Removed $uninstalled MSI installation(s)" -ForegroundColor Green
+    Write-Host "    [OK] Removed $uninstalled MSI installation(s)" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -150,7 +150,7 @@ if (-not $Silent) { Write-Host "[*] Removing scheduled tasks..." -ForegroundColo
     Unregister-ScheduledTask -TaskName $_ -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 }
 
-if (-not $Silent) { Write-Host "    ✓ Scheduled tasks removed" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Scheduled tasks removed" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 6: REMOVE STARTUP ENTRIES
@@ -168,7 +168,7 @@ if (-not $Silent) { Write-Host "[*] Removing startup registry entries..." -Foreg
     Remove-ItemProperty $_ -Name "KuaminiAgentTray" -Force -ErrorAction SilentlyContinue | Out-Null
 }
 
-if (-not $Silent) { Write-Host "    ✓ Startup entries removed" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Startup entries removed" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 7: REMOVE REGISTRY KEYS
@@ -188,7 +188,7 @@ if (-not $Silent) { Write-Host "[*] Cleaning registry..." -ForegroundColor Gray 
     }
 }
 
-if (-not $Silent) { Write-Host "    ✓ Registry cleaned" -ForegroundColor Green }
+if (-not $Silent) { Write-Host "    [OK] Registry cleaned" -ForegroundColor Green }
 
 # ============================================================================
 # STEP 8: REMOVE INSTALLATION FILES (AGGRESSIVE)
@@ -339,8 +339,13 @@ if (-not $Silent) { Write-Host "[*] Cleaning Control Panel cache..." -Foreground
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
 ) | ForEach-Object {
     if (Test-Path $_) {
-        Get-ChildItem $_ -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -like "*Kuamini*" } | ForEach-Object {
-            Remove-Item $_.PSPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
+        Get-ChildItem $_ -ErrorAction SilentlyContinue | ForEach-Object {
+            $displayName = (Get-ItemProperty $_.PSPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
+            
+            # Check if DisplayName contains "Kuamini" or "Security"
+            if ($displayName -like "*Kuamini*" -or $displayName -like "*Security*Client*") {
+                Remove-Item $_.PSPath -Force -Recurse -ErrorAction SilentlyContinue | Out-Null
+            }
         }
     }
 }
