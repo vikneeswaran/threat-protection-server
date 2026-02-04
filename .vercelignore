@@ -1,0 +1,23 @@
+# Vercel build exclusions - reduce deployment size
+# Exclude large binary files that will be fetched from GitHub API at runtime
+
+public/tray/*.msi
+public/tray/*.pkg
+public/tray/*.tar.gz
+public/tray/*.zip
+
+# Exclude build artifacts
+agent-tray/dist/**
+agent-tray/build/dist/**
+.next/**
+out/**
+
+# Exclude development dependencies
+node_modules/**
+.venv/**
+venv/**
+__pycache__/**
+
+# Exclude documentation and guides
+*.md
+docs/**
