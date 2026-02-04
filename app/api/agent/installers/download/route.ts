@@ -391,6 +391,40 @@ async function serveWindowsInstaller(
     }
 
     // Not yet built; trigger on-demand build
+    // Fallback: try to serve static MSI while waiting for on-demand build
+    try {
+      console.log("[Windows Installer] Attempting fallback to static MSI")
+      const basePath = path.join(process.cwd(), "public", "tray")
+      const candidates = ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
+      const staticPath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
+      const staticData = await fs.readFile(staticPath)
+      const sha256 = await getFileSha256(staticPath)
+      
+      console.log("[Windows Installer] Serving static MSI as fallback while tokenized build is being prepared")
+      
+      void safeAuditLog({
+        action: "installer_download",
+        entityType: "installer",
+        entityId: accountId,
+        accountId,
+        ip: clientIp,
+        userAgent,
+        details: { platform: "windows", sha256, static: true, fallback: true },
+      })
+
+      return new NextResponse(staticData, {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.msi"`,
+          "X-Checksum-SHA256": sha256,
+          "X-Is-Fallback": "true",
+        },
+      })
+    } catch (fallbackError) {
+      console.warn("[Windows Installer] Fallback to static MSI also failed:", fallbackError)
+    }
+
+    // Not yet built; trigger on-demand build
     const dispatch = await triggerWindowsBuild({ token, accountId, accountName })
     if (!dispatch.ok) {
       console.error("Windows installer build dispatch failed:", dispatch.error)
