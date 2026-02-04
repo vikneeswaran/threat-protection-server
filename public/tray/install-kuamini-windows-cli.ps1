@@ -54,6 +54,10 @@ param(
 # CONFIGURATION
 # ============================================================================
 
+# Set stricter error handling for critical operations
+$ErrorActionPreference = "Continue"
+$VerbosePreference = "SilentlyContinue"
+
 $script:API_BASE_URL = "https://kuaminisystems.com/api/agent"
 $script:MSI_DOWNLOAD_URL = "https://kuaminisystems.com/api/agent/installers/windows"
 $script:MSI_TEMP_DIR = Join-Path $env:TEMP "kuamini-install-$(Get-Random)"
@@ -161,7 +165,7 @@ function Test-Prerequisites {
         return $false
     }
     
-    Write-Log "✓ Windows 10+ detected" "SUCCESS"
+    Write-Log "[OK] Windows 10+ detected" "SUCCESS"
     
     # Check admin rights (we already required it above)
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -170,13 +174,13 @@ function Test-Prerequisites {
         return $false
     }
     
-    Write-Log "✓ Running as Administrator" "SUCCESS"
+    Write-Log "[OK] Running as Administrator" "SUCCESS"
     
     # Check internet connectivity
     try {
         $testUri = "https://kuaminisystems.com"
         $response = Invoke-WebRequest -Uri $testUri -TimeoutSec 5 -ErrorAction Stop
-        Write-Log "✓ Internet connectivity verified" "SUCCESS"
+        Write-Log "[OK] Internet connectivity verified" "SUCCESS"
     }
     catch {
         Write-ErrorLog "Cannot reach kuaminisystems.com. Check your internet connection."
@@ -216,7 +220,7 @@ function Get-InstallerMSI {
         }
         
         $msiSize = (Get-Item $msiPath).Length / 1MB
-        Write-Log "✓ MSI downloaded successfully ($([Math]::Round($msiSize, 2)) MB)" "SUCCESS"
+            Write-Log "[OK] MSI downloaded successfully ($([Math]::Round($msiSize, 2)) MB)" "SUCCESS"
         
         return $msiPath
     }
@@ -243,8 +247,20 @@ function New-ConfigFile {
     
     # Create config directory if not exists
     if (-not (Test-Path $script:CONFIG_DIR)) {
-        New-Item -ItemType Directory -Path $script:CONFIG_DIR -Force | Out-Null
-        Write-Log "Created config directory: $script:CONFIG_DIR" "INFO"
+        try {
+            New-Item -ItemType Directory -Path $script:CONFIG_DIR -Force -ErrorAction Stop | Out-Null
+            Write-Log "Created config directory: $script:CONFIG_DIR" "INFO"
+        }
+        catch {
+            Write-ErrorLog "CRITICAL: Failed to create config directory: $($_.Exception.Message)"
+            return $null
+        }
+    }
+    
+    # Verify directory was created
+    if (-not (Test-Path $script:CONFIG_DIR)) {
+        Write-ErrorLog "CRITICAL: Config directory does not exist even after creation attempt: $script:CONFIG_DIR"
+        return $null
     }
     
     # Generate agent_id (UUID)
@@ -260,11 +276,33 @@ function New-ConfigFile {
         auto_register      = $true
     }
     
-    $configJson = ConvertTo-Json $config -Depth 10
-    Set-Content -Path $script:CONFIG_FILE -Value $configJson -Encoding UTF8 -Force
-    
-    Write-Log "✓ Configuration file created: $script:CONFIG_FILE" "SUCCESS"
-    Write-Log "Agent ID: $agentId" "INFO"
+    try {
+        $configJson = ConvertTo-Json $config -Depth 10
+        Set-Content -Path $script:CONFIG_FILE -Value $configJson -Encoding UTF8 -Force -ErrorAction Stop
+        
+        # CRITICAL: Verify the file was actually created
+        if (-not (Test-Path $script:CONFIG_FILE)) {
+            Write-ErrorLog "CRITICAL: Config file not found after Set-Content: $script:CONFIG_FILE"
+            Write-ErrorLog "This is a permissions or disk issue. Try running as Administrator."
+            return $null
+        }
+        
+        # Verify file has content
+        $fileSize = (Get-Item $script:CONFIG_FILE).Length
+        if ($fileSize -eq 0) {
+            Write-ErrorLog "CRITICAL: Config file is empty after creation: $script:CONFIG_FILE"
+            return $null
+        }
+        
+        Write-Log "[OK] Configuration file created: $script:CONFIG_FILE (size: $fileSize bytes)" "SUCCESS"
+        Write-Log "Agent ID: $agentId" "INFO"
+    }
+    catch {
+        Write-ErrorLog "CRITICAL: Failed to create config file: $($_.Exception.Message)"
+        Write-ErrorLog "Path: $script:CONFIG_FILE"
+        Write-ErrorLog "This usually means a permissions issue. Verify you have write access to AppData\Local"
+        return $null
+    }
     
     return $agentId
 }
@@ -299,7 +337,7 @@ function Install-MSI {
         $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -NoNewWindow -PassThru -Wait
         
         if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-            Write-Log "✓ MSI installation completed (exit code: $($process.ExitCode))" "SUCCESS"
+            Write-Log "[OK] MSI installation completed (exit code: $($process.ExitCode))" "SUCCESS"
             return $true
         }
         else {
@@ -429,6 +467,10 @@ function Main {
     # Step 6: Create configuration
     Write-Host ""
     $agentId = New-ConfigFile -Token $actualToken -TokenData $tokenData
+    if (-not $agentId) {
+        Write-ErrorLog "Configuration creation failed. Installation cannot continue."
+        exit 1
+    }
     
     # Step 7: Install MSI
     Write-Host ""

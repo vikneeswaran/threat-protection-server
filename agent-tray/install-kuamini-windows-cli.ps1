@@ -54,6 +54,10 @@ param(
 # CONFIGURATION
 # ============================================================================
 
+# Set stricter error handling for critical operations
+$ErrorActionPreference = "Continue"
+$VerbosePreference = "SilentlyContinue"
+
 $script:API_BASE_URL = "https://kuaminisystems.com/api/agent"
 $script:MSI_DOWNLOAD_URL = "https://kuaminisystems.com/api/agent/installers/windows"
 $script:MSI_TEMP_DIR = Join-Path $env:TEMP "kuamini-install-$(Get-Random)"
@@ -429,6 +433,10 @@ function Main {
     # Step 6: Create configuration
     Write-Host ""
     $agentId = New-ConfigFile -Token $actualToken -TokenData $tokenData
+    if (-not $agentId) {
+        Write-ErrorLog "Configuration creation failed. Installation cannot continue."
+        exit 1
+    }
     
     # Step 7: Install MSI
     Write-Host ""
