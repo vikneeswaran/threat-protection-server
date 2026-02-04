@@ -293,7 +293,7 @@ function Test-Prerequisites {
 
 function Get-InstallerMSI {
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$Token
     )
     
@@ -303,8 +303,11 @@ function Get-InstallerMSI {
         # Create temp directory
         New-Item -ItemType Directory -Path $script:MSI_TEMP_DIR -Force | Out-Null
         
-        # Build download URL with token
-        $downloadUrl = "$($script:MSI_DOWNLOAD_URL)?token=$([System.Web.HttpUtility]::UrlEncode($Token))"
+        # Build download URL with token (if provided)
+        $downloadUrl = $script:MSI_DOWNLOAD_URL
+        if ($Token) {
+            $downloadUrl = "$($script:MSI_DOWNLOAD_URL)?token=$([System.Web.HttpUtility]::UrlEncode($Token))"
+        }
         
         $msiPath = Join-Path $script:MSI_TEMP_DIR "KuaminiSecurityClient.msi"
         
@@ -333,7 +336,7 @@ function Get-InstallerMSI {
 
 function New-ConfigFile {
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$Token,
         
         [Parameter(Mandatory = $false)]
@@ -367,10 +370,19 @@ function New-ConfigFile {
         api_base           = $script:API_BASE_URL
         console_url        = $ConsoleUrl
         agent_id           = $agentId
-        account_id         = if ($TokenData) { $TokenData.accountId } else { $AccountId }
-        registration_token = $Token
         heartbeat_interval = 60
         auto_register      = $true
+    }
+    
+    # Add optional fields if provided
+    if ($Token) {
+        $config.registration_token = $Token
+    }
+    if ($TokenData -and $TokenData.accountId) {
+        $config.account_id = $TokenData.accountId
+    }
+    elseif ($AccountId) {
+        $config.account_id = $AccountId
     }
     
     try {
@@ -393,6 +405,11 @@ function New-ConfigFile {
         
         Write-Log "[OK] Configuration file created: $script:CONFIG_FILE (size: $fileSize bytes)" "SUCCESS"
         Write-Log "Agent ID: $agentId" "INFO"
+        if ($Token) {
+            Write-Log "Token: Configured for auto-registration" "INFO"
+        } else {
+            Write-Log "Token: Not pre-configured. Agent will self-register." "INFO"
+        }
     }
     catch {
         Write-ErrorLog "CRITICAL: Failed to create config file: $($_.Exception.Message)"
@@ -450,9 +467,15 @@ function Install-MSI {
 
 function Write-RegistrationToken {
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$Token
     )
+    
+    # Skip if no token provided (agent will use config.json or self-register)
+    if (-not $Token) {
+        Write-Log "No token to write. Agent will register using config.json." "INFO"
+        return $true
+    }
     
     Write-Log "Writing registration token to installation..." "INFO"
     
