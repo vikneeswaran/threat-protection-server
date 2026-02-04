@@ -449,7 +449,34 @@ function Main {
         exit 1
     }
     
-    # Step 10: Cleanup
+    # Step 10: Start the agent
+    Write-Log "Starting Kuamini Security Client agent..." "INFO"
+    $installPaths = @(
+        "C:\Program Files\Kuamini Security Client\KuaminiSecurityClient.exe",
+        "C:\Program Files (x86)\Kuamini Security Client\KuaminiSecurityClient.exe"
+    )
+    
+    $agentStarted = $false
+    foreach ($exePath in $installPaths) {
+        if (Test-Path $exePath) {
+            try {
+                Start-Process -FilePath $exePath -NoNewWindow -ErrorAction Stop
+                Write-Log "✓ Agent started successfully" "SUCCESS"
+                $agentStarted = $true
+                Start-Sleep -Seconds 2  # Give agent time to start
+                break
+            }
+            catch {
+                Write-ErrorLog "Failed to start agent at $exePath : $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    if (-not $agentStarted) {
+        Write-ErrorLog "Could not start agent - please start manually or restart Windows"
+    }
+    
+    # Step 11: Cleanup
     Write-Log "Cleaning up temporary files..." "INFO"
     Remove-Item -Path $script:MSI_TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
     
@@ -458,10 +485,11 @@ function Main {
     Write-Host "╔════════════════════════════════════════════════════════════╗"
     Write-Host "║  Installation Completed Successfully!                      ║"
     Write-Host "║  Agent ID: $agentId"
-    Write-Host "║  Status: Starting...                                        ║"
+    Write-Host "║  Status: Agent is running and registering...              ║"
     Write-Host "╚════════════════════════════════════════════════════════════╝"
     Write-Host ""
-    Write-Log "The agent will start automatically. Check your console for registration." "INFO"
+    Write-Log "The agent will now register with the console." "INFO"
+    Write-Log "Check your Kuamini Security Console after 10 seconds." "INFO"
 }
 
 # ============================================================================
