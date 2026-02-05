@@ -6,8 +6,7 @@ import fs from "fs/promises"
 import path from "path"
 import { exec } from "child_process"
 import { promisify } from "util"
-import archiver from "archiver"
-import { Readable } from "stream"
+import AdmZip from "adm-zip"
 import os from "os"
 
 const execAsync = promisify(exec)
@@ -92,7 +91,7 @@ async function buildWindowsInstallerBundle(
   token: string,
   clientIp?: string,
   userAgent?: string | null,
-) {
+): Promise<NextResponse> {
   const basePath = path.join(process.cwd(), "public", "tray")
   const candidates = ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
   const msiPath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
@@ -100,42 +99,31 @@ async function buildWindowsInstallerBundle(
   const sha256 = await getFileSha256(msiPath)
   const msiName = path.basename(msiPath)
 
-  // Create zip using archiver
-  const chunks: Buffer[] = []
-  return new Promise((resolve, reject) => {
-    const archive = archiver("zip", { zlib: { level: 9 } })
-    
-    archive.on("data", (chunk: Buffer) => chunks.push(chunk))
-    archive.on("error", (err: Error) => reject(err))
-    archive.on("end", () => {
-      const zipData = Buffer.concat(chunks)
-      const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
+  // Create zip using adm-zip
+  const zip = new AdmZip()
+  zip.addFile(msiName, msiData)
+  zip.addFile("registration.token", Buffer.from(token, "utf-8"))
+  const zipData = zip.toBuffer()
 
-      void safeAuditLog({
-        action: "installer_download",
-        entityType: "installer",
-        entityId: accountId,
-        accountId,
-        ip: clientIp,
-        userAgent,
-        details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName },
-      })
+  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
 
-      resolve(
-        new NextResponse(zipData, {
-          headers: {
-            "Content-Type": "application/zip",
-            "Content-Disposition": `attachment; filename="${bundleName}"`,
-            "X-Checksum-SHA256": sha256,
-            "X-Bundle-Type": "msi+token",
-          },
-        })
-      )
-    })
+  void safeAuditLog({
+    action: "installer_download",
+    entityType: "installer",
+    entityId: accountId,
+    accountId,
+    ip: clientIp,
+    userAgent,
+    details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName },
+  })
 
-    archive.append(msiData, { name: msiName })
-    archive.append(token, { name: "registration.token" })
-    archive.finalize()
+  return new NextResponse(new Uint8Array(zipData), {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${bundleName}"`,
+      "X-Checksum-SHA256": sha256,
+      "X-Bundle-Type": "msi+token",
+    },
   })
 }
 
