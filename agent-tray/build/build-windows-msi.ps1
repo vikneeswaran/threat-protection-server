@@ -98,7 +98,7 @@ if ($LASTEXITCODE -ne 0) {
 # Ensure generated components are marked as 64-bit
 try {
     $wxsContent = Get-Content -Path $internalWxs -Raw
-    $wxsContent = $wxsContent -replace '<Component(?![^>]*\bWin64=)', '<Component Win64="yes"'
+    $wxsContent = $wxsContent -replace '<Component\s+', '<Component Win64="yes" '
     Set-Content -Path $internalWxs -Value $wxsContent -Encoding UTF8
 } catch {
     Write-Host "WARNING: Failed to mark InternalFiles components as Win64" -ForegroundColor Yellow
