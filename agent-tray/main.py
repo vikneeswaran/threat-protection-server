@@ -154,6 +154,36 @@ def verify_installation():
                             break
                         except Exception as e:
                             print(f"[Installation Fix] Failed to read token file {token_filename}: {e}", file=sys.stderr)
+                
+                # If not found in install dir, check Downloads and Desktop
+                if not token_from_file:
+                    search_dirs = [
+                        Path.home() / "Downloads",
+                        Path.home() / "Desktop",
+                        Path.cwd(),  # current working directory
+                    ]
+                    for search_dir in search_dirs:
+                        for token_filename in ["registration.token", "registration_token.txt"]:
+                            token_file = search_dir / token_filename
+                            if token_file.exists():
+                                try:
+                                    content = token_file.read_text(encoding='utf-8').strip()
+                                    # Verify it's not the placeholder
+                                    if content != "placeholder-token" and len(content) > 50:
+                                        token_from_file = content
+                                        token_file_path = token_file
+                                        print(f"[Installation Fix] Found registration token in search dir: {token_file}", file=sys.stderr)
+                                        # Copy it to install dir for next time
+                                        try:
+                                            (install_dir / token_filename).write_text(content)
+                                            print(f"[Installation Fix] Copied token to install dir", file=sys.stderr)
+                                        except Exception as e:
+                                            print(f"[Installation Fix] Could not copy token to install dir: {e}", file=sys.stderr)
+                                        break
+                                except Exception as e:
+                                    print(f"[Installation Fix] Failed to read token from {token_file}: {e}", file=sys.stderr)
+                        if token_from_file:
+                            break
             
             default_config = {
                 "api_base": "https://kuaminisystems.com/api/agent",
@@ -174,8 +204,8 @@ def verify_installation():
             config_file.write_text(json.dumps(default_config, indent=2))
             print(f"[Installation Fix] Created default config file: {config_file}", file=sys.stderr)
             
-            # Delete registration.token after consuming it
-            if token_file_path and token_file_path.exists():
+            # Delete registration.token after consuming it (only if we found and read it)
+            if token_file_path and token_file_path.exists() and token_from_file:
                 try:
                     token_file_path.unlink()
                     print(f"[Installation Fix] Deleted consumed registration token file", file=sys.stderr)
@@ -440,8 +470,14 @@ def register(config):
             except Exception as e:
                 logging.warning("Failed to persist account_id before register: %s", e)
 
+    # Check if we have placeholder token (not a real token)
+    token = config.get("registration_token", "").strip()
+    if token == "placeholder-token":
+        logging.warning("Registration skipped: placeholder token detected - this indicates the registration.token file was not properly copied during installation")
+        return False, "Placeholder token detected - installation may be incomplete"
+    
     # Validate configuration before attempting registration
-    if not config.get("registration_token"):
+    if not token:
         logging.warning("Registration skipped: no registration_token in config. This is expected during fresh install before token injection.")
         # Clear stale endpoint/account info when no token available
         if config.get("endpoint_id") or config.get("account_id"):

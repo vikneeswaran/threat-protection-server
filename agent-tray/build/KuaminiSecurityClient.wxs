@@ -43,21 +43,15 @@
       </Component>
     </DirectoryRef>
 
+    <!-- Copy registration token from source directory or search common locations -->
     <CustomAction Id="CopyRegistrationToken"
                   Execute="immediate"
-                  Directory="SystemFolder"
-                  ExeCommand="powershell.exe -NoProfile -NonInteractive -Command &quot;if (Test-Path '[SourceDir]registration.token') { Copy-Item '[SourceDir]registration.token' '[INSTALLFOLDER]registration.token' -Force } else { foreach ($dir in @($env:TEMP, $env:USERPROFILE + '\Downloads', $env:USERPROFILE + '\Desktop', $env:USERPROFILE)) { if (Test-Path &quot;$dir\registration.token&quot;) { Copy-Item &quot;$dir\registration.token&quot; '[INSTALLFOLDER]registration.token' -Force; break } } }&quot;"
+                  ExeCommand="cmd.exe /c for /D %A in (&quot;%USERPROFILE%\Downloads&quot; &quot;%USERPROFILE%\Desktop&quot; &quot;.&quot;) do @if exist %A\registration.token copy /Y %A\registration.token &quot;[INSTALLFOLDER]registration.token&quot; &amp;&amp; goto :done
+:done"
                   Return="ignore" />
 
-    <CustomAction Id="StartAgent"
-                  Execute="immediate"
-                  Directory="INSTALLFOLDER"
-                  ExeCommand="KuaminiSecurityClient.exe"
-                  Return="asyncNoWait" />
-
     <InstallExecuteSequence>
-      <Custom Action="CopyRegistrationToken" After="InstallFiles">NOT Installed</Custom>
-      <Custom Action="StartAgent" After="InstallFinalize">NOT Installed</Custom>
+      <Custom Action="CopyRegistrationToken" After="StartServices" />
     </InstallExecuteSequence>
 
     <!-- UI -->
