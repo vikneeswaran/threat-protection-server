@@ -6,7 +6,8 @@ import fs from "fs/promises"
 import path from "path"
 import { exec } from "child_process"
 import { promisify } from "util"
-import JSZip from "jszip"
+import archiver from "archiver"
+import { Readable } from "stream"
 import os from "os"
 
 const execAsync = promisify(exec)
@@ -99,30 +100,42 @@ async function buildWindowsInstallerBundle(
   const sha256 = await getFileSha256(msiPath)
   const msiName = path.basename(msiPath)
 
-  const zip = new JSZip()
-  zip.file(msiName, msiData)
-  zip.file("registration.token", token)
-  const zipData = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })
+  // Create zip using archiver
+  const chunks: Buffer[] = []
+  return new Promise((resolve, reject) => {
+    const archive = archiver("zip", { zlib: { level: 9 } })
+    
+    archive.on("data", (chunk: Buffer) => chunks.push(chunk))
+    archive.on("error", (err: Error) => reject(err))
+    archive.on("end", () => {
+      const zipData = Buffer.concat(chunks)
+      const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
 
-  void safeAuditLog({
-    action: "installer_download",
-    entityType: "installer",
-    entityId: accountId,
-    accountId,
-    ip: clientIp,
-    userAgent,
-    details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName },
-  })
+      void safeAuditLog({
+        action: "installer_download",
+        entityType: "installer",
+        entityId: accountId,
+        accountId,
+        ip: clientIp,
+        userAgent,
+        details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName },
+      })
 
-  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
+      resolve(
+        new NextResponse(zipData, {
+          headers: {
+            "Content-Type": "application/zip",
+            "Content-Disposition": `attachment; filename="${bundleName}"`,
+            "X-Checksum-SHA256": sha256,
+            "X-Bundle-Type": "msi+token",
+          },
+        })
+      )
+    })
 
-  return new NextResponse(zipData, {
-    headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${bundleName}"`,
-      "X-Checksum-SHA256": sha256,
-      "X-Bundle-Type": "msi+token",
-    },
+    archive.append(msiData, { name: msiName })
+    archive.append(token, { name: "registration.token" })
+    archive.finalize()
   })
 }
 
