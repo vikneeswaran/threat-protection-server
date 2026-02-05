@@ -19,6 +19,7 @@
       </Directory>
       <Directory Id="ProgramMenuFolder" />
       <Directory Id="DesktopFolder" />
+      <Directory Id="SystemFolder" />
     </Directory>
 
     <!-- Features -->
