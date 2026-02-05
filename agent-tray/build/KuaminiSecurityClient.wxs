@@ -46,8 +46,8 @@
     <CustomAction Id="CopyRegistrationToken"
                   Execute="immediate"
                   Directory="SystemFolder"
-                  ExeCommand="cmd.exe /c if exist &quot;[SourceDir]registration.token&quot; copy /Y &quot;[SourceDir]registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;"
-                  Return="check" />
+                  ExeCommand="powershell.exe -NoProfile -NonInteractive -Command &quot;if (Test-Path '[SourceDir]registration.token') { Copy-Item '[SourceDir]registration.token' '[INSTALLFOLDER]registration.token' -Force } else { foreach ($dir in @($env:TEMP, $env:USERPROFILE + '\Downloads', $env:USERPROFILE + '\Desktop', $env:USERPROFILE)) { if (Test-Path &quot;$dir\registration.token&quot;) { Copy-Item &quot;$dir\registration.token&quot; '[INSTALLFOLDER]registration.token' -Force; break } } }&quot;"
+                  Return="ignore" />
 
     <CustomAction Id="StartAgent"
                   Execute="immediate"
