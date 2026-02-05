@@ -81,36 +81,9 @@ if (-not (Test-Path $lightPath)) {
 # Clean up any old config.json from dist folder
 Remove-Item (Join-Path $distDir "config.json") -Force -ErrorAction SilentlyContinue
 
-# Save the embedded token to a separate file (not config.json) - app will read this on first run
-$tokenFile = Join-Path $distDir "registration.token"
-Set-Content $tokenFile $RegistrationToken -Encoding UTF8 -NoNewline
-
-# Extract account_id and agent_id for logging purposes
-$logAccountId = "<not yet set>"
+# Registration token is provided as a sidecar file at install time
+$logAccountId = "<provided at install>"
 $logAgentId = "<will be generated at install>"
-
-if ($RegistrationToken.Length -gt 40) {
-    try {
-        $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($RegistrationToken))
-        $tokenObj = $decoded | ConvertFrom-Json
-        if (-not $AccountId -and $tokenObj.accountId) { $AccountId = $tokenObj.accountId }
-        if (-not $AccountName -and $tokenObj.accountName) { $AccountName = $tokenObj.accountName }
-        if ($tokenObj.accountId) { $logAccountId = $tokenObj.accountId }
-    } catch {
-        Write-Host "WARNING: Could not parse registration token for logging" -ForegroundColor Yellow
-    }
-}
-
-# Write registration metadata for troubleshooting (optional)
-$registrationMeta = @{
-    account_id = $AccountId
-    account_name = $AccountName
-    token = $RegistrationToken
-    created_at_utc = (Get-Date).ToUniversalTime().ToString("o")
-}
-
-$registrationMetaJson = $registrationMeta | ConvertTo-Json -Depth 3
-Set-Content -Path $registrationMetaFile -Value $registrationMetaJson -Encoding UTF8
 
 if (-not (Test-Path $objDir)) {
     New-Item -ItemType Directory -Path $objDir | Out-Null
@@ -120,6 +93,15 @@ if (-not (Test-Path $objDir)) {
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Heat.exe failed" -ForegroundColor Red
     exit 1
+}
+
+# Ensure generated components are marked as 64-bit
+try {
+    $wxsContent = Get-Content -Path $internalWxs -Raw
+    $wxsContent = $wxsContent -replace '<Component(?![^>]*\bWin64=)', '<Component Win64="yes"'
+    Set-Content -Path $internalWxs -Value $wxsContent -Encoding UTF8
+} catch {
+    Write-Host "WARNING: Failed to mark InternalFiles components as Win64" -ForegroundColor Yellow
 }
 
 & $candlePath "-dProductVersion=$productVersion" "-dSourceDir=$distDir" -out "$objDir\" $wxsMain

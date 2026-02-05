@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="Kuamini Security Client" Language="1033" Version="$(var.ProductVersion)"
            Manufacturer="Kuamini Systems" UpgradeCode="12345678-1234-1234-1234-123456789012">
-    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <!-- Major upgrade logic -->
@@ -12,7 +12,7 @@
 
     <!-- Define installation directories -->
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
+      <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="Kuamini Security Client">
           <Directory Id="INTERNALFOLDER" Name="_internal" />
         </Directory>
@@ -24,33 +24,29 @@
     <!-- Features -->
     <Feature Id="ProductFeature" Title="Kuamini Security Client" Level="1">
       <ComponentRef Id="MainExecutable" />
-      <ComponentRef Id="RegistrationTokenFile" />
-      <ComponentRef Id="RegistrationMetaFile" />
       <ComponentGroupRef Id="InternalFiles" />
       <ComponentRef Id="RegistryAutoStart" />
     </Feature>
 
     <!-- Main executable -->
     <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="MainExecutable" Guid="87654321-1234-1234-1234-123456789012">
+      <Component Id="MainExecutable" Guid="87654321-1234-1234-1234-123456789012" Win64="yes">
         <File Id="KuaminiSecurityClient_exe" Name="KuaminiSecurityClient.exe"
               Source="$(var.SourceDir)\KuaminiSecurityClient.exe" KeyPath="yes" />
       </Component>
-      <Component Id="RegistrationTokenFile" Guid="B15E7A76-9B87-45D6-9D7D-0D8C1B8F1F11">
-        <File Id="KuaminiSecurityClient_token" Name="registration.token"
-              Source="$(var.SourceDir)\registration.token" KeyPath="yes" />
-      </Component>
-      <Component Id="RegistrationMetaFile" Guid="8D19F8E0-2E61-4D8B-B5A0-7CE7C3C0935E">
-        <File Id="KuaminiSecurityClient_regmeta" Name="registration.json"
-              Source="$(var.SourceDir)\registration.json" KeyPath="yes" />
-      </Component>
-      <Component Id="RegistryAutoStart" Guid="99999999-8888-7777-6666-555555555555">
+      <Component Id="RegistryAutoStart" Guid="99999999-8888-7777-6666-555555555555" Win64="yes">
         <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" ForceCreateOnInstall="yes">
           <RegistryValue Type="string" Name="KuaminiSecurityClient"
                          Value="&quot;[INSTALLFOLDER]KuaminiSecurityClient.exe&quot;" />
         </RegistryKey>
       </Component>
     </DirectoryRef>
+
+    <CustomAction Id="CopyRegistrationToken"
+                  Execute="immediate"
+                  Directory="SystemFolder"
+                  ExeCommand="cmd.exe /c if exist &quot;[SourceDir]registration.token&quot; copy /Y &quot;[SourceDir]registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;"
+                  Return="check" />
 
     <CustomAction Id="StartAgent"
                   Execute="immediate"
@@ -59,6 +55,7 @@
                   Return="asyncNoWait" />
 
     <InstallExecuteSequence>
+      <Custom Action="CopyRegistrationToken" After="InstallFiles">NOT Installed</Custom>
       <Custom Action="StartAgent" After="InstallFinalize">NOT Installed</Custom>
     </InstallExecuteSequence>
 

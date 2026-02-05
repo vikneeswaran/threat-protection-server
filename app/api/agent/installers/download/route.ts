@@ -6,6 +6,7 @@ import fs from "fs/promises"
 import path from "path"
 import { exec } from "child_process"
 import { promisify } from "util"
+import JSZip from "jszip"
 import os from "os"
 
 const execAsync = promisify(exec)
@@ -83,6 +84,46 @@ async function getFileSha256(filePath: string) {
   const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex")
   checksumCache.set(filePath, { mtimeMs: stat.mtimeMs, hash })
   return hash
+}
+
+async function buildWindowsInstallerBundle(
+  accountId: string,
+  token: string,
+  clientIp?: string,
+  userAgent?: string | null,
+) {
+  const basePath = path.join(process.cwd(), "public", "tray")
+  const candidates = ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
+  const msiPath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
+  const msiData = await fs.readFile(msiPath)
+  const sha256 = await getFileSha256(msiPath)
+  const msiName = path.basename(msiPath)
+
+  const zip = new JSZip()
+  zip.file(msiName, msiData)
+  zip.file("registration.token", token)
+  const zipData = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })
+
+  void safeAuditLog({
+    action: "installer_download",
+    entityType: "installer",
+    entityId: accountId,
+    accountId,
+    ip: clientIp,
+    userAgent,
+    details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName },
+  })
+
+  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
+
+  return new NextResponse(zipData, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${bundleName}"`,
+      "X-Checksum-SHA256": sha256,
+      "X-Bundle-Type": "msi+token",
+    },
+  })
 }
 
 async function safeAuditLog(params: {
@@ -341,6 +382,14 @@ async function serveWindowsInstaller(
       // Not in filesystem; try GitHub API (for Vercel deployments after on-demand build)
     }
 
+    // Build a dynamic MSI + token bundle from the base installer
+    try {
+      console.log("[Windows Installer] Building MSI + token bundle")
+      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent)
+    } catch (bundleError) {
+      console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
+    }
+
     // Try to fetch from GitHub
     if (INSTALLER_BUILD_GH_TOKEN) {
       try {
@@ -388,40 +437,6 @@ async function serveWindowsInstaller(
       }
     } else {
       console.warn("[Windows Installer] INSTALLER_BUILD_GH_TOKEN not configured")
-    }
-
-    // Not yet built; trigger on-demand build
-    // Fallback: try to serve static MSI while waiting for on-demand build
-    try {
-      console.log("[Windows Installer] Attempting fallback to static MSI")
-      const basePath = path.join(process.cwd(), "public", "tray")
-      const candidates = ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
-      const staticPath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
-      const staticData = await fs.readFile(staticPath)
-      const sha256 = await getFileSha256(staticPath)
-      
-      console.log("[Windows Installer] Serving static MSI as fallback while tokenized build is being prepared")
-      
-      void safeAuditLog({
-        action: "installer_download",
-        entityType: "installer",
-        entityId: accountId,
-        accountId,
-        ip: clientIp,
-        userAgent,
-        details: { platform: "windows", sha256, static: true, fallback: true },
-      })
-
-      return new NextResponse(staticData, {
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.msi"`,
-          "X-Checksum-SHA256": sha256,
-          "X-Is-Fallback": "true",
-        },
-      })
-    } catch (fallbackError) {
-      console.warn("[Windows Installer] Fallback to static MSI also failed:", fallbackError)
     }
 
     // Not yet built; trigger on-demand build
