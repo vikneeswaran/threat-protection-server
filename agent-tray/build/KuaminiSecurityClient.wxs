@@ -45,6 +45,7 @@
 
     <!-- Copy registration token from source directory or search common locations -->
     <CustomAction Id="CopyRegistrationToken"
+                  Directory="SystemFolder"
                   Execute="immediate"
                   ExeCommand="cmd.exe /c for /D %A in (&quot;%USERPROFILE%\Downloads&quot; &quot;%USERPROFILE%\Desktop&quot; &quot;.&quot;) do @if exist %A\registration.token copy /Y %A\registration.token &quot;[INSTALLFOLDER]registration.token&quot; &amp;&amp; goto :done
 :done"
