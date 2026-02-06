@@ -53,29 +53,18 @@ Build Directory: {str(agent_dir)[-42:]}
         print(f"  Removed: {dist_dir}")
     
     # Step 2: Run PyInstaller
-    spec_file = script_dir / "KuaminiSecurityClient.spec"
-    if not spec_file.exists():
-        # If no spec file, run PyInstaller with basic args
-        print("\n[WARNING] No .spec file found, generating from main.py")
-        pyinstaller_cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--name", "KuaminiSecurityClient",
-            "--onedir",
-            "--windowed",
-            "--distpath", str(agent_dir / "dist"),
-            "--workpath", str(agent_dir / "build" / "pyinstaller"),
-            "--specpath", str(script_dir),
-            "--add-data", f"{str(agent_dir / 'config.json')};.",
-            str(agent_dir / "main.py")
-        ]
-    else:
-        # Use existing spec file
-        pyinstaller_cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--distpath", str(agent_dir / "dist"),
-            "--workpath", str(agent_dir / "build" / "pyinstaller"),
-            str(spec_file)
-        ]
+    # Always generate fresh (don't use spec files which have hardcoded local paths)
+    print("\n[INFO] Generating PyInstaller command with relative paths")
+    pyinstaller_cmd = [
+        "py", "-m", "PyInstaller",
+        "--name", "KuaminiSecurityClient",
+        "--onedir",
+        "--windowed",
+        "--distpath", str(agent_dir / "dist"),
+        "--workpath", str(agent_dir / "build" / "pyinstaller"),
+        "--specpath", str(script_dir),
+        str(agent_dir / "main.py")
+    ]
     
     run_command(pyinstaller_cmd, "PyInstaller (freeze Python code)")
     
