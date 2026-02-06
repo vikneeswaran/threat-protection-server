@@ -21,10 +21,10 @@ def run_command(cmd, description):
     
     result = subprocess.run(cmd, shell=False)
     if result.returncode != 0:
-        print(f"\n❌ ERROR: {description} failed with exit code {result.returncode}")
+        print(f"\n[ERROR] {description} failed with exit code {result.returncode}")
         sys.exit(1)
     
-    print(f"✅ {description} completed successfully")
+    print(f"[SUCCESS] {description} completed successfully")
     return result
 
 def main():
@@ -38,11 +38,11 @@ def main():
     os.chdir(agent_dir)
     
     print(f"""
-╔{'='*58}╗
-║ Building Kuamini Security Client for Windows           ║
-║ Python Version: {sys.version.split()[0]}{'':50}║
-║ Build Directory: {str(agent_dir)[-42:]:42}║
-╚{'='*58}╝
+{'='*60}
+Building Kuamini Security Client for Windows
+Python Version: {sys.version.split()[0]}
+Build Directory: {str(agent_dir)[-42:]}
+{'='*60}
 """)
     
     # Step 1: Clean old build artifacts
@@ -56,7 +56,7 @@ def main():
     spec_file = script_dir / "KuaminiSecurityClient.spec"
     if not spec_file.exists():
         # If no spec file, run PyInstaller with basic args
-        print("\n⚠️  No .spec file found, generating from main.py")
+        print("\n[WARNING] No .spec file found, generating from main.py")
         pyinstaller_cmd = [
             sys.executable, "-m", "PyInstaller",
             "--name", "KuaminiSecurityClient",
@@ -81,16 +81,16 @@ def main():
     
     exe_path = agent_dir / "dist" / "KuaminiSecurityClient" / "KuaminiSecurityClient.exe"
     if not exe_path.exists():
-        print(f"\n❌ ERROR: Expected EXE not found at {exe_path}")
+        print(f"\n[ERROR] Expected EXE not found at {exe_path}")
         sys.exit(1)
     
-    print(f"✅ EXE created: {exe_path}")
+    print(f"[SUCCESS] EXE created: {exe_path}")
     print(f"   Size: {exe_path.stat().st_size / 1024 / 1024:.2f} MB")
     
     # Step 3: Run WiX MSI build via PowerShell
     ps_script = script_dir / "build-windows-msi.ps1"
     if not ps_script.exists():
-        print(f"\n❌ ERROR: PowerShell build script not found at {ps_script}")
+        print(f"\n[ERROR] PowerShell build script not found at {ps_script}")
         sys.exit(1)
     
     # Get version from environment or default
@@ -109,10 +109,10 @@ def main():
     # Step 4: Verify MSI was created
     msi_path = agent_dir / "dist" / f"KuaminiSecurityClient-{version}.msi"
     if not msi_path.exists():
-        print(f"\n❌ ERROR: MSI not found at {msi_path}")
+        print(f"\n[ERROR] MSI not found at {msi_path}")
         sys.exit(1)
     
-    print(f"\n✅ MSI created: {msi_path}")
+    print(f"\n[SUCCESS] MSI created: {msi_path}")
     print(f"   Size: {msi_path.stat().st_size / 1024 / 1024:.2f} MB")
     
     # Step 5: Create Windows installer ZIP for distribution
@@ -126,26 +126,26 @@ def main():
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.write(msi_path, arcname=f"KuaminiSecurityClient-{version}.msi")
     
-    print(f"✅ ZIP bundle created: {zip_path}")
+    print(f"[SUCCESS] ZIP bundle created: {zip_path}")
     print(f"   Size: {zip_path.stat().st_size / 1024 / 1024:.2f} MB")
     
     print(f"""
-╔{'='*58}╗
-║ ✅ Build completed successfully!                       ║
-║                                                        ║
-║ MSI: {str(msi_path.name):<47}║
-║ ZIP: {str(zip_path.name):<47}║
-╚{'='*58}╝
+{'='*60}
+BUILD COMPLETED SUCCESSFULLY!
+
+MSI: {str(msi_path.name)}
+ZIP: {str(zip_path.name)}
+{'='*60}
     """)
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n❌ Build interrupted by user")
+        print("\n\n[ERROR] Build interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Build failed with error: {e}")
+        print(f"\n[ERROR] Build failed with error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
