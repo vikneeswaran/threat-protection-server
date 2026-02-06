@@ -105,21 +105,23 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build Windows executable
+      - name: Build Windows MSI (PyInstaller + WiX)
         run: |
           cd agent-tray
-          pyinstaller KuaminiSecurityClient-win.spec
-
-      - name: Create Windows MSI
-        run: |
-          cd agent-tray/build
-          powershell -ExecutionPolicy Bypass -File build-windows-msi.ps1
+          python build/build-windows-msi.py
 
       - name: Upload Windows MSI
         uses: actions/upload-artifact@v4
         with:
           name: windows-msi
-          path: agent-tray/build/KuaminiSecurityClient-1.0.0.msi
+          path: agent-tray/dist/KuaminiSecurityClient-1.0.5.msi
+          retention-days: 30
+          
+      - name: Upload Windows ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: public/tray/windows.zip
           retention-days: 30
 
   build-linux:
@@ -171,7 +173,8 @@ jobs:
         run: |
           mkdir -p public/tray
           cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/ || true
-          cp windows-msi/KuaminiSecurityClient-1.0.0.msi public/tray/ || true
+          cp windows-msi/KuaminiSecurityClient-1.0.5.msi public/tray/ || true
+          cp windows-zip/windows.zip public/tray/ || true
           cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true
           
           # Publish installer script with a stable name for console downloads
@@ -193,7 +196,7 @@ jobs:
           git pull --no-rebase --strategy=ours origin main || true
 
           # Add all installer files (binary and scripts)
-          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz public/tray/*.ps1 public/tray/*.cmd 2>/dev/null || true
+          git add public/tray/*.pkg public/tray/*.msi public/tray/*.tar.gz public/tray/*.zip public/tray/*.ps1 public/tray/*.cmd 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -210,7 +213,8 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/KuaminiSecurityClient-1.0.0.msi
+            public/tray/KuaminiSecurityClient-1.0.5.msi
+            public/tray/windows.zip
             public/tray/KuaminiSecurityClient-linux.tar.gz
           draft: false
           prerelease: false

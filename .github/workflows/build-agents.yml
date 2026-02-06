@@ -62,7 +62,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build Windows agent
+      - name: Build Windows agent (PyInstaller + WiX + ZIP)
         run: |
           cd agent-tray
           python build/build-windows-msi.py
