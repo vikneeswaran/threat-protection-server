@@ -163,6 +163,7 @@ def verify_installation():
                         Path.cwd(),  # current working directory
                     ]
                     for search_dir in search_dirs:
+                        # First check directly in the folder
                         for token_filename in ["registration.token", "registration_token.txt"]:
                             token_file = search_dir / token_filename
                             if token_file.exists():
@@ -182,6 +183,36 @@ def verify_installation():
                                         break
                                 except Exception as e:
                                     print(f"[Installation Fix] Failed to read token from {token_file}: {e}", file=sys.stderr)
+                        
+                        # Also check in KuaminiSecurityClient-* subdirectories
+                        if not token_from_file and search_dir.exists():
+                            try:
+                                for subdir in search_dir.glob("KuaminiSecurityClient-*"):
+                                    if subdir.is_dir():
+                                        for token_filename in ["registration.token", "registration_token.txt"]:
+                                            token_file = subdir / token_filename
+                                            if token_file.exists():
+                                                try:
+                                                    content = token_file.read_text(encoding='utf-8').strip()
+                                                    # Verify it's not the placeholder
+                                                    if content != "placeholder-token" and len(content) > 50:
+                                                        token_from_file = content
+                                                        token_file_path = token_file
+                                                        print(f"[Installation Fix] Found registration token in subdirectory: {token_file}", file=sys.stderr)
+                                                        # Copy it to install dir for next time
+                                                        try:
+                                                            (install_dir / token_filename).write_text(content)
+                                                            print(f"[Installation Fix] Copied token to install dir", file=sys.stderr)
+                                                        except Exception as e:
+                                                            print(f"[Installation Fix] Could not copy token to install dir: {e}", file=sys.stderr)
+                                                        break
+                                                except Exception as e:
+                                                    print(f"[Installation Fix] Failed to read token from {token_file}: {e}", file=sys.stderr)
+                                        if token_from_file:
+                                            break
+                            except Exception as e:
+                                print(f"[Installation Fix] Error searching subdirectories in {search_dir}: {e}", file=sys.stderr)
+                        
                         if token_from_file:
                             break
             
