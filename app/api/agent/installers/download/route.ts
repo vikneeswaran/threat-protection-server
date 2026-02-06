@@ -93,8 +93,7 @@ async function buildWindowsInstallerBundle(
   userAgent?: string | null,
 ): Promise<NextResponse> {
   const basePath = path.join(process.cwd(), "public", "tray")
-  const candidates = ["windows.zip", "KuaminiSecurityClient-1.0.5.msi", "KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi"]
-  const msiPath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
+  const msiPath = await resolveLatestWindowsMsiPath(basePath)
   const msiData = await fs.readFile(msiPath)
   const sha256 = await getFileSha256(msiPath)
   const msiName = path.basename(msiPath)
@@ -164,6 +163,45 @@ async function resolveBundlePath(candidates: string[]) {
     }
   }
   throw new Error(`Bundle not found. Tried: ${candidates.join(", ")}`)
+}
+
+async function resolveLatestWindowsMsiPath(basePath: string) {
+  const entries = await fs.readdir(basePath)
+  const versioned: { name: string; version: number[] }[] = []
+
+  for (const name of entries) {
+    const match = /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u.exec(name)
+    if (!match) {
+      continue
+    }
+
+    const parts = match[1].split(".").map((part) => Number(part) || 0)
+    versioned.push({ name, version: parts })
+  }
+
+  if (versioned.length > 0) {
+    versioned.sort((a, b) => {
+      const maxLen = Math.max(a.version.length, b.version.length)
+      for (let i = 0; i < maxLen; i += 1) {
+        const left = a.version[i] ?? 0
+        const right = b.version[i] ?? 0
+        if (left !== right) {
+          return left - right
+        }
+      }
+      return 0
+    })
+
+    return path.join(basePath, versioned[versioned.length - 1].name)
+  }
+
+  const fallbackCandidates = [
+    "KuaminiSecurityClient-1.0.5.msi",
+    "KuaminiSecurityClient-1.0.0.msi",
+    "windows.msi",
+  ]
+
+  return resolveBundlePath(fallbackCandidates.map((f) => path.join(basePath, f)))
 }
 
 async function triggerWindowsBuild(params: {
