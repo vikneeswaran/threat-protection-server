@@ -51,6 +51,10 @@ agent-tray/dist/SecurityClient-mac/
 agent-tray/build/KuaminiAgentTray/
 agent-tray/build/*.wixobj
 agent-tray/build/*.wxs
+agent-tray/build/*.spec
+agent-tray/build/*.toc
+agent-tray/build/obj/
+agent-tray/build/pyinstaller/
 
 # Local development
 .env.development.local
