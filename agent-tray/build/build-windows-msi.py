@@ -56,7 +56,7 @@ Build Directory: {str(agent_dir)[-42:]}
     # Always generate fresh (don't use spec files which have hardcoded local paths)
     print("\n[INFO] Generating PyInstaller command with relative paths")
     pyinstaller_cmd = [
-        "py", "-m", "PyInstaller",
+        "python", "-m", "PyInstaller",
         "--name", "KuaminiSecurityClient",
         "--onedir",
         "--windowed",
