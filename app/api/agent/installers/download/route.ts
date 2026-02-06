@@ -86,6 +86,18 @@ async function getFileSha256(filePath: string) {
   return hash
 }
 
+function compareVersions(left: number[], right: number[]) {
+  const maxLen = Math.max(left.length, right.length)
+  for (let i = 0; i < maxLen; i += 1) {
+    const leftPart = left[i] ?? 0
+    const rightPart = right[i] ?? 0
+    if (leftPart !== rightPart) {
+      return leftPart - rightPart
+    }
+  }
+  return 0
+}
+
 async function findLatestWindowsMsi(basePath: string): Promise<string> {
   // Try to find latest version from filesystem (local development)
   try {
@@ -103,24 +115,48 @@ async function findLatestWindowsMsi(basePath: string): Promise<string> {
     console.info("[Windows Installer] Cannot list filesystem, will try CDN")
   }
 
-  // Fall back to trying common versions from CDN (Vercel deployment)
-  const commonVersions = ["1.0.5", "1.0.4", "1.0.3", "1.0.2", "1.0.1", "1.0.0"]
-  for (const version of commonVersions) {
-    const msiName = `KuaminiSecurityClient-${version}.msi`
-    const cdnUrl = `https://www.kuaminisystems.com/tray/${msiName}`
-
-    try {
-      const response = await fetch(cdnUrl, { method: "HEAD" })
-      if (response.ok) {
-        console.info(`[Windows Installer] Found latest MSI on CDN: ${msiName}`)
-        return msiName
-      }
-    } catch {
-      // Keep trying next version
-    }
+  // Fall back to GitHub API listing (Vercel deployment)
+  if (!INSTALLER_BUILD_GH_TOKEN) {
+    throw new Error("Missing INSTALLER_BUILD_GH_TOKEN for MSI discovery")
   }
 
-  throw new Error("No Windows MSI found on filesystem or CDN")
+  const apiUrl = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/contents/public/tray?ref=main`
+  const response = await fetch(apiUrl, {
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${INSTALLER_BUILD_GH_TOKEN}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Failed to list MSI files from GitHub: ${response.status} ${text}`)
+  }
+
+  const items = (await response.json()) as Array<{ name?: string }>
+  const matches: { name: string; version: number[] }[] = []
+  for (const item of items) {
+    const name = item.name
+    if (!name) {
+      continue
+    }
+    const match = /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u.exec(name)
+    if (!match) {
+      continue
+    }
+    const versionParts = match[1].split(".").map((part) => Number(part) || 0)
+    matches.push({ name, version: versionParts })
+  }
+
+  if (matches.length === 0) {
+    throw new Error("No Windows MSI found in GitHub public/tray")
+  }
+
+  matches.sort((a, b) => compareVersions(a.version, b.version))
+  const latest = matches[matches.length - 1].name
+  console.info(`[Windows Installer] Found latest MSI in GitHub: ${latest}`)
+  return latest
 }
 
 async function buildWindowsInstallerBundle(
@@ -146,15 +182,21 @@ async function buildWindowsInstallerBundle(
     const cdnUrl = `https://www.kuaminisystems.com/tray/${msiName}`
     console.info(`[Windows Installer] Fetching MSI from CDN: ${cdnUrl}`)
 
-    const response = await fetch(cdnUrl)
+    let response = await fetch(cdnUrl)
     if (!response.ok) {
-      throw new Error(`Failed to fetch MSI from CDN: ${response.status} ${response.statusText}`)
+      const githubUrl = `https://raw.githubusercontent.com/${INSTALLER_BUILD_GH_REPO}/main/public/tray/${msiName}`
+      console.warn(`[Windows Installer] CDN failed (${response.status}), trying GitHub: ${githubUrl}`)
+      response = await fetch(githubUrl)
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch MSI from CDN/GitHub: ${response.status} ${response.statusText}`)
     }
 
     const arrayBuffer = await response.arrayBuffer()
     msiData = Buffer.from(arrayBuffer)
     sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
-    console.info(`[Windows Installer] Loaded MSI from CDN: ${msiName}`)
+    console.info(`[Windows Installer] Loaded MSI from CDN/GitHub: ${msiName}`)
   }
 
   // Create zip using adm-zip
