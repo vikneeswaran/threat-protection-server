@@ -93,7 +93,7 @@ async function buildWindowsInstallerBundle(
   userAgent?: string | null,
 ): Promise<NextResponse> {
   const basePath = path.join(process.cwd(), "public", "tray")
-  const candidates = ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
+  const candidates = ["windows.zip", "KuaminiSecurityClient-1.0.5.msi", "KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi"]
   const msiPath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
   const msiData = await fs.readFile(msiPath)
   const sha256 = await getFileSha256(msiPath)
@@ -353,35 +353,8 @@ async function serveWindowsInstaller(
 ) {
   try {
     const basePath = path.join(process.cwd(), "public", "tray")
-    const tokenizedName = `KuaminiSecurityClient-${accountId}.msi`
-    const tokenizedPath = path.join(basePath, tokenizedName)
-
-    // First, try to read from filesystem (for local dev and early builds)
-    try {
-      await fs.access(tokenizedPath)
-      const data = await fs.readFile(tokenizedPath)
-      const sha256 = await getFileSha256(tokenizedPath)
-
-      void safeAuditLog({
-        action: "installer_download",
-        entityType: "installer",
-        entityId: accountId,
-        accountId,
-        ip: clientIp,
-        userAgent,
-        details: { platform: "windows", sha256, static: false, tokenized: true, source: "filesystem" },
-      })
-
-      return new NextResponse(data, {
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${tokenizedName}"`,
-          "X-Checksum-SHA256": sha256,
-        },
-      })
-    } catch {
-      // Not in filesystem; try GitHub API (for Vercel deployments after on-demand build)
-    }
+    // Skip the old tokenized file lookup; always build dynamic bundles to ensure latest MSI
+    // This prevents serving stale installers from legacy tokenized files
 
     // Build a dynamic MSI + token bundle from the base installer
     try {
