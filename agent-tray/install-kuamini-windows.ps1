@@ -463,6 +463,36 @@ function Main {
         exit 1
     }
     
+    # Step 6.5: Start the agent immediately (no reboot required)
+    Write-Host ""
+    Write-Log "Starting Kuamini Security Client agent..." "INFO"
+    $installPaths = @(
+        $actualInstallPath,
+        "C:\Program Files\Kuamini Security Client\KuaminiSecurityClient.exe",
+        "C:\Program Files (x86)\Kuamini Security Client\KuaminiSecurityClient.exe"
+    )
+    
+    $agentStarted = $false
+    foreach ($exePath in $installPaths) {
+        if (Test-Path $exePath) {
+            try {
+                Start-Process -FilePath $exePath -NoNewWindow -ErrorAction Stop
+                Write-Log "✓ Agent started successfully at: $exePath" "SUCCESS"
+                $agentStarted = $true
+                Start-Sleep -Seconds 3  # Give agent time to start and connect
+                break
+            }
+            catch {
+                Write-ErrorLog "Failed to start agent at $exePath : $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    if (-not $agentStarted) {
+        Write-ErrorLog "Could not start agent automatically - please restart Windows or start manually"
+        Write-Log "To start manually, run: $($installPaths[0])" "INFO"
+    }
+    
     # Step 7: Wait for registration
     Write-Host ""
     $registered = Wait-ForEndpointRegistration -AgentId $agentId
@@ -478,12 +508,25 @@ function Main {
     Write-Host "╚════════════════════════════════════════════════════════════╝"
     Write-Host ""
     
-    if ($registered) {
-        Write-Host "✓ Endpoint is registered and online in the console"
+    if ($agentStarted) {
+        Write-Host "✓ Agent has been started automatically"
+        Write-Host "✓ Endpoint is registering with the console..."
+        
+        if ($registered) {
+            Write-Host "✓ Endpoint is now registered and online in the console"
+        }
+        else {
+            Write-Host "⚠ Endpoint registration in progress (usually completes within 10 seconds)"
+        }
     }
     else {
-        Write-Host "⚠ Endpoint is installing - it will appear in console shortly"
-        Write-Host "  (Agent takes 30-60 seconds to start after installation)"
+        if ($registered) {
+            Write-Host "✓ Endpoint is registered and online in the console"
+        }
+        else {
+            Write-Host "⚠ Endpoint is installing - it will appear in console after restart"
+            Write-Host "  (Agent will start on next system reboot)"
+        }
     }
     
     Write-Host ""
