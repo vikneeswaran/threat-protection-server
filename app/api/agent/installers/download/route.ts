@@ -86,6 +86,43 @@ async function getFileSha256(filePath: string) {
   return hash
 }
 
+async function findLatestWindowsMsi(basePath: string): Promise<string> {
+  // Try to find latest version from filesystem (local development)
+  try {
+    const entries = await fs.readdir(basePath)
+    const msiFiles = entries
+      .filter((name) => /^KuaminiSecurityClient-\d+\.\d+\.\d+(?:\.\d+)?\.msi$/u.test(name))
+      .sort()
+      .reverse()
+
+    if (msiFiles.length > 0) {
+      console.info(`[Windows Installer] Found MSI versions: ${msiFiles.slice(0, 3).join(", ")}...`)
+      return msiFiles[0]
+    }
+  } catch (err) {
+    console.info("[Windows Installer] Cannot list filesystem, will try CDN")
+  }
+
+  // Fall back to trying common versions from CDN (Vercel deployment)
+  const commonVersions = ["1.0.5", "1.0.4", "1.0.3", "1.0.2", "1.0.1", "1.0.0"]
+  for (const version of commonVersions) {
+    const msiName = `KuaminiSecurityClient-${version}.msi`
+    const cdnUrl = `https://www.kuaminisystems.com/tray/${msiName}`
+
+    try {
+      const response = await fetch(cdnUrl, { method: "HEAD" })
+      if (response.ok) {
+        console.info(`[Windows Installer] Found latest MSI on CDN: ${msiName}`)
+        return msiName
+      }
+    } catch {
+      // Keep trying next version
+    }
+  }
+
+  throw new Error("No Windows MSI found on filesystem or CDN")
+}
+
 async function buildWindowsInstallerBundle(
   accountId: string,
   token: string,
@@ -93,10 +130,32 @@ async function buildWindowsInstallerBundle(
   userAgent?: string | null,
 ): Promise<NextResponse> {
   const basePath = path.join(process.cwd(), "public", "tray")
-  const msiPath = await resolveLatestWindowsMsiPath(basePath)
-  const msiData = await fs.readFile(msiPath)
-  const sha256 = await getFileSha256(msiPath)
-  const msiName = path.basename(msiPath)
+  const msiName = await findLatestWindowsMsi(basePath)
+  const msiPath = path.join(basePath, msiName)
+
+  let msiData: Buffer
+  let sha256: string
+
+  // Try to read from filesystem first (local development)
+  try {
+    msiData = await fs.readFile(msiPath)
+    sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
+    console.info(`[Windows Installer] Loaded MSI from filesystem: ${msiName}`)
+  } catch {
+    // Fall back to fetching from CDN (Vercel deployment)
+    const cdnUrl = `https://www.kuaminisystems.com/tray/${msiName}`
+    console.info(`[Windows Installer] Fetching MSI from CDN: ${cdnUrl}`)
+
+    const response = await fetch(cdnUrl)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch MSI from CDN: ${response.status} ${response.statusText}`)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    msiData = Buffer.from(arrayBuffer)
+    sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
+    console.info(`[Windows Installer] Loaded MSI from CDN: ${msiName}`)
+  }
 
   // Create zip using adm-zip
   const zip = new AdmZip()
@@ -104,7 +163,10 @@ async function buildWindowsInstallerBundle(
   zip.addFile("registration.token", Buffer.from(token, "utf-8"))
   const zipData = zip.toBuffer()
 
-  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
+  // Include version in bundle filename for console display
+  const versionMatch = /-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u.exec(msiName)
+  const version = versionMatch ? versionMatch[1] : "latest"
+  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}-v${version}.zip`
 
   void safeAuditLog({
     action: "installer_download",
@@ -113,7 +175,7 @@ async function buildWindowsInstallerBundle(
     accountId,
     ip: clientIp,
     userAgent,
-    details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName },
+    details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName, version },
   })
 
   return new NextResponse(new Uint8Array(zipData), {
@@ -122,6 +184,7 @@ async function buildWindowsInstallerBundle(
       "Content-Disposition": `attachment; filename="${bundleName}"`,
       "X-Checksum-SHA256": sha256,
       "X-Bundle-Type": "msi+token",
+      "X-MSI-Version": version,
     },
   })
 }
