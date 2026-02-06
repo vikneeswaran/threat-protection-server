@@ -352,68 +352,16 @@ async function serveWindowsInstaller(
   userAgent?: string | null,
 ) {
   try {
-    const basePath = path.join(process.cwd(), "public", "tray")
-    // Skip the old tokenized file lookup; always build dynamic bundles to ensure latest MSI
-    // This prevents serving stale installers from legacy tokenized files
-
     // Build a dynamic MSI + token bundle from the base installer
     try {
-      console.log("[Windows Installer] Building MSI + token bundle")
+      console.info("[Windows Installer] Building MSI + token bundle")
       return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent)
     } catch (bundleError) {
       console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
     }
 
-    // Try to fetch from GitHub
-    if (INSTALLER_BUILD_GH_TOKEN) {
-      try {
-        const githubUrl = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/contents/public/tray/${tokenizedName}?ref=main`
-        console.log(`[Windows Installer] Attempting GitHub API fetch from: ${githubUrl}`)
-        
-        const response = await fetch(githubUrl, {
-          headers: {
-            "Authorization": `Bearer ${INSTALLER_BUILD_GH_TOKEN}`,
-            "Accept": "application/vnd.github.v3.raw",
-          },
-        })
 
-        console.log(`[Windows Installer] GitHub API response status: ${response.status}`)
-
-        if (response.ok) {
-          const msiData = await response.arrayBuffer()
-          console.log(`[Windows Installer] Successfully fetched MSI from GitHub, size: ${msiData.byteLength} bytes`)
-          
-          const sha256 = crypto.createHash("sha256").update(Buffer.from(msiData)).digest("hex")
-
-          void safeAuditLog({
-            action: "installer_download",
-            entityType: "installer",
-            entityId: accountId,
-            accountId,
-            ip: clientIp,
-            userAgent,
-            details: { platform: "windows", sha256, static: false, tokenized: true, source: "github" },
-          })
-
-          return new NextResponse(msiData, {
-            headers: {
-              "Content-Type": "application/octet-stream",
-              "Content-Disposition": `attachment; filename="${tokenizedName}"`,
-              "X-Checksum-SHA256": sha256,
-            },
-          })
-        } else {
-          const errorText = await response.text()
-          console.warn(`[Windows Installer] GitHub API error (${response.status}): ${errorText}`)
-        }
-      } catch (githubError) {
-        console.warn("Failed to fetch MSI from GitHub:", githubError)
-      }
-    } else {
-      console.warn("[Windows Installer] INSTALLER_BUILD_GH_TOKEN not configured")
-    }
-
-    // Not yet built; trigger on-demand build
+    // Bundle build failed; trigger on-demand build if not already done
     const dispatch = await triggerWindowsBuild({ token, accountId, accountName })
     if (!dispatch.ok) {
       console.error("Windows installer build dispatch failed:", dispatch.error)
