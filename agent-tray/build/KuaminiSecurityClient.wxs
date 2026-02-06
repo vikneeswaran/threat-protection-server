@@ -36,10 +36,11 @@
               Source="$(var.SourceDir)\KuaminiSecurityClient.exe" KeyPath="yes" />
       </Component>
       <Component Id="RegistryAutoStart" Guid="99999999-8888-7777-6666-555555555555" Win64="yes">
-        <RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" ForceCreateOnInstall="yes">
-          <RegistryValue Type="string" Name="KuaminiSecurityClient"
-                         Value="&quot;[INSTALLFOLDER]KuaminiSecurityClient.exe&quot;" />
-        </RegistryKey>
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="KuaminiSecurityClient"
+                       Type="string"
+                       Value="&quot;[INSTALLFOLDER]KuaminiSecurityClient.exe&quot;"
+                       KeyPath="yes" />
       </Component>
     </DirectoryRef>
 
