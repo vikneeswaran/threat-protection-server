@@ -111,7 +111,7 @@ async function findLatestWindowsMsi(basePath: string): Promise<string> {
       console.info(`[Windows Installer] Found MSI versions: ${msiFiles.slice(0, 3).join(", ")}...`)
       return msiFiles[0]
     }
-  } catch (_err) {
+  } catch {
     console.info("[Windows Installer] Cannot list filesystem, will try CDN")
   }
 
