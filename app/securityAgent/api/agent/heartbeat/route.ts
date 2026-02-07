@@ -1,15 +1,55 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { createAdminClient } from "@/lib/supabase/admin"
 
-const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+const supabaseAdmin = createAdminClient()
 
+/**
+ * POST /api/agent/heartbeat
+ * 
+ * Receive heartbeat from agent and update endpoint status.
+ * Agents send this every 60 seconds to indicate they're online.
+ * 
+ * Request body:
+ * {
+ *   "endpoint_id": "uuid" OR "agent_id": "uuid"  (required - one of these)
+ *   "status": "online",                           (optional, defaults to "online")
+ *   "agent_version": "1.0.5",                     (optional)
+ *   "ip_address": "192.168.1.100",                (optional)
+ *   "system_info": { ... }                        (optional)
+ * }
+ * 
+ * Note: Agents typically send agent_id, not endpoint_id. We look up endpoint by agent_id automatically.
+ * 
+ * Response:
+ * {
+ *   "success": true,
+ *   "policies": [...],
+ *   "server_time": "2026-02-07T..."
+ * }
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { endpoint_id, status, agent_version, ip_address, system_info: _system_info } = body
+    let { endpoint_id, agent_id, status, agent_version, ip_address, system_info: _system_info } = body
 
-    if (!endpoint_id) {
-      return NextResponse.json({ error: "Endpoint ID is required" }, { status: 400 })
+    // Accept either endpoint_id or agent_id
+    if (!endpoint_id && !agent_id) {
+      return NextResponse.json({ error: "endpoint_id or agent_id is required" }, { status: 400 })
+    }
+
+    // If only agent_id provided, look up the endpoint
+    if (!endpoint_id && agent_id) {
+      const { data: foundEndpoint } = await supabaseAdmin
+        .from("endpoints")
+        .select("id")
+        .eq("agent_id", agent_id)
+        .maybeSingle()
+
+      if (!foundEndpoint) {
+        return NextResponse.json({ error: "Endpoint not found for agent_id" }, { status: 404 })
+      }
+
+      endpoint_id = foundEndpoint.id
     }
 
     // Update endpoint status
