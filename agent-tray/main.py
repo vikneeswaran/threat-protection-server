@@ -336,30 +336,43 @@ def _decode_account_id_from_token(token: str | None) -> str | None:
         return None
     try:
         import base64
-        # Token is in JWT format: header.payload.signature
-        # We need to decode the payload (second part)
-        cleaned = str(token).replace("\n", "").replace(" ", "").strip()
+        # Token might be in JWT format with newlines: header.payload.signature
+        # Clean whitespace completely - JSON might have formatted it across multiple lines
+        cleaned = ''.join(str(token).split())  # Remove all whitespace
         
-        # Split by dot to get the payload
+        # Split by dot to get parts
         parts = cleaned.split(".")
-        if len(parts) < 2:
-            logging.warning("Token does not appear to be in JWT format (missing dots)")
+        if len(parts) < 1:
+            logging.warning("Token does not appear valid (empty)")
             return None
         
-        # Get the payload (second part)
-        payload = parts[1]
-        
-        # Add padding if necessary (base64 requires length to be multiple of 4)
-        padding = len(payload) % 4
-        if padding:
-            payload += "=" * (4 - padding)
-        
-        # Decode the payload
-        decoded = base64.b64decode(payload).decode("utf-8")
-        obj = json.loads(decoded)
-        account_id = obj.get("accountId") or obj.get("account_id")
-        if isinstance(account_id, str) and account_id.strip():
-            return account_id
+        # Try different parts as payload (account info can be in different positions)
+        # Usually position 0 or 1, depending on JWT format
+        for part_index in [0, 1]:
+            if part_index >= len(parts):
+                continue
+                
+            try:
+                payload = parts[part_index]
+                # Add padding if necessary (base64 requires length to be multiple of 4)
+                padding_needed = len(payload) % 4
+                if padding_needed:
+                    payload += "=" * (4 - padding_needed)
+                
+                # Try to decode
+                decoded = base64.b64decode(payload).decode("utf-8")
+                obj = json.loads(decoded)
+                account_id = obj.get("accountId") or obj.get("account_id")
+                if isinstance(account_id, str) and account_id.strip():
+                    logging.debug("Successfully decoded account_id from token part [%d]", part_index)
+                    return account_id
+            except Exception:
+                # This part didn't have the account_id, try next
+                continue
+                
+        # If we get here, couldn't decode account_id from any part
+        logging.debug("Could not find account_id in any token part")
+        return None
     except Exception as e:
         logging.warning("Failed to decode account_id from token: %s", e)
     return None
