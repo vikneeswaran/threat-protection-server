@@ -473,13 +473,14 @@ function Main {
     )
     
     $agentStarted = $false
+    $agentExePath = $null
     foreach ($exePath in $installPaths) {
         if (Test-Path $exePath) {
             try {
                 Start-Process -FilePath $exePath -NoNewWindow -ErrorAction Stop
-                Write-Log "✓ Agent started successfully at: $exePath" "SUCCESS"
+                Write-Log "✓ Agent process started at: $exePath" "SUCCESS"
                 $agentStarted = $true
-                Start-Sleep -Seconds 3  # Give agent time to start and connect
+                $agentExePath = $exePath
                 break
             }
             catch {
@@ -489,8 +490,47 @@ function Main {
     }
     
     if (-not $agentStarted) {
-        Write-ErrorLog "Could not start agent automatically - please restart Windows or start manually"
+        Write-ErrorLog "Could not start agent automatically - installation incomplete"
+        Write-Log "Please restart Windows for the agent to start automatically" "WARN"
         Write-Log "To start manually, run: $($installPaths[0])" "INFO"
+    }
+    else {
+        # Wait for agent to initialize (create config, register, etc.)
+        Write-Log "Waiting for agent to initialize..." "INFO"
+        $maxWaitSeconds = 30
+        $waitedSeconds = 0
+        $agentProcessRunning = $false
+        
+        do {
+            Start-Sleep -Seconds 2
+            $waitedSeconds += 2
+            
+            # Check if KuaminiSecurityClient process is still running
+            $process = Get-Process -Name "KuaminiSecurityClient" -ErrorAction SilentlyContinue
+            if ($process) {
+                $agentProcessRunning = $true
+                Write-Log "✓ Agent process is running (PID: $($process.Id))" "SUCCESS"
+            }
+            
+            # Check if agent log file exists and has recent entries
+            $logPath = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient\agent.log"
+            if (Test-Path $logPath) {
+                $logContent = Get-Content $logPath -Tail 1 -ErrorAction SilentlyContinue
+                if ($logContent -match "Heartbeat successful|✓|Registration.*successful") {
+                    Write-Log "✓ Agent is operational and registering" "SUCCESS"
+                    $agentProcessRunning = $true
+                    break
+                }
+            }
+        } while ($waitedSeconds -lt $maxWaitSeconds -and $agentProcessRunning)
+        
+        if ($agentProcessRunning) {
+            Write-Log "✓ Agent initialization completed successfully" "SUCCESS"
+        }
+        else {
+            Write-Log "⚠ Agent startup verification incomplete (may be initializing in background)" "WARN"
+            Write-Log "Check agent log at: $logPath" "INFO"
+        }
     }
     
     # Step 7: Wait for registration
