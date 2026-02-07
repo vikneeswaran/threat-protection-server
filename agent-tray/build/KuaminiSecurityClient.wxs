@@ -6,7 +6,7 @@
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <!-- Define REGISTRATIONTOKEN property that can be passed from command line -->
-    <Property Id="REGISTRATIONTOKEN" Value="" />
+    <Property Id="REGISTRATIONTOKEN" Secure="yes" Hidden="yes" />
 
     <!-- Major upgrade logic -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
