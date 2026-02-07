@@ -5,6 +5,9 @@
     <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
+    <!-- Define REGISTRATIONTOKEN property that can be passed from command line -->
+    <Property Id="REGISTRATIONTOKEN" Value="" />
+
     <!-- Major upgrade logic -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
                   AllowSameVersionUpgrades="yes"
@@ -44,16 +47,24 @@
       </Component>
     </DirectoryRef>
 
-    <!-- Copy registration token from source directory or search common locations (including subdirectories) -->
+    <!-- Copy or create registration token from source directory, search common locations, or use REGISTRATIONTOKEN property -->
     <CustomAction Id="CopyRegistrationToken"
                   Directory="SystemFolder"
                   Execute="immediate"
-                  ExeCommand="cmd.exe /c (if exist &quot;registration.token&quot; copy /Y &quot;registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;) &amp;&amp; (if exist &quot;%USERPROFILE%\Downloads\registration.token&quot; copy /Y &quot;%USERPROFILE%\Downloads\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;) &amp;&amp; (for /D %%D in (&quot;%USERPROFILE%\Downloads\KuaminiSecurityClient-*&quot;) do @if exist &quot;%%D\registration.token&quot; copy /Y &quot;%%D\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot; &amp;&amp; goto :done) &amp;&amp; (if exist &quot;%USERPROFILE%\Desktop\registration.token&quot; copy /Y &quot;%USERPROFILE%\Desktop\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;) &amp;&amp; (for /D %%D in (&quot;%USERPROFILE%\Desktop\KuaminiSecurityClient-*&quot;) do @if exist &quot;%%D\registration.token&quot; copy /Y &quot;%%D\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot; &amp;&amp; goto :done)
+                  ExeCommand="cmd.exe /c (if not &quot;[REGISTRATIONTOKEN]&quot;==&quot;&quot; (echo [REGISTRATIONTOKEN] > &quot;[INSTALLFOLDER]registration.token&quot;)) &amp;&amp; (if exist &quot;registration.token&quot; copy /Y &quot;registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;) &amp;&amp; (if exist &quot;%USERPROFILE%\Downloads\registration.token&quot; copy /Y &quot;%USERPROFILE%\Downloads\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;) &amp;&amp; (for /D %%D in (&quot;%USERPROFILE%\Downloads\KuaminiSecurityClient-*&quot;) do @if exist &quot;%%D\registration.token&quot; copy /Y &quot;%%D\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot; &amp;&amp; goto :done) &amp;&amp; (if exist &quot;%USERPROFILE%\Desktop\registration.token&quot; copy /Y &quot;%USERPROFILE%\Desktop\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot;) &amp;&amp; (for /D %%D in (&quot;%USERPROFILE%\Desktop\KuaminiSecurityClient-*&quot;) do @if exist &quot;%%D\registration.token&quot; copy /Y &quot;%%D\registration.token&quot; &quot;[INSTALLFOLDER]registration.token&quot; &amp;&amp; goto :done)
 :done"
+                  Return="ignore" />
+
+    <!-- Start the agent after installation -->
+    <CustomAction Id="StartAgent"
+                  Directory="SystemFolder"
+                  Execute="deferred"
+                  ExeCommand="cmd.exe /c start /b &quot;[INSTALLFOLDER]KuaminiSecurityClient.exe&quot;"
                   Return="ignore" />
 
     <InstallExecuteSequence>
       <Custom Action="CopyRegistrationToken" After="StartServices" />
+      <Custom Action="StartAgent" After="CopyRegistrationToken" />
     </InstallExecuteSequence>
 
     <!-- UI -->
