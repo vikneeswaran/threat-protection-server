@@ -519,11 +519,11 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
     const installScript = `#!/bin/bash
 set -euo pipefail
 
-CONSOLE_USER=$(stat -f %Su /dev/console)
-CONFIG_DIR="/Users/${CONSOLE_USER}/.kuamini"
-CONFIG_FILE="${CONFIG_DIR}/config.json"
-TOKEN_FILE="$(cd "$(dirname "$0")" && pwd)/registration.token"
-PKG_FILE="$(cd "$(dirname "$0")" && pwd)/${pkgName}"
+  CONSOLE_USER=$(stat -f %Su /dev/console)
+  CONFIG_DIR="/Users/\${CONSOLE_USER}/.kuamini"
+  CONFIG_FILE="\${CONFIG_DIR}/config.json"
+  TOKEN_FILE="$(cd "$(dirname "$0")" && pwd)/registration.token"
+  PKG_FILE="$(cd "$(dirname "$0")" && pwd)/${pkgName}"
 
 if [ ! -f "$TOKEN_FILE" ]; then
   echo "registration.token not found in installer bundle" >&2
