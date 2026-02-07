@@ -427,32 +427,63 @@ function Main {
     }
     
     # Step 5.5: Write actual registration token to file (agent looks for this)
+    # IMPORTANT: Determine actual install path BEFORE trying to write token
+    $actualInstallPath = $null
+    Write-Log "Determining installation path..." "INFO"
+    
+    if (Test-Path $InstallPath) {
+        $actualInstallPath = $InstallPath
+        Write-Log "Found installation at default path: $InstallPath" "INFO"
+    }
+    else {
+        # Check if it was installed to x86 instead
+        $x86Path = $InstallPath.Replace("Program Files", "Program Files (x86)")
+        if (Test-Path $x86Path) {
+            $actualInstallPath = $x86Path
+            Write-Log "Found installation at x86 path: $x86Path" "INFO"
+        }
+    }
+    
+    if (-not $actualInstallPath) {
+        Write-ErrorLog "Installation directory not found at either: $InstallPath or x86 variant"
+        exit 1
+    }
+    
     Write-Log "Writing registration token to installation directory..." "INFO"
     try {
-        # Determine actual install path (may be x86 or not depending on Windows version)
-        $actualInstallPath = $InstallPath
-        if (-not (Test-Path $actualInstallPath)) {
-            # Check if it was installed to x86 instead
-            $x86Path = $InstallPath.Replace("Program Files", "Program Files (x86)")
-            if (Test-Path $x86Path) {
-                $actualInstallPath = $x86Path
-                Write-Log "Found installation at x86 path: $actualInstallPath" "INFO"
-            }
-        }
+        $tokenFile = Join-Path $actualInstallPath "registration.token"
         
-        # Write token to registration.token file
-        if (Test-Path $actualInstallPath) {
-            $tokenFile = Join-Path $actualInstallPath "registration.token"
-            Set-Content -Path $tokenFile -Value $Token -Encoding UTF8 -Force
-            Write-Log "✓ Registration token file created/updated: $tokenFile" "SUCCESS"
-        }
-        else {
-            Write-ErrorLog "Install directory not found at: $actualInstallPath"
+        # Validate token before writing
+        if (-not $Token -or $Token.Trim() -eq "") {
+            Write-ErrorLog "Registration token is empty or null"
             exit 1
         }
+        
+        Write-Log "Token length: $($Token.Length) bytes" "INFO"
+        
+        # Write token to file with proper encoding
+        [System.IO.File]::WriteAllText($tokenFile, $Token, [System.Text.Encoding]::UTF8)
+        
+        # Verify write was successful
+        if (-not (Test-Path $tokenFile)) {
+            Write-ErrorLog "Failed to create registration.token file at $tokenFile"
+            exit 1
+        }
+        
+        # Verify content was written
+        $writtenToken = [System.IO.File]::ReadAllText($tokenFile, [System.Text.Encoding]::UTF8)
+        if ($writtenToken -ne $Token) {
+            Write-ErrorLog "Token verification failed - written content does not match original"
+            Write-Log "Original length: $($Token.Length), Written length: $($writtenToken.Length)" "WARN"
+            exit 1
+        }
+        
+        Write-Log "✓ Registration token file created/updated: $tokenFile" "SUCCESS"
+        Write-Log "✓ Token verified: $($writtenToken.Length) bytes written" "SUCCESS"
     }
     catch {
         Write-ErrorLog "Failed to write registration token: $($_.Exception.Message)"
+        Write-Log "Stack trace: $($_.ScriptStackTrace)" "ERROR"
         exit 1
     }
     
