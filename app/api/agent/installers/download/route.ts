@@ -519,21 +519,21 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
     const installScript = `#!/bin/bash
 set -euo pipefail
 
-  CONSOLE_USER=$(stat -f %Su /dev/console)
-  CONFIG_DIR="/Users/\${CONSOLE_USER}/.kuamini"
-  CONFIG_FILE="\${CONFIG_DIR}/config.json"
-  TOKEN_FILE="$(cd "$(dirname "$0")" && pwd)/registration.token"
-  PKG_FILE="$(cd "$(dirname "$0")" && pwd)/${pkgName}"
+CONSOLE_USER=$(/usr/bin/stat -f %Su /dev/console)
+CONFIG_DIR="/Users/\${CONSOLE_USER}/.kuamini"
+CONFIG_FILE="\${CONFIG_DIR}/config.json"
+TOKEN_FILE="$(cd "$(dirname "$0")" && pwd)/registration.token"
+PKG_FILE="$(cd "$(dirname "$0")" && pwd)/${pkgName}"
 
 if [ ! -f "$TOKEN_FILE" ]; then
   echo "registration.token not found in installer bundle" >&2
   exit 1
 fi
 
-TOKEN=$(cat "$TOKEN_FILE")
+TOKEN=$( /bin/cat "$TOKEN_FILE" )
 
-mkdir -p "$CONFIG_DIR"
-cat >"$CONFIG_FILE" <<JSON
+/bin/mkdir -p "$CONFIG_DIR"
+/bin/cat >"$CONFIG_FILE" <<JSON
 {
   "api_base": "${apiBase}",
   "console_url": "${consoleUrl}",
@@ -543,11 +543,11 @@ cat >"$CONFIG_FILE" <<JSON
 }
 JSON
 
-chown "$CONSOLE_USER" "$CONFIG_FILE"
-chmod 644 "$CONFIG_FILE"
+/usr/sbin/chown "$CONSOLE_USER" "$CONFIG_FILE" || true
+/bin/chmod 644 "$CONFIG_FILE" || true
 
 echo "Installing Kuamini Security Client..."
-sudo /usr/sbin/installer -pkg "$PKG_FILE" -target /
+/usr/sbin/installer -pkg "$PKG_FILE" -target /
 
 echo "Installation complete."
 echo "If the tray icon is red, open the console and check endpoint status."
