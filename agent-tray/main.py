@@ -336,8 +336,26 @@ def _decode_account_id_from_token(token: str | None) -> str | None:
         return None
     try:
         import base64
-        cleaned = str(token).replace("\n", "").replace(" ", "")
-        decoded = base64.b64decode(cleaned).decode("utf-8")
+        # Token is in JWT format: header.payload.signature
+        # We need to decode the payload (second part)
+        cleaned = str(token).replace("\n", "").replace(" ", "").strip()
+        
+        # Split by dot to get the payload
+        parts = cleaned.split(".")
+        if len(parts) < 2:
+            logging.warning("Token does not appear to be in JWT format (missing dots)")
+            return None
+        
+        # Get the payload (second part)
+        payload = parts[1]
+        
+        # Add padding if necessary (base64 requires length to be multiple of 4)
+        padding = len(payload) % 4
+        if padding:
+            payload += "=" * (4 - padding)
+        
+        # Decode the payload
+        decoded = base64.b64decode(payload).decode("utf-8")
         obj = json.loads(decoded)
         account_id = obj.get("accountId") or obj.get("account_id")
         if isinstance(account_id, str) and account_id.strip():
