@@ -220,6 +220,13 @@ Schema details are maintained in [scripts/](scripts/).
 - OS-specific installer scripts generated from console.
 - Registration token embeds account context.
 
+**macOS installer note (Feb 2026)**
+- macOS installer download now returns a ZIP bundle that includes:
+   - PKG installer
+   - `registration.token`
+   - `install.sh` script
+- `install.sh` writes the token into `~/.kuamini/config.json` before installing the PKG, ensuring auto‑registration.
+
 **Lifecycle**
 - Register → Heartbeat → Policy sync → Threat reporting.
 - Uninstall paths for Windows/macOS/Linux provided in docs.
@@ -237,6 +244,15 @@ Schema details are maintained in [scripts/](scripts/).
 - Webhooks and third-party integrations
 - Mobile apps
 - Enhanced policy automation
+
+---
+
+## Living Document Notes
+
+Use this section to track operational changes and platform quirks discovered during deployments.
+
+### Change Log
+- 2026‑02‑07: macOS installer delivery changed to ZIP bundle with `install.sh` token injection to fix missing `registration_token` during registration.
 
 ---
 
