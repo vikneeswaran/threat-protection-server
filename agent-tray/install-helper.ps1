@@ -103,13 +103,34 @@ try {
     Write-Host "MSI installation completed successfully" -ForegroundColor Green
     
     # ============================================================================
+    # START AGENT IMMEDIATELY (Don't wait for reboot)
+    # ============================================================================
+    
+    Write-Host ""
+    Write-Host "Starting agent..." -ForegroundColor Yellow
+    
+    $exePath = "C:\Program Files\Kuamini Security Client\KuaminiSecurityClient.exe"
+    if (Test-Path $exePath) {
+        try {
+            Start-Process $exePath -ErrorAction Stop
+            Start-Sleep -Seconds 2
+            Write-Host "Agent started successfully" -ForegroundColor Green
+        } catch {
+            Write-Host "WARNING: Could not start agent: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "Agent will start on next login (autostart configured)" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "WARNING: Executable not found at $exePath" -ForegroundColor Yellow
+    }
+    
+    # ============================================================================
     # VERIFY INSTALLATION
     # ============================================================================
     
     Write-Host ""
     Write-Host "Verifying installation..." -ForegroundColor Yellow
     
-    Start-Sleep -Seconds 5
+    Start-Sleep -Seconds 3
     
     $installPath = "C:\Program Files\Kuamini Security Client"
     if (!(Test-Path $installPath)) {
@@ -143,15 +164,18 @@ try {
     # Check if process is running
     $process = Get-Process KuaminiSecurityClient -ErrorAction SilentlyContinue
     if ($process) {
-        Write-Host "Agent process is running (PID: $($process.Id))" -ForegroundColor Green
+        Write-Host "✓ Agent process is running (PID: $($process.Id))" -ForegroundColor Green
     } else {
-        Write-Host "Agent process not yet started (will start automatically)" -ForegroundColor Yellow
+        Write-Host "⚠ Agent process not running (may be starting or blocked by antivirus)" -ForegroundColor Yellow
+        Write-Host "  If you see a SmartScreen or Defender warning, please allow it to run." -ForegroundColor Yellow
     }
     
     Write-Host ""
     Write-Host "Installation completed successfully!" -ForegroundColor Green
-    Write-Host "The Kuamini Security Client will start automatically." -ForegroundColor Cyan
-    Write-Host "Look for the tray icon in the Windows system tray." -ForegroundColor Cyan
+    Write-Host "The Kuamini Security Client agent is starting now." -ForegroundColor Cyan
+    Write-Host "Look for the tray icon in the Windows system tray (bottom-right corner)." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Agent will also auto-start on Windows login." -ForegroundColor Cyan
     
     if (!(Test-Path "C:\Program Files\Kuamini Security Client\KuaminiSecurityClient.exe")) {
         Write-Host ""
