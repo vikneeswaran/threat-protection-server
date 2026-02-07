@@ -164,10 +164,10 @@ try {
     # Check if process is running
     $process = Get-Process KuaminiSecurityClient -ErrorAction SilentlyContinue
     if ($process) {
-        Write-Host "✓ Agent process is running (PID: $($process.Id))" -ForegroundColor Green
+        Write-Host "OK: Agent process is running (PID: $($process.Id))" -ForegroundColor Green
     } else {
-        Write-Host "⚠ Agent process not running (may be starting or blocked by antivirus)" -ForegroundColor Yellow
-        Write-Host "  If you see a SmartScreen or Defender warning, please allow it to run." -ForegroundColor Yellow
+        Write-Host "WARNING: Agent process not running (may be starting or blocked by antivirus)" -ForegroundColor Yellow
+        Write-Host "If you see a SmartScreen or Defender warning, please allow it to run." -ForegroundColor Yellow
     }
     
     Write-Host ""
