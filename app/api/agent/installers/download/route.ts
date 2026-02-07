@@ -203,6 +203,18 @@ async function buildWindowsInstallerBundle(
   const zip = new AdmZip()
   zip.addFile(msiName, msiData)
   zip.addFile("registration.token", Buffer.from(token, "utf-8"))
+  
+  // Add install helper script
+  try {
+    const helperScriptPath = path.join(process.cwd(), "agent-tray", "install-helper.ps1")
+    const helperScriptData = await fs.readFile(helperScriptPath)
+    zip.addFile("install-helper.ps1", helperScriptData)
+    console.info("[Windows Installer] Added install-helper.ps1 to bundle")
+  } catch (error) {
+    console.warn("[Windows Installer] Could not add install-helper.ps1:", error)
+    // Continue without the helper script - user can still run MSI directly
+  }
+  
   const zipData = zip.toBuffer()
 
   // Include version in bundle filename for console display
