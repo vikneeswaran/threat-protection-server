@@ -157,13 +157,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate config.json
+    const rawBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
+    const normalizedBase = rawBase.replace(/\/$/, "")
+    const apiBase = normalizedBase.endsWith("/api/agent") ? normalizedBase : `${normalizedBase}/api/agent`
+
     const config = {
-      api_base: process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com",
+      api_base: apiBase,
       registration_token: token,
       account_id: accountId,
       sub_account_id: subAccountId,
       auto_register: true,
-      console_url: `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}/securityAgent`,
+      console_url: `${normalizedBase}/securityAgent`,
       heartbeat_interval: 300,
     }
 
