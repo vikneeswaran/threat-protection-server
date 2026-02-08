@@ -356,7 +356,242 @@ pyinstaller main.py -v
 
 ---
 
-## Part 11: Quick Command Reference
+## Part 11: Testing Guide
+
+### Test Framework Setup
+
+This project uses **Vitest** for unit and integration testing, along with **React Testing Library** for component testing.
+
+### Quick Test Commands
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode (auto-rerun on changes)
+npm run test:watch
+
+# Run tests with interactive UI
+npm run test:ui
+
+# Generate coverage report
+npm run test:coverage
+
+# Run linter
+npm run lint
+
+# Fix linting issues automatically
+npm run lint:fix
+
+# Check TypeScript types
+npm run type-check
+
+# Run all validations (lint + type-check + test)
+npm run validate
+```
+
+### Running Specific Tests
+
+```bash
+# Run a specific test file
+npm test -- button.test.tsx
+
+# Run tests matching a pattern
+npm test -- --grep "Button"
+
+# Run tests in a directory
+npm test -- components/ui
+
+# Run only changed tests (in watch mode)
+npm run test:watch -- --changed
+```
+
+### Writing Tests
+
+#### Component Tests
+
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+
+describe('MyComponent', () => {
+  it('should render correctly', () => {
+    render(<MyComponent />)
+    expect(screen.getByRole('button')).toBeInTheDocument()
+  })
+  
+  it('should handle user interaction', async () => {
+    const handleClick = vi.fn()
+    const user = userEvent.setup()
+    
+    render(<MyComponent onClick={handleClick} />)
+    await user.click(screen.getByRole('button'))
+    
+    expect(handleClick).toHaveBeenCalledTimes(1)
+  })
+})
+```
+
+#### API Route Tests
+
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { NextRequest } from 'next/server'
+
+describe('API Route', () => {
+  it('should validate request body', async () => {
+    const mockRequest = {
+      json: async () => ({ field: 'value' }),
+    } as NextRequest
+    
+    // Test your API logic
+  })
+})
+```
+
+#### Utility Function Tests
+
+```typescript
+import { describe, it, expect } from 'vitest'
+import { myUtilFunction } from '@/lib/utils'
+
+describe('myUtilFunction', () => {
+  it('should return expected result', () => {
+    expect(myUtilFunction(input)).toBe(expectedOutput)
+  })
+})
+```
+
+### Test Coverage Requirements
+
+- **Target:** 70%+ overall coverage
+- **Critical paths:** 90%+ coverage
+  - Authentication flows
+  - Agent registration
+  - Heartbeat mechanism
+  - Threat reporting
+  - License management
+
+### Mocking in Tests
+
+#### Environment Variables
+Environment variables are mocked in `tests/setup.ts`:
+
+```typescript
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+```
+
+#### Next.js Router
+The router is automatically mocked in the setup file:
+
+```typescript
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+  })),
+}))
+```
+
+#### Supabase Client
+Mock Supabase in your tests:
+
+```typescript
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({
+    from: vi.fn(() => ({
+      select: vi.fn(),
+      insert: vi.fn(),
+    })),
+  })),
+}))
+```
+
+### Test Debugging
+
+```bash
+# Run a single test in debug mode
+npm test -- button.test.tsx --reporter=verbose
+
+# Clear test cache
+rm -rf node_modules/.vitest
+
+# Update snapshots (if using)
+npm test -- -u
+```
+
+### Testing Best Practices
+
+1. **Test Behavior, Not Implementation**
+   - Focus on what the user sees and does
+   - Avoid testing internal component state
+
+2. **Use Descriptive Test Names**
+   ```typescript
+   it('should display error message when form submission fails')
+   ```
+
+3. **Arrange-Act-Assert Pattern**
+   ```typescript
+   // Arrange
+   const user = userEvent.setup()
+   render(<Component />)
+   
+   // Act
+   await user.click(screen.getByRole('button'))
+   
+   // Assert
+   expect(screen.getByText('Success')).toBeInTheDocument()
+   ```
+
+4. **Clean Up After Tests**
+   - Cleanup is automatic with React Testing Library
+   - Clear mocks between tests with `vi.clearAllMocks()`
+
+5. **Test Accessibility**
+   ```typescript
+   expect(screen.getByRole('button', { name: /submit/i }))
+   ```
+
+### Coverage Reports
+
+```bash
+# Generate HTML coverage report
+npm run test:coverage
+
+# View coverage report
+# Open: coverage/index.html in your browser
+
+# Coverage thresholds
+# Overall: 70%+
+# Critical paths: 90%+
+```
+
+### Common Test Errors
+
+#### "ReferenceError: expect is not defined"
+Add `globals: true` to vitest.config.ts
+
+#### "Module not found"
+Check the path alias in vitest.config.ts and tsconfig.json
+
+#### "Cannot find module '@testing-library/jest-dom'"
+Run: `npm install --save-dev @testing-library/jest-dom`
+
+#### Tests timing out
+Increase timeout: `it('test', () => {}, { timeout: 10000 })`
+
+### Testing Resources
+
+- [Vitest Documentation](https://vitest.dev/)
+- [React Testing Library](https://testing-library.com/react)
+- [Testing Best Practices](https://kentcdodds.com/blog/common-mistakes-with-react-testing-library)
+
+---
+
+## Part 12: Quick Command Reference
 
 | Task | Command | Time |
 |------|---------|------|
@@ -371,7 +606,7 @@ pyinstaller main.py -v
 
 ---
 
-## Part 12: Development Best Practices
+## Part 13: Development Best Practices
 
 ### Commit Message Format
 ```

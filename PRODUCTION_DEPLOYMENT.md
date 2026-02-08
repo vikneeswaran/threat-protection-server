@@ -1,8 +1,20 @@
 # Production Deployment Guide
 
+## Overview
+
+This project is deployed to production (domain: https://kuaminisystems.com) and uses Supabase for authentication and storage.
+
+**Deployment Platform:** Vercel/v0  
+**Database:** Supabase PostgreSQL  
+**Production Domain:** https://kuaminisystems.com  
+
+---
+
 ## Environment Setup
 
 ### Required Environment Variables
+
+All environment variables must be set in your Vercel/v0 project settings:
 
 ```bash
 # .env.production
@@ -10,11 +22,11 @@
 # Supabase Configuration
 NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-instance.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_SUPABASE_REDIRECT_URL=https://yourdomain.com
+NEXT_PUBLIC_SUPABASE_REDIRECT_URL=https://kuaminisystems.com/securityAgent/auth/callback
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # API Configuration
-NEXT_PUBLIC_API_BASE_URL=https://yourdomain.com
+NEXT_PUBLIC_API_BASE_URL=https://kuaminisystems.com/api/agent
 
 # Installer Security
 INSTALLER_TOKEN_SECRET=your-long-random-secret-key
@@ -29,6 +41,21 @@ DATABASE_URL=postgresql://...
 DEBUG_REGISTRATION=false
 NODE_ENV=production
 ```
+
+### Environment Variable Details
+
+- **NEXT_PUBLIC_SUPABASE_URL**: Public client URL used by browser code (e.g., https://<your-project>.supabase.co)
+- **NEXT_PUBLIC_SUPABASE_ANON_KEY**: Supabase anon public key for client-side SDK
+- **SUPABASE_SERVICE_ROLE_KEY**: Supabase service role key (server-only). **IMPORTANT:** Keep this secret and only set in Vercel/v0 secrets
+- **NEXT_PUBLIC_API_BASE_URL**: Base URL for agent API calls (e.g., https://kuaminisystems.com/api/agent)
+- **NEXT_PUBLIC_SUPABASE_REDIRECT_URL**: Callback URL for Supabase email verification/OAuth flows (must match allowed redirect URLs in Supabase)
+
+### Supabase Dashboard Configuration
+
+1. Go to Supabase project → Authentication → Settings
+2. Under "Redirect URLs", add: `https://kuaminisystems.com/securityAgent/auth/callback`
+3. Ensure SMTP/email settings are configured for verification emails
+4. Never publish `SUPABASE_SERVICE_ROLE_KEY` to the client
 
 ### Generating INSTALLER_TOKEN_SECRET
 
@@ -307,6 +334,79 @@ When releasing new agent versions:
 4. **Old agents can still uninstall**
    - They read `api_base` from config
    - Deregister endpoint works for any version
+
+---
+
+## Quick Testing Reference
+
+### 5-Minute Production Test
+
+**Prerequisites:**
+- Test account in production console
+- Registration token from console
+- macOS/Windows/Linux endpoint
+
+**Quick Test Steps:**
+
+```bash
+# 1. Set variables
+TOKEN="your-token-here"
+ACCOUNT_ID="your-account-id"
+DOMAIN="https://kuaminisystems.com"
+
+# 2. Download installer
+curl -o ~/Downloads/KuaminiSecurityClient.pkg \
+  "$DOMAIN/api/agent/installers/download?platform=macos&accountId=$ACCOUNT_ID"
+
+# 3. Install
+sudo installer -pkg ~/Downloads/KuaminiSecurityClient.pkg -target /
+
+# 4. Verify (within 30 seconds)
+ps aux | grep KuaminiSecurityClient | grep -v grep
+cat ~/.kuamini/config.json
+
+# 5. Check console - endpoint should show "Online"
+
+# 6. Uninstall
+curl -o ~/uninstall.sh "$DOMAIN/uninstallers/uninstall-kuamini-macos.sh"
+bash ~/uninstall.sh
+```
+
+### Quick API Tests
+
+```bash
+# Health check
+curl -s "$DOMAIN/api/health" | jq .
+
+# Test registration
+curl -X POST "$DOMAIN/api/agent/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "'$TOKEN'",
+    "hostname": "'$(hostname)'",
+    "os": "macos",
+    "os_version": "15.5",
+    "agent_version": "1.0.0"
+  }' | jq .
+
+# Test config
+curl "$DOMAIN/api/agent/installers/config?accountId=$ACCOUNT_ID&registrationToken=$TOKEN" | jq .
+```
+
+### Success Checklist
+
+| Test | Expected | Status |
+|------|----------|--------|
+| Download | 20MB PKG/MSI | [ ] |
+| Install | No errors | [ ] |
+| Process | Running | [ ] |
+| Tray Icon | Visible | [ ] |
+| Console | Endpoint visible | [ ] |
+| Config | Correct API base | [ ] |
+| Heartbeat | 200 response | [ ] |
+| Uninstall | Completes | [ ] |
+| Deregister | 200 response | [ ] |
+| Cleanup | Files removed | [ ] |
 
 ---
 

@@ -51,53 +51,36 @@
 
 ## Architecture
 
+For comprehensive technical architecture details, see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+### High-Level Architecture Overview
+
 The project follows a **multi-tier, multi-tenant SaaS architecture**:
 
-### 1. Web Console (Frontend)
-- **Framework:** Next.js 16 with App Router
-- **Language:** TypeScript + React 19
-- **Styling:** Tailwind CSS 4.1 + shadcn/ui
-- **Hosting:** Vercel/v0 (serverless)
-- **Auth:** Supabase Auth (email/password)
+**1. Web Console (Frontend)**
+- Framework: Next.js 16 with App Router
+- Language: TypeScript + React 19
+- Styling: Tailwind CSS 4.1 + shadcn/ui
+- Hosting: Vercel (serverless)
+- Auth: Supabase Auth
 
-**Key Pages:**
-- Public landing page (`/`)
-- Security console dashboard (`/securityAgent/`)
-- Protected authenticated pages (`/securityAgent/(dashboard)/`)
-- Auth pages (login, register, callback)
+**2. Backend API (Next.js API Routes)**
+- Serverless API on Vercel
+- Supabase PostgreSQL database
+- JWT authentication for agents
+- Row Level Security (RLS) for multi-tenancy
 
-### 2. Backend API (Next.js API Routes)
-- **Framework:** Next.js API Routes (serverless)
-- **Authentication:** Supabase Service Role Key for agent communication
-- **Database:** Supabase PostgreSQL
-- **Security:** Row Level Security (RLS) for multi-tenancy
+**3. Agent Software (Python)**
+- Cross-platform (Windows, macOS, Linux)
+- System tray application
+- PyInstaller executable bundles
+- 60-second heartbeat mechanism
 
-**Key Endpoints:**
-- Agent registration: `POST /api/agent/register`
-- Heartbeat: `POST /api/agent/heartbeat`
-- Threat reporting: `POST /api/agent/threat`
-- Installer scripts: `GET /api/agent/installers/:os`
-
-### 3. Agent Software (Python)
-- **Type:** Cross-platform system tray application
-- **Platforms:** Windows, macOS, Linux
-- **Language:** Python 3.10+
-- **Distribution:** PyInstaller bundles (standalone executables)
-- **Deployment:** Static ZIP files served via CDN
-
-**Key Features:**
-- System tray icon with status indicator
-- Persistent heartbeat mechanism (60-second interval)
-- Automatic registration with embedded token
-- Policy synchronization
-- Network system information collection
-
-### 4. Database (Supabase/PostgreSQL)
-- **Provider:** Supabase (managed PostgreSQL)
-- **Multi-Tenancy:** Row Level Security (RLS) policies
-- **Authentication:** Service role key for API, user credentials for console
-- **Schema:** 12 tables + audit logging
-- **Backups:** Automatic Supabase backups
+**4. Database (Supabase PostgreSQL)**
+- Multi-tenant with RLS
+- 12 core tables
+- Automated backups
+- Real-time subscriptions
 
 ---
 
@@ -528,51 +511,16 @@ chmod +x install-kuamini-agent.sh
 
 ## Technology Stack
 
-### Frontend
-```
-next.js              16.0.7          # React framework with SSR
-react                19.2.0          # UI library
-typescript           ^5              # Type safety
-tailwindcss          ^4.1.9          # Utility-first CSS
-@radix-ui/*          latest          # Accessible UI primitives
-recharts             latest          # Data visualization
-react-hook-form      ^7.60.0         # Form state management
-zod                  3.25.76         # Schema validation
-sonner               latest          # Toast notifications
-lucide-react         ^0.454.0        # Icon library
-```
+For detailed technology specifications and versions, see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 
-### Backend
-```
-next.js              16.0.7          # API routes
-@supabase/supabase-js latest         # Database client
-@supabase/ssr        latest          # Server-side utilities
-```
+### Summary
 
-### Database
-```
-supabase             (managed)       # PostgreSQL + Auth
-postgresql           (managed)       # Relational database
-uuid-ossp            (extension)     # UUID generation
-rls                  (built-in)      # Row Level Security
-```
-
-### Agent (Python)
-```
-python               3.10+           # Runtime
-pystray              latest          # System tray
-psutil               latest          # System information
-requests             latest          # HTTP client
-pillow               latest          # Image generation
-pyinstaller          latest          # Executable bundler
-```
-
-### DevOps & Deployment
-```
-vercel/v0            latest          # Hosting
-supabase             managed         # Database hosting
-github               source control  # Version control
-```
+**Frontend:** Next.js 16.0.7, React 19.2.0, TypeScript 5.x, Tailwind CSS 4.1.9  
+**Backend:** Next.js API Routes, Supabase JS SDK  
+**Database:** Supabase PostgreSQL with RLS  
+**Agent:** Python 3.x with pystray, psutil, requests, PyInstaller  
+**Deployment:** Vercel (frontend/API), Supabase Cloud (database)  
+**DevOps:** Git, pnpm, Vercel Auto-Deploy
 
 ---
 
@@ -613,196 +561,20 @@ threat-protection-agent/
 │   │   │   │   ├── page.tsx         # Policy list
 │   │   │   │   └── [id]/page.tsx    # Policy editor
 │   │   │   ├── users/page.tsx       # User management
-│   │   │   ├── accounts/page.tsx    # Sub-accounts
-│   │   │   ├── licenses/page.tsx    # License tracking
-│   │   │   ├── installers/
-│   │   │   │   ├── page.tsx         # Installer page
-│   │   │   │   └── script/[os]      # Script generation
-│   │   │   ├── audit-logs/page.tsx  # Audit trail viewer
-│   │   │   ├── settings/page.tsx    # Account settings
-│   │   │   ├── layout.tsx           # Dashboard layout
-│   │   │   └── api/                 # Dashboard-specific APIs
-│   │   │
-│   │   ├── page.tsx                 # Security landing page
-│   │   └── layout.tsx               # Security layout
-│   │
-│   ├── layout.tsx                   # Root layout
-│   ├── page.tsx                     # Public landing page
-│   ├── about/page.tsx               # About page
-│   ├── contact/page.tsx             # Contact page
-│   └── globals.css                  # Global styles
-│
-├── components/                      # React Components
-│   ├── security-agent/              # Dashboard components
-│   │   ├── header.tsx               # Page header
-│   │   ├── sidebar.tsx              # Navigation sidebar
-│   │   ├── stats-card.tsx           # Metric card
-│   │   ├── endpoints-list.tsx       # Endpoints table
-│   │   ├── endpoint-details.tsx     # Single endpoint view
-│   │   ├── endpoint-filters.tsx     # Filter component
-│   │   ├── endpoint-policies.tsx    # Policy assignment
-│   │   ├── threats-list.tsx         # Threats table
-│   │   ├── threat-filters.tsx       # Filter component
-│   │   ├── threat-severity-chart.tsx# Severity pie chart
-│   │   ├── endpoint-status-chart.tsx# Status pie chart
-│   │   ├── recent-threats-table.tsx # Recent activity
-│   │   ├── threat-stats.tsx         # Threat statistics
-│   │   ├── policies-list.tsx        # Policies table
-│   │   ├── policy-details.tsx       # Policy editor
-│   │   ├── policy-endpoints.tsx     # Assigned endpoints
-│   │   ├── create-policy-dialog.tsx # Policy creation
-│   │   ├── users-list.tsx           # Users table
-│   │   ├── create-user-dialog.tsx   # User invitation
-│   │   ├── sub-accounts-list.tsx    # Sub-accounts table
-│   │   ├── create-sub-account-dialog.tsx
-│   │   ├── license-overview.tsx     # License summary
-│   │   ├── license-tier-comparison.tsx
-│   │   ├── license-details.tsx      # License info
-│   │   ├── license-allocation-history.tsx
-│   │   ├── installers-page.tsx      # Installer UI
-│   │   ├── audit-logs-list.tsx      # Audit log table
-│   │   ├── audit-logs-filters.tsx   # Audit filters
-│   │   ├── settings-form.tsx        # Settings editor
-│   │   └── endpoint-tray-ui.tsx     # Tray icon display
-│   │
-│   ├── kuamini/                     # Public site components
-│   │   ├── header.tsx               # Navigation header
-│   │   └── footer.tsx               # Footer
-│   │
-│   └── ui/                          # shadcn/ui components
-│       ├── button.tsx
-│       ├── card.tsx
-│       ├── input.tsx
-│       ├── select.tsx
-│       ├── dialog.tsx
-│       ├── table.tsx
-│       ├── badge.tsx
-│       ├── alert.tsx
-│       ├── tabs.tsx
-│       ├── accordion.tsx
-│       ├── dropdown-menu.tsx
-│       └── ... (30+ other components)
-│
-├── lib/                             # Utilities & Helpers
-│   ├── supabase/
-│   │   ├── client.ts                # Browser client
-│   │   ├── server.ts                # Server client
-│   │   └── middleware.ts            # Auth middleware
-│   ├── types/
-│   │   ├── database.ts              # TypeScript definitions
-│   │   └── ... (other types)
-│   ├── config.ts                    # App configuration
-│   ├── utils.ts                     # Helper functions
-│   └── hooks/
-│       ├── use-debounce.ts
-│       ├── use-mobile.ts
-│       └── use-toast.ts
-│
-├── agent-tray/                      # Python Agent Application
-│   ├── main.py                      # Tray application entry point
-│   ├── config.example.json          # Configuration template
-│   ├── generate_config.py           # Config generator utility
-│   ├── requirements.txt             # Python dependencies
-│   │
-│   └── build/                       # Build infrastructure
-│       ├── pyinstaller-mac.sh       # macOS build script
-│       ├── pyinstaller-linux.sh     # Linux build script
-│       ├── pyinstaller-win.ps1      # Windows build script
-│       ├── sign-mac.sh              # macOS signing script
-│       ├── sign-win.ps1             # Windows signing script
-│       ├── zip-mac.sh               # macOS packaging script
-│       ├── zip-linux.sh             # Linux packaging script
-│       ├── zip-win.ps1              # Windows packaging script
-│       ├── build-all.sh             # Multi-platform build
-│       ├── pkgbuild-mac.sh          # macOS .pkg creator
-│       ├── entitlements.plist       # macOS entitlements
-│       ├── inno-setup-template.iss  # Windows installer template
-│       ├── check-signing-setup.sh   # Verify signing setup
-│       ├── bypass-gatekeeper-macos.sh
-│       ├── CODE_SIGNING_GUIDE.md    # Signing documentation
-│       ├── QUICK_REFERENCE.md
-│       ├── README.md
-│       │
-│       └── autostart/               # Service templates
-│           ├── macos/
-│           │   └── com.kuamini.agenttray.plist
-│           ├── linux/
-│           │   └── kuamini-agent-tray.service
-│           └── windows/
-│               └── kuamini-agent-tray.bat
-│
-├── scripts/                         # Database migrations
-│   ├── 001_create_schema.sql       # Main schema
-│   ├── 002_enable_rls.sql          # Row Level Security
-│   ├── 003_create_triggers.sql     # Database triggers
-│   ├── 004_seed_license_tiers.sql  # License tier data
-│   └── 005_add_agent_id.sql        # Agent ID column
-│
-├── public/                          # Static assets
-│   ├── tray/                        # Agent distribution
-│   │   ├── macos.zip               # macOS agent bundle
-│   │   ├── linux.zip               # Linux agent bundle
-│   │   └── windows.zip             # Windows agent bundle
-│   └── ... (images, icons, etc.)
-│
-├── styles/                          # Global styles
-│   └── globals.css
-│
-├── hooks/                           # Custom React hooks
-│   ├── use-debounce.ts
-│   ├── use-mobile.ts
-│   └── use-toast.ts
-│
-├── package.json                     # NPM dependencies
-├── pnpm-lock.yaml                   # Dependency lock file
-├── tsconfig.json                    # TypeScript configuration
-├── next.config.mjs                  # Next.js configuration
-├── tailwind.config.ts               # Tailwind CSS configuration
-├── postcss.config.mjs               # PostCSS configuration
-├── components.json                  # shadcn/ui config
-│
-├── DEPLOY_V0.md                     # Deployment guide
-├── README.md                        # Project readme
-├── .env.example                     # Environment variables template
-├── .github/
-│   └── workflows/                   # CI/CD workflows
-│
-└── proxy.ts                         # Proxy configuration
+For complete project structure details, see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+### Key Directories
+
 ```
-
----
-
-## Database Schema
-
-### Table 1: license_tiers
-```sql
-id                  UUID PRIMARY KEY
-name               TEXT UNIQUE (free, basic, pro, enterprise)
-min_endpoints      INTEGER
-max_endpoints      INTEGER
-price_per_endpoint DECIMAL(10,2)
-support_type       TEXT (none, email, email_phone)
-response_time      TEXT (e.g., '12-48 hours')
-trial_days         INTEGER
-created_at         TIMESTAMPTZ
-updated_at         TIMESTAMPTZ
-```
-
-### Table 2: accounts
-```sql
-id                    UUID PRIMARY KEY
-name                  TEXT NOT NULL
-parent_account_id     UUID REFERENCES accounts(id)
-level                 INTEGER (1-5)
-license_tier_id       UUID REFERENCES license_tiers(id)
-total_licenses        INTEGER
-allocated_licenses    INTEGER
-used_licenses         INTEGER
-license_expires_at    TIMESTAMPTZ
-is_active             BOOLEAN
-created_at            TIMESTAMPTZ
-updated_at            TIMESTAMPTZ
-```
+threat-protection-agent/
+├── app/                     # Next.js App Router (pages, API routes)
+├── components/              # React components (UI, security agent)
+├── lib/                     # Utilities, Supabase clients, types
+├── agent-tray/              # Python desktop agent application
+├── scripts/                 # Database migrations
+├── public/                  # Static assets, agent bundles
+├── tests/                   # Test files
+└── [config files]           # package.json, tsconfig.json, etc.
 
 ### Table 3: profiles
 ```sql
