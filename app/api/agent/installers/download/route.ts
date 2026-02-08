@@ -501,20 +501,67 @@ async function serveWindowsInstaller(
 async function serveMacOSInstaller(token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
     // Serve the pre-built base PKG from public/tray/
-    // The postinstall script will download account-specific config using the token
+    // The postinstall script in the base PKG does not embed token.
     const publicPath = await resolveBundlePath([
       path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-1.0.0.pkg"),
       path.join(process.cwd(), "public", "tray", "macos.pkg"),
     ])
 
+    const pkgName = path.basename(publicPath)
     const pkgData = await fs.readFile(publicPath)
     const sha256 = await getFileSha256(publicPath)
 
-    // Build the install URL for postinstall to use (e.g., in Vercel fallback)
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
-    const installUrl = `${apiBase}/installers/config?token=${token}`
+    const rawBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
+    const normalizedBase = rawBase.replace(/\/$/, "")
+    const apiBase = normalizedBase.endsWith("/api/agent") ? normalizedBase : `${normalizedBase}/api/agent`
+    const consoleUrl = `${normalizedBase}/securityAgent`
 
-    // Fire-and-forget audit log (no blocking on response)
+    const installScript = `#!/bin/bash
+set -euo pipefail
+
+CONSOLE_USER=$(/usr/bin/stat -f %Su /dev/console)
+CONFIG_DIR="/Users/\${CONSOLE_USER}/.kuamini"
+CONFIG_FILE="\${CONFIG_DIR}/config.json"
+TOKEN_FILE="$(cd "$(dirname "$0")" && pwd)/registration.token"
+PKG_FILE="$(cd "$(dirname "$0")" && pwd)/${pkgName}"
+
+if [ ! -f "$TOKEN_FILE" ]; then
+  echo "registration.token not found in installer bundle" >&2
+  exit 1
+fi
+
+TOKEN=$( /bin/cat "$TOKEN_FILE" )
+
+/bin/mkdir -p "$CONFIG_DIR"
+/bin/cat >"$CONFIG_FILE" <<JSON
+{
+  "api_base": "${apiBase}",
+  "console_url": "${consoleUrl}",
+  "auto_register": true,
+  "heartbeat_interval": 60,
+  "registration_token": "${token}"
+}
+JSON
+
+/usr/sbin/chown "$CONSOLE_USER" "$CONFIG_FILE" || true
+/bin/chmod 644 "$CONFIG_FILE" || true
+
+echo "Installing Kuamini Security Client..."
+/usr/sbin/installer -pkg "$PKG_FILE" -target /
+
+echo "Installation complete."
+echo "If the tray icon is red, open the console and check endpoint status."
+`
+
+    const readme = `Kuamini Security Client (macOS)\n\nSteps:\n1) Unzip this bundle.\n2) Run: bash install.sh\n3) Approve any prompts.\n\nThis installer writes your account token into ~/.kuamini/config.json before installing the PKG.\n`
+
+    const zip = new AdmZip()
+    zip.addFile(pkgName, pkgData)
+    zip.addFile("registration.token", Buffer.from(token, "utf-8"))
+    zip.addFile("install.sh", Buffer.from(installScript, "utf-8"))
+    zip.addFile("README.txt", Buffer.from(readme, "utf-8"))
+    const zipData = zip.toBuffer()
+
     void safeAuditLog({
       action: "installer_download",
       entityType: "installer",
@@ -522,15 +569,17 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
       accountId,
       ip: clientIp,
       userAgent,
-      details: { platform: "macos", sha256, installUrl, fallback: true },
+      details: { platform: "macos", sha256, bundle: "pkg+token+script" },
     })
 
-    return new NextResponse(pkgData, {
+    const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}-macos.zip`
+
+    return new NextResponse(new Uint8Array(zipData), {
       headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg"`,
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${bundleName}"`,
         "X-Checksum-SHA256": sha256,
-        "X-Install-URL": installUrl,
+        "X-Bundle-Type": "pkg+token+script",
       },
     })
   } catch (error) {
@@ -541,58 +590,7 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
 
 async function generateMacOSInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
   try {
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuamini-installer-"))
-    const outputPkg = path.join(tempDir, `KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg`)
-    
-    // Use the shell script to generate custom PKG
-    const scriptPath = path.join(process.cwd(), "agent-tray", "build", "generate-custom-pkg.sh")
-    
-    const env = {
-      ...process.env,
-      API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com",
-      CONSOLE_URL: `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"}/securityAgent`,
-    }
-    
-    try {
-      const { stdout, stderr } = await execAsync(`"${scriptPath}" "${token}" "${outputPkg}"`, { env })
-      if (stdout) {
-        console.info("generate-custom-pkg stdout:\n", stdout)
-      }
-      if (stderr) {console.warn("generate-custom-pkg stderr:\n", stderr)}
-    } catch (e: any) {
-      console.error("generate-custom-pkg failed:", e?.stderr || e?.message || e)
-      console.warn("Falling back to static base PKG; postinstall will download account-specific config")
-      // Clean up temp directory and fall back to static PKG
-      await fs.rm(tempDir, { recursive: true, force: true })
-      return await serveMacOSInstaller(token, accountId, clientIp, userAgent)
-    }
-
-    // Read the generated PKG
-    const pkgData = await fs.readFile(outputPkg)
-    const sha256 = await getFileSha256(outputPkg)
-
-    // Clean up temp directory
-    await fs.rm(tempDir, { recursive: true, force: true })
-
-    // Fire-and-forget audit log
-    void safeAuditLog({
-      action: "installer_download",
-      entityType: "installer",
-      entityId: accountId,
-      accountId,
-      ip: clientIp,
-      userAgent,
-      details: { platform: "macos", sha256 },
-    })
-
-    // Return the PKG file
-    return new NextResponse(pkgData, {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="KuaminiSecurityClient-${accountId.slice(0, 8)}.pkg"`,
-        "X-Checksum-SHA256": sha256,
-      },
-    })
+    return await serveMacOSInstaller(token, accountId, clientIp, userAgent)
   } catch (error) {
     console.error("Error generating macOS installer:", error)
     throw error

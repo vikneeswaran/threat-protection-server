@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 DEFAULTS = {
-    "api_base": "https://kuaminisystems.com/securityAgent/api/agent",
+    "api_base": "https://kuaminisystems.com/api/agent",
     "console_url": "https://kuaminisystems.com/securityAgent",
     "heartbeat_interval": 60,
 }

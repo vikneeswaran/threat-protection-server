@@ -129,10 +129,10 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
       icon: Apple,
       version: "1.0.0",
       size: "~15 MB",
-      fileType: "PKG Installer (.pkg)",
+      fileType: "ZIP Bundle (PKG + install script)",
       requirements: "macOS 11 (Big Sur) or later",
-      filename: "KuaminiSecurityClient-1.0.0.pkg",
-      description: "macOS installer package that automatically installs and configures the agent as a LaunchAgent with your account credentials embedded.",
+      filename: "KuaminiSecurityClient-<account>-macos.zip",
+      description: "macOS installer bundle that writes your account token into config.json, then installs the PKG as a LaunchAgent.",
     },
     {
       id: "linux",
@@ -283,7 +283,7 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
                     <li>The installer will be customized with your account credentials</li>
                     <li>
                       Run the installer with administrator/root privileges on your endpoint
-                      {installer.id === "macos" && " (double-click the PKG file)"}
+                      {installer.id === "macos" && " (unzip and run install.sh)"}
                       {installer.id === "windows" && " (right-click → Run as Administrator)"}
                       {installer.id === "linux" && " (sudo bash install-kuamini-agent.sh)"}
                     </li>
