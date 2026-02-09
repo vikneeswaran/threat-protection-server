@@ -30,7 +30,8 @@ const supabaseAdmin = createAdminClient()
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { endpoint_id, agent_id, status, agent_version, ip_address, system_info: _system_info } = body
+    let { endpoint_id } = body
+    const { agent_id, status, agent_version, ip_address, system_info: _system_info } = body
 
     // Accept either endpoint_id or agent_id
     if (!endpoint_id && !agent_id) {
