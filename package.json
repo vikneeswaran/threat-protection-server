@@ -20,8 +20,8 @@
     "test:watch": "vitest --watch",
     "type-check": "tsc --noEmit",
     "validate": "npm run lint && npm run type-check && npm run test",
-    "build:agent": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/create-installer.ps1",
-    "build:agent:token": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/create-installer.ps1 -RegistrationToken",
+    "build:agent": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/build-windows-msi.ps1",
+    "build:agent:token": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/build-windows-msi.ps1 -RegistrationToken",
     "build:installer": "npm run build:agent"
   },
   "dependencies": {
