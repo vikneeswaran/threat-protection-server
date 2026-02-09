@@ -690,13 +690,48 @@ def heartbeat(config):
         return False, str(exc)
 
 
+def initialize_threat_detection(config: dict, log_callback=None) -> dict:
+    try:
+        from threat_detection import ThreatDetectionEngine, ThreatReporter, ThreatActionExecutor
+
+        engine = ThreatDetectionEngine(log_callback=log_callback)
+        reporter = ThreatReporter(
+            api_base_url=config.get("api_base", "https://kuaminisystems.com/api/agent"),
+            agent_id=config.get("agent_id"),
+            account_id=config.get("account_id"),
+            log_callback=log_callback,
+        )
+        executor = ThreatActionExecutor(log_callback=log_callback)
+
+        logging.info("Threat detection initialized")
+        return {
+            "enabled": True,
+            "engine": engine,
+            "reporter": reporter,
+            "executor": executor,
+        }
+    except Exception as e:
+        logging.error("Threat detection init failed: %s", e, exc_info=True)
+        return {"enabled": False, "error": str(e)}
+
+
 def tray_main():
     """Run as full tray application with icon and menu."""
     setup_logging()
     logging.info("Starting Kuamini Agent Tray")
     config = load_config()
 
+    threat_system = initialize_threat_detection(config, log_callback=logging.info)
+
     status = {"text": "Idle", "color": (46, 204, 113)}
+    threat_policy = {
+        "enabled": True,
+        "scan_interval": int(config.get("threat_scan_interval") or 3600),
+        "scan_mode": str(config.get("threat_scan_mode") or "quick").lower(),
+        "realtime_monitor": bool(config.get("threat_realtime_monitor") or False),
+        "realtime_interval": int(config.get("threat_realtime_interval") or 300),
+        "auto_action": True,
+    }
     
     # Create icon with error handling
     try:
@@ -721,6 +756,95 @@ def tray_main():
             logging.debug("Could not update icon: %s", e)
         logging.info("Status changed: %s (color: %s)", text, color)
 
+    def notify(title: str, message: str):
+        try:
+            if hasattr(icon, "notify"):
+                icon.notify(message, title)
+        except Exception as e:
+            logging.debug("Notification failed: %s", e)
+
+    def _coerce_policy_bool(value, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ["true", "1", "yes", "on"]
+        if isinstance(value, int):
+            return value != 0
+        return default
+
+    def _coerce_policy_int(value, default: int) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return default
+
+    def apply_threat_policies(policies: list | None):
+        if not policies:
+            return
+        updated = False
+        for policy in policies:
+            if not isinstance(policy, dict):
+                continue
+            if policy.get("is_active") is False:
+                continue
+
+            policy_type = (policy.get("type") or "").lower()
+            cfg = policy.get("config") or policy.get("settings") or {}
+            if not isinstance(cfg, dict):
+                continue
+
+            if policy_type in ["real_time_protection", "scheduled_scan", "threat_detection"]:
+                if "threat_detection_enabled" in cfg or "enabled" in cfg:
+                    threat_policy["enabled"] = _coerce_policy_bool(
+                        cfg.get("threat_detection_enabled", cfg.get("enabled")),
+                        threat_policy["enabled"],
+                    )
+                    updated = True
+
+            if policy_type == "scheduled_scan":
+                if "scan_interval" in cfg or "interval" in cfg:
+                    threat_policy["scan_interval"] = _coerce_policy_int(
+                        cfg.get("scan_interval", cfg.get("interval")),
+                        threat_policy["scan_interval"],
+                    )
+                    updated = True
+                if "scan_mode" in cfg or "mode" in cfg:
+                    threat_policy["scan_mode"] = str(cfg.get("scan_mode", cfg.get("mode"))).lower()
+                    updated = True
+
+            if policy_type == "real_time_protection":
+                if "enabled" in cfg or "realtime_enabled" in cfg:
+                    threat_policy["realtime_monitor"] = _coerce_policy_bool(
+                        cfg.get("realtime_enabled", cfg.get("enabled")),
+                        threat_policy["realtime_monitor"],
+                    )
+                    updated = True
+                if "interval" in cfg or "realtime_interval" in cfg:
+                    threat_policy["realtime_interval"] = _coerce_policy_int(
+                        cfg.get("realtime_interval", cfg.get("interval")),
+                        threat_policy["realtime_interval"],
+                    )
+                    updated = True
+
+            if policy_type == "threat_actions":
+                if "auto_action" in cfg:
+                    threat_policy["auto_action"] = _coerce_policy_bool(
+                        cfg.get("auto_action"),
+                        threat_policy["auto_action"],
+                    )
+                    updated = True
+
+        if updated:
+            logging.info(
+                "Threat policy updated: enabled=%s scan_interval=%s scan_mode=%s realtime=%s realtime_interval=%s auto_action=%s",
+                threat_policy["enabled"],
+                threat_policy["scan_interval"],
+                threat_policy["scan_mode"],
+                threat_policy["realtime_monitor"],
+                threat_policy["realtime_interval"],
+                threat_policy["auto_action"],
+            )
+
     def do_register(icon_, item):
         ok, res = register(config)
         logging.info("Register result: ok=%s, res=%s", ok, res)
@@ -743,13 +867,131 @@ def tray_main():
     def heartbeat_loop():
         interval = int(config.get("heartbeat_interval") or DEFAULT_HEARTBEAT_INTERVAL)
         while not stop_event.is_set():
-            ok, _ = heartbeat(config)
+            ok, res = heartbeat(config)
+            if ok and isinstance(res, dict):
+                apply_threat_policies(res.get("policies"))
             set_status("Online" if ok else "Heartbeat failed", (46, 204, 113) if ok else (231, 76, 60))
             stop_event.wait(interval)
 
+    def _execute_action_for_threat(action: str, threat: dict) -> Tuple[bool, str]:
+        action = action.lower()
+        if action == "quarantine" and threat.get("file_path"):
+            return threat_system["executor"].quarantine_file(threat["file_path"])
+        if action == "delete" and threat.get("file_path"):
+            return threat_system["executor"].delete_file(threat["file_path"])
+        if action == "kill" and threat.get("process_id"):
+            return threat_system["executor"].kill_process(int(threat["process_id"]))
+        if action == "allow" and threat.get("file_hash"):
+            return threat_system["executor"].allow_threat(threat["file_hash"])
+        return False, f"Unsupported or missing data for action: {action}"
+
+    def _report_and_handle_actions(report):
+        ok, results = threat_system["reporter"].report_scan_results(
+            report,
+            endpoint_id=config.get("endpoint_id"),
+        )
+        if not results:
+            return ok
+
+        for idx, result in enumerate(results):
+            if not result.get("success"):
+                continue
+            threat = report.threats[idx] if report.threats and idx < len(report.threats) else {}
+            response = result.get("result") if isinstance(result.get("result"), dict) else {}
+            action = response.get("recommended_action") or response.get("auto_action")
+            threat_id = response.get("threat_id")
+
+            if action and threat_policy.get("auto_action", True):
+                handled, msg = _execute_action_for_threat(action, threat)
+                if handled:
+                    if threat_id:
+                        status_map = {
+                            "quarantine": "quarantined",
+                            "kill": "killed",
+                            "delete": "resolved",
+                            "allow": "allowed",
+                        }
+                        threat_system["reporter"].update_threat_status(
+                            threat_id,
+                            status_map.get(action, "resolved"),
+                            action=action,
+                        )
+                    notify("Threat resolved", f"{threat.get('threat_name', 'Threat')} - {action}")
+                    logging.info("Threat action applied: %s (%s)", action, threat.get("threat_name"))
+                else:
+                    logging.warning("Threat action failed: %s", msg)
+        return ok
+
+    def threat_scan_loop():
+        while not stop_event.is_set():
+            try:
+                if not threat_policy.get("enabled", True):
+                    stop_event.wait(60)
+                    continue
+
+                scan_mode = str(threat_policy.get("scan_mode") or "quick").lower()
+                if scan_mode == "full":
+                    report = threat_system["engine"].full_scan()
+                elif scan_mode == "realtime":
+                    report = threat_system["engine"].realtime_scan()
+                else:
+                    report = threat_system["engine"].quick_scan()
+
+                if report.total_threats > 0:
+                    notify("Threat detected", f"{report.total_threats} threats found")
+                _report_and_handle_actions(report)
+            except Exception as e:
+                logging.error("Threat scan loop error: %s", e, exc_info=True)
+
+            stop_event.wait(int(threat_policy.get("scan_interval") or 3600))
+
+    def realtime_monitor_loop():
+        while not stop_event.is_set():
+            try:
+                if not threat_policy.get("enabled", True) or not threat_policy.get("realtime_monitor", False):
+                    stop_event.wait(60)
+                    continue
+
+                report = threat_system["engine"].realtime_scan()
+                critical = [
+                    t for t in (report.threats or [])
+                    if t.get("severity") in ["critical", "high"]
+                ]
+                if critical:
+                    notify("Threat detected", f"{len(critical)} critical threats")
+                    _report_and_handle_actions(report)
+            except Exception as e:
+                logging.error("Realtime threat monitor error: %s", e, exc_info=True)
+
+            stop_event.wait(int(threat_policy.get("realtime_interval") or 300))
+
+    def do_quick_threat_scan(icon_, item):
+        if not threat_system.get("enabled"):
+            logging.info("Threat scan requested but feature is disabled")
+            return
+        if not threat_policy.get("enabled", True):
+            logging.info("Threat scan requested but disabled by policy")
+            return
+
+        def _run_scan():
+            try:
+                set_status("Threat scan running", (241, 196, 15))
+                report = threat_system["engine"].quick_scan()
+                if report.total_threats > 0:
+                    set_status(f"Threats: {report.total_threats}", (231, 76, 60))
+                    notify("Threat detected", f"{report.total_threats} threats found")
+                else:
+                    set_status("Scan clean", (46, 204, 113))
+                _report_and_handle_actions(report)
+            except Exception as e:
+                logging.error("Quick threat scan failed: %s", e, exc_info=True)
+                set_status("Scan failed", (231, 76, 60))
+
+        threading.Thread(target=_run_scan, daemon=True).start()
+
     def build_menu():
         """Build menu dynamically so status updates in real time."""
-        return pystray.Menu(
+        items = [
             pystray.MenuItem(lambda item: f"● Agent: {config.get('agent_id', 'unknown')[:8]}...", None, enabled=False),
             pystray.MenuItem(lambda item: f"◉ Status: {status.get('text', 'Unknown')}", None, enabled=False),
             pystray.MenuItem(lambda item: f"  Account: {config.get('account_id', 'Not set')[:8]}..." if config.get('account_id') else "  Account: Not configured", None, enabled=False),
@@ -757,9 +999,20 @@ def tray_main():
             pystray.MenuItem("Register now", do_register),
             pystray.MenuItem("Send heartbeat", do_heartbeat),
             pystray.MenuItem("Open console", open_console),
+        ]
+
+        if threat_system.get("enabled"):
+            items.extend([
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Quick threat scan", do_quick_threat_scan),
+            ])
+
+        items.extend([
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", quit_app),
-        )
+        ])
+
+        return pystray.Menu(*items)
     
     icon.menu = build_menu()
 
@@ -778,6 +1031,11 @@ def tray_main():
             set_status("Registration failed, retrying on heartbeat")
     
     threading.Thread(target=heartbeat_loop, daemon=True).start()
+
+    if threat_system.get("enabled"):
+        threading.Thread(target=threat_scan_loop, daemon=True).start()
+        threading.Thread(target=realtime_monitor_loop, daemon=True).start()
+
     icon.icon = make_icon(status["color"])
     
     # Run the tray icon with error recovery

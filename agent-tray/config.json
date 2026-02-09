@@ -5,5 +5,9 @@
   "account_id": "",
   "console_url": "https://kuaminisystems.com/securityAgent",
   "heartbeat_interval": 60,
-  "auto_register": true
+  "auto_register": true,
+  "threat_scan_interval": 3600,
+  "threat_scan_mode": "quick",
+  "threat_realtime_monitor": false,
+  "threat_realtime_interval": 300
 }
