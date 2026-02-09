@@ -4,12 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import crypto from "crypto"
 import fs from "fs/promises"
 import path from "path"
-import { exec } from "child_process"
-import { promisify } from "util"
 import AdmZip from "adm-zip"
 import os from "os"
-
-const execAsync = promisify(exec)
 
 // Token and rate-limit settings (tunable via env)
 const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
