@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "packageManager": "pnpm@10.0.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "unrs-resolver"]
+  },
   "engines": {
     "node": ">=20",
     "pnpm": ">=10"
