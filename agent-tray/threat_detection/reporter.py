@@ -86,6 +86,8 @@ class ThreatReporter:
         
         if not scan_report.threats:
             self._log("No threats to report")
+            # Still report the scan summary even if no threats found
+            self.report_scan_summary(scan_report, endpoint_id)
             return True, results
         
         for threat in scan_report.threats:
@@ -102,6 +104,17 @@ class ThreatReporter:
                 failed_count += 1
         
         self._log(f"Scan reporting complete: {reported_count} succeeded, {failed_count} failed")
+        
+        # Also report scan summary for console dashboard visibility
+        try:
+            summary_ok, summary_result = self.report_scan_summary(scan_report, endpoint_id)
+            if summary_ok:
+                self._log(f"✓ Scan summary recorded in console")
+            else:
+                self._log(f"⚠ Failed to record scan summary: {summary_result.get('error', 'Unknown error')}", "warning")
+        except Exception as e:
+            self._log(f"⚠ Exception reporting scan summary: {e}", "warning")
+        
         return failed_count == 0, results
     
     def report_scan_summary(self, scan_report: ThreatReport, endpoint_id: Optional[str] = None) -> Tuple[bool, Dict]:

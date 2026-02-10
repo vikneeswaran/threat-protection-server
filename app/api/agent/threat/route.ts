@@ -61,6 +61,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to record threat" }, { status: 500 })
     }
 
+    console.log(`[THREAT REPORTED] ${threat_name} (Severity: ${severity}) - Endpoint: ${endpoint.id}`)
+
     // Get recommended action from policies
     const { data: policies } = await supabaseAdmin
       .from("endpoint_policies")

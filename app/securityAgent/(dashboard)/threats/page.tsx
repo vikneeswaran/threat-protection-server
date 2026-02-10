@@ -39,6 +39,7 @@ export default async function ThreatsPage({
       *,
       endpoint:endpoints(hostname, os)
     `)
+    .eq("account_id", profile.account.id)
     .order("detected_at", { ascending: false })
 
   if (params.severity && params.severity !== "all") {
@@ -56,7 +57,10 @@ export default async function ThreatsPage({
   const { data: threats } = await query.limit(100)
 
   // Get stats for all threats
-  const { data: allThreats } = await supabase.from("threats").select("severity, status")
+  const { data: allThreats } = await supabase
+    .from("threats")
+    .select("severity, status")
+    .eq("account_id", profile.account.id)
 
   const stats = {
     total: allThreats?.length || 0,

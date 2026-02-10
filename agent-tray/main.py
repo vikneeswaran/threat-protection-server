@@ -886,12 +886,16 @@ def tray_main():
         return False, f"Unsupported or missing data for action: {action}"
 
     def _report_and_handle_actions(report):
+        logging.info(f"Starting to report scan results: {report.total_threats} threats detected")
         ok, results = threat_system["reporter"].report_scan_results(
             report,
             endpoint_id=config.get("endpoint_id"),
         )
         if not results:
+            logging.info(f"✓ Scan completed: 0 threats to process")
             return ok
+
+        logging.info(f"✓ Reported {len([r for r in results if r.get('success')])} threats successfully")
 
         for idx, result in enumerate(results):
             if not result.get("success"):
