@@ -78,11 +78,13 @@ export async function POST(request: NextRequest) {
 
     // Check threat action policies
     const threatActionPolicy = Array.isArray(policies) 
-      ? policies.find((p: { policy?: { type?: string } }) => p.policy?.type === "threat_actions")
+      ? (policies as Array<{ policy?: { type?: string; settings?: Record<string, { action?: string }> } }>).find(
+          (p) => p.policy?.type === "threat_actions"
+        )
       : null
 
     if (threatActionPolicy?.policy?.settings) {
-      const settings = threatActionPolicy.policy.settings as Record<string, { action?: string }>
+      const settings = threatActionPolicy.policy.settings
       const severityActions = settings[severity.toLowerCase()]
       if (severityActions?.action) {
         recommendedAction = severityActions.action
