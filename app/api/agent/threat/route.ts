@@ -22,7 +22,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+    )
 
     // Get endpoint ID
     const { data: endpoint } = await supabaseAdmin
@@ -63,7 +66,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to record threat" }, { status: 500 })
     }
 
-    console.log(`[THREAT REPORTED] ${threat_name} (Severity: ${severity}) - Endpoint: ${endpoint.id}`)
+    console.info(`[THREAT REPORTED] ${threat_name} (Severity: ${severity}) - Endpoint: ${endpoint.id}`)
 
     // Get recommended action from policies
     const { data: policies } = await supabaseAdmin
@@ -74,12 +77,12 @@ export async function POST(request: NextRequest) {
     let recommendedAction = "alert"
 
     // Check threat action policies
-    const threatActionPolicy: any = Array.isArray(policies) 
-      ? policies.find((p: any) => p.policy?.type === "threat_actions")
+    const threatActionPolicy = Array.isArray(policies) 
+      ? policies.find((p: { policy?: { type?: string } }) => p.policy?.type === "threat_actions")
       : null
 
     if (threatActionPolicy?.policy?.settings) {
-      const settings = threatActionPolicy.policy.settings as Record<string, any>
+      const settings = threatActionPolicy.policy.settings as Record<string, { action?: string }>
       const severityActions = settings[severity.toLowerCase()]
       if (severityActions?.action) {
         recommendedAction = severityActions.action

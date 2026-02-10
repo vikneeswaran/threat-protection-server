@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
 
     // Create admin client to bypass RLS
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
     )
 
     // Find endpoint by agent_id
@@ -98,8 +98,8 @@ export async function POST(request: NextRequest) {
 
     // Create admin client to bypass RLS
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
     )
 
     // Find endpoint if not provided
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create command" }, { status: 500 })
     }
 
-    console.log(`[SCAN COMMAND] Created scan command for endpoint: ${resolvedEndpointId}, type: ${scan_type}`)
+    console.info(`[SCAN COMMAND] Created scan command for endpoint: ${resolvedEndpointId}, type: ${scan_type}`)
 
     return NextResponse.json({
       success: true,

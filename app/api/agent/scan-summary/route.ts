@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
 
     // Create admin client to bypass RLS
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
     )
 
     // Get endpoint if not provided
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    console.log(`[SCAN SUMMARY] Recorded scan ${scan_id}: ${total_threats} threats detected (${scan_type})`)
+    console.info(`[SCAN SUMMARY] Recorded scan ${scan_id}: ${total_threats} threats detected (${scan_type})`)
 
     return NextResponse.json({
       success: true,

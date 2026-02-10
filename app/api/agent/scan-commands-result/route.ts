@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
       account_id,
       command_id,
       scan_id,
-      scan_type,
+      _scan_type,
       total_threats,
-      severity_breakdown,
+      _severity_breakdown,
       status = "completed",
       error_message,
     } = body
@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
 
     // Create admin client to bypass RLS
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
     )
 
     // Update the scan command with results
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(
+    console.info(
       `[SCAN COMMAND RESULT] Command ${command_id}: ${status} - ${total_threats || 0} threats found`
     )
 
