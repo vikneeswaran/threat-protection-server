@@ -690,6 +690,73 @@ def heartbeat(config):
         return False, str(exc)
 
 
+def check_pending_scan_commands(config):
+    """Check if there are any pending scan commands from the console"""
+    agent_id = config.get("agent_id")
+    account_id = config.get("account_id")
+    
+    if not agent_id or not account_id:
+        return None, "Missing agent_id or account_id"
+    
+    try:
+        api_url = config.get("api_base", "https://kuaminisystems.com/api/agent")
+        url = f"{api_url}/scan-commands?agent_id={agent_id}&account_id={account_id}"
+        logging.debug("Checking for pending scan commands")
+        
+        resp = requests.get(url, timeout=10)
+        if resp.status_code >= 400:
+            logging.debug("Scan command check HTTP %s", resp.status_code)
+            return None, f"HTTP {resp.status_code}"
+        
+        body = resp.json()
+        if body.get("has_pending_command"):
+            return body.get("command"), None
+        return None, None
+    except Exception as e:
+        logging.debug("Error checking scan commands: %s", e)
+        return None, str(e)
+
+
+def report_scan_command_result(config, command_id: str, scan_id: str, scan_type: str, 
+                               total_threats: int, severity_breakdown: dict, 
+                               status: str = "completed", error_message: str = None) -> Tuple[bool, str]:
+    """Report the result of a scan command execution"""
+    agent_id = config.get("agent_id")
+    account_id = config.get("account_id")
+    endpoint_id = config.get("endpoint_id")
+    
+    if not all([agent_id, account_id, command_id]):
+        return False, "Missing required config fields"
+    
+    try:
+        payload = {
+            "agent_id": agent_id,
+            "account_id": account_id,
+            "command_id": command_id,
+            "scan_id": scan_id,
+            "scan_type": scan_type,
+            "total_threats": total_threats,
+            "severity_breakdown": severity_breakdown,
+            "status": status,
+            "error_message": error_message,
+        }
+        
+        api_url = config.get("api_base", "https://kuaminisystems.com/api/agent")
+        url = f"{api_url}/scan-commands-result"
+        logging.info(f"Reporting scan command result: command_id={command_id}, threats={total_threats}")
+        
+        resp = requests.post(url, json=payload, timeout=15)
+        if resp.status_code >= 400:
+            logging.error(f"Scan command result report failed HTTP {resp.status_code}")
+            return False, f"HTTP {resp.status_code}"
+        
+        logging.info(f"✓ Scan command result reported successfully")
+        return True, "Success"
+    except Exception as e:
+        logging.error(f"Error reporting scan command result: {e}")
+        return False, str(e)
+
+
 def initialize_threat_detection(config: dict, log_callback=None) -> dict:
     try:
         from threat_detection import ThreatDetectionEngine, ThreatReporter, ThreatActionExecutor
@@ -728,7 +795,7 @@ def tray_main():
         "enabled": True,
         "scan_interval": int(config.get("threat_scan_interval") or 3600),
         "scan_mode": str(config.get("threat_scan_mode") or "quick").lower(),
-        "realtime_monitor": bool(config.get("threat_realtime_monitor") or False),
+        "realtime_monitor": bool(config.get("threat_realtime_monitor") or True),  # Enable real-time by default
         "realtime_interval": int(config.get("threat_realtime_interval") or 300),
         "auto_action": True,
     }
@@ -933,7 +1000,22 @@ def tray_main():
                     stop_event.wait(60)
                     continue
 
-                scan_mode = str(threat_policy.get("scan_mode") or "quick").lower()
+                # First, check for pending remote scan commands
+                pending_command, cmd_error = check_pending_scan_commands(config)
+                
+                if pending_command:
+                    logging.info(f"🔍 Executing remote scan command: {pending_command.get('scan_type')}")
+                    set_status(f"Remote scan: {pending_command.get('scan_type')}", (241, 196, 15))
+                    
+                    # Execute the requested scan type
+                    scan_mode = pending_command.get("scan_type", "quick").lower()
+                    command_id = pending_command.get("id")
+                else:
+                    # No remote command, use local policy
+                    scan_mode = str(threat_policy.get("scan_mode") or "quick").lower()
+                    command_id = None
+
+                # Execute the scan
                 if scan_mode == "full":
                     report = threat_system["engine"].full_scan()
                 elif scan_mode == "realtime":
@@ -941,13 +1023,46 @@ def tray_main():
                 else:
                     report = threat_system["engine"].quick_scan()
 
+                # Report results
                 if report.total_threats > 0:
                     notify("Threat detected", f"{report.total_threats} threats found")
+                    logging.warning(f"⚠️  {report.total_threats} threats detected - {report.critical_count} critical, {report.high_count} high")
                 _report_and_handle_actions(report)
+                
+                # If this was a remote command, report its completion
+                if command_id and pending_command:
+                    success, msg = report_scan_command_result(
+                        config,
+                        command_id=command_id,
+                        scan_id=report.scan_id,
+                        scan_type=report.scan_type,
+                        total_threats=report.total_threats,
+                        severity_breakdown={
+                            "critical": report.critical_count,
+                            "high": report.high_count,
+                            "medium": report.medium_count,
+                            "low": report.low_count,
+                        },
+                        status="completed",
+                    )
+                    if success:
+                        logging.info(f"✓ Remote scan command completed and reported")
+                    else:
+                        logging.warning(f"⚠️  Failed to report remote scan completion: {msg}")
+                
+                # Determine wait interval
+                if command_id:
+                    # If this was a remote command, check more frequently for the next one
+                    wait_interval = 10
+                else:
+                    # Normal scheduled scan interval
+                    wait_interval = int(threat_policy.get("scan_interval") or 3600)
+                
             except Exception as e:
                 logging.error("Threat scan loop error: %s", e, exc_info=True)
+                wait_interval = 300  # Wait 5 minutes on error before retrying
 
-            stop_event.wait(int(threat_policy.get("scan_interval") or 3600))
+            stop_event.wait(wait_interval)
 
     def realtime_monitor_loop():
         while not stop_event.is_set():
@@ -956,13 +1071,20 @@ def tray_main():
                     stop_event.wait(60)
                     continue
 
+                logging.debug("Running real-time threat monitor")
                 report = threat_system["engine"].realtime_scan()
-                critical = [
-                    t for t in (report.threats or [])
-                    if t.get("severity") in ["critical", "high"]
-                ]
-                if critical:
-                    notify("Threat detected", f"{len(critical)} critical threats")
+                
+                if report and report.total_threats > 0:
+                    logging.warning(f"🔴 Real-time alert: {report.total_threats} threats detected")
+                    
+                    # Report critical and high severity threats immediately
+                    critical_threats = [t for t in (report.threats or []) if t.get("severity") in ["critical", "high"]]
+                    if critical_threats:
+                        threat_names = ", ".join([t.get("threat_name", "Unknown") for t in critical_threats[:3]])
+                        notify("⚠️ Critical Threat Detected", f"{len(critical_threats)} critical/high threats: {threat_names}")
+                        logging.error(f"🚨 CRITICAL THREATS DETECTED: {threat_names}")
+                    
+                    # Report all threats
                     _report_and_handle_actions(report)
             except Exception as e:
                 logging.error("Realtime threat monitor error: %s", e, exc_info=True)
@@ -1030,6 +1152,28 @@ def tray_main():
         if ok:
             logging.info("✓ Auto-registration successful: %s", res)
             set_status("Registered, preparing heartbeat")
+            
+            # Trigger initial scan after successful registration
+            if threat_system.get("enabled"):
+                logging.info("🔍 Triggering initial scan after registration...")
+                def _run_initial_scan():
+                    try:
+                        set_status("Initial security scan", (241, 196, 15))
+                        report = threat_system["engine"].quick_scan()
+                        logging.info(f"✓ Initial scan completed: {report.total_threats} threats found")
+                        if report.total_threats > 0:
+                            logging.warning(f"⚠️  Initial scan detected {report.total_threats} threats")
+                            notify("Threats detected", f"{report.total_threats} threats found in initial scan")
+                        else:
+                            logging.info("✓ Initial scan clean - no threats detected")
+                        _report_and_handle_actions(report)
+                        set_status("Online", (46, 204, 113))
+                    except Exception as e:
+                        logging.error("Initial scan failed: %s", e, exc_info=True)
+                        set_status("Initial scan failed", (231, 76, 60))
+                
+                # Run initial scan in background thread
+                threading.Thread(target=_run_initial_scan, daemon=True).start()
         else:
             logging.warning("✗ Auto-registration failed: %s", res)
             set_status("Registration failed, retrying on heartbeat")
