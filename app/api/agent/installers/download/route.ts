@@ -16,6 +16,7 @@ const RATE_LIMIT_MAX_REQUESTS = Number(process.env.INSTALLER_RATE_LIMIT_MAX ?? 3
 const INSTALLER_BUILD_GH_TOKEN = process.env.INSTALLER_BUILD_GH_TOKEN
 const INSTALLER_BUILD_GH_REPO = process.env.INSTALLER_BUILD_GH_REPO ?? "vikneeswaran/threat-protection-agent"
 const INSTALLER_BUILD_WORKFLOW = process.env.INSTALLER_BUILD_WORKFLOW ?? "build-windows-msi-on-demand.yml"
+const INSTALLER_WINDOWS_MSI_FILENAME = process.env.INSTALLER_WINDOWS_MSI_FILENAME ?? "KuaminiSecurityClient-1.0.5.msi"
 
 // In-memory rate-limit buckets (per IP); best-effort for serverless
 const rateLimitBuckets = new Map<string, number[]>()
@@ -111,6 +112,15 @@ async function findLatestWindowsMsi(basePath: string): Promise<string> {
     console.info("[Windows Installer] Cannot list filesystem, will try CDN")
   }
 
+  // Fall back to deterministic filename when token is unavailable.
+  // This prevents endless "building" responses in environments without GitHub API auth.
+  if (!INSTALLER_BUILD_GH_TOKEN) {
+    console.warn(
+      `[Windows Installer] INSTALLER_BUILD_GH_TOKEN missing, using fallback MSI filename: ${INSTALLER_WINDOWS_MSI_FILENAME}`,
+    )
+    return INSTALLER_WINDOWS_MSI_FILENAME
+  }
+
   // Fall back to GitHub API listing (Vercel deployment)
   if (!INSTALLER_BUILD_GH_TOKEN) {
     throw new Error("Missing INSTALLER_BUILD_GH_TOKEN for MSI discovery")
@@ -160,6 +170,7 @@ async function buildWindowsInstallerBundle(
   token: string,
   clientIp?: string,
   userAgent?: string | null,
+  requestOrigin?: string,
 ): Promise<NextResponse> {
   const basePath = path.join(process.cwd(), "public", "tray")
   const msiName = await findLatestWindowsMsi(basePath)
@@ -175,7 +186,9 @@ async function buildWindowsInstallerBundle(
     console.info(`[Windows Installer] Loaded MSI from filesystem: ${msiName}`)
   } catch {
     // Fall back to fetching from CDN (Vercel deployment)
-    const cdnUrl = `https://www.kuaminisystems.com/tray/${msiName}`
+    const rawBase = process.env.NEXT_PUBLIC_API_BASE_URL || requestOrigin || "https://kuaminisystems.com"
+    const normalizedBase = rawBase.replace(/\/$/, "")
+    const cdnUrl = `${normalizedBase}/tray/${msiName}`
     console.info(`[Windows Installer] Fetching MSI from CDN: ${cdnUrl}`)
 
     let response = await fetch(cdnUrl)
@@ -406,7 +419,14 @@ export async function GET(request: NextRequest) {
       case "macos":
         return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "windows":
-        return await serveWindowsInstaller(accountId, account.name, registrationToken, clientIp, request.headers.get("user-agent"))
+        return await serveWindowsInstaller(
+          accountId,
+          account.name,
+          registrationToken,
+          clientIp,
+          request.headers.get("user-agent"),
+          request.nextUrl.origin,
+        )
       case "linux":
         return await serveStaticInstaller("linux", accountId, clientIp, request.headers.get("user-agent"))
       default:
@@ -423,7 +443,14 @@ async function serveStaticInstaller(platform: string, accountId: string, clientI
     const basePath = path.join(process.cwd(), "public", "tray")
     const candidates =
       platform === "windows"
-        ? ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
+        ? [
+            INSTALLER_WINDOWS_MSI_FILENAME,
+            "KuaminiSecurityClient-1.0.5.msi",
+            "KuaminiSecurityClient-1.0.0.msi",
+            "KuaminiSecurityClient-windows.zip",
+            "windows.msi",
+            "windows.zip",
+          ]
         : ["KuaminiSecurityClient-linux.tar.gz", "linux.tar.gz", "linux.zip"]
 
     const filePath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
@@ -462,12 +489,13 @@ async function serveWindowsInstaller(
   token: string,
   clientIp?: string,
   userAgent?: string | null,
+  requestOrigin?: string,
 ) {
   try {
     // Build a dynamic MSI + token bundle from the base installer
     try {
       console.info("[Windows Installer] Building MSI + token bundle")
-      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent)
+      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
     } catch (bundleError) {
       console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
     }
