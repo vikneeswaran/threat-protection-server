@@ -161,6 +161,7 @@ async function buildWindowsInstallerBundle(
   token: string,
   clientIp?: string,
   userAgent?: string | null,
+  requestOrigin?: string,
 ): Promise<NextResponse> {
   const basePath = path.join(process.cwd(), "public", "tray")
   const msiName = await findLatestWindowsMsi(basePath)
@@ -175,25 +176,34 @@ async function buildWindowsInstallerBundle(
     sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
     console.info(`[Windows Installer] Loaded MSI from filesystem: ${msiName}`)
   } catch {
-    // Fall back to fetching from CDN (Vercel deployment)
-    const cdnUrl = `https://www.kuaminisystems.com/tray/${msiName}`
-    console.info(`[Windows Installer] Fetching MSI from CDN: ${cdnUrl}`)
+    // Fall back to fetching MSI via HTTP — try self-hosted origin first (always reachable on Vercel)
+    const candidateUrls = [
+      requestOrigin ? `${requestOrigin}/tray/${msiName}` : null,
+      `https://kuaminisystems.com/tray/${msiName}`,
+      `https://www.kuaminisystems.com/tray/${msiName}`,
+      `https://raw.githubusercontent.com/${INSTALLER_BUILD_GH_REPO}/main/public/tray/${msiName}`,
+    ].filter(Boolean) as string[]
 
-    let response = await fetch(cdnUrl)
-    if (!response.ok) {
-      const githubUrl = `https://raw.githubusercontent.com/${INSTALLER_BUILD_GH_REPO}/main/public/tray/${msiName}`
-      console.warn(`[Windows Installer] CDN failed (${response.status}), trying GitHub: ${githubUrl}`)
-      response = await fetch(githubUrl)
+    let fetched: Response | null = null
+    for (const url of candidateUrls) {
+      console.info(`[Windows Installer] Trying to fetch MSI from: ${url}`)
+      try {
+        const resp = await fetch(url)
+        if (resp.ok) { fetched = resp; break }
+        console.warn(`[Windows Installer] ${url} returned ${resp.status}`)
+      } catch (fetchErr) {
+        console.warn(`[Windows Installer] fetch failed for ${url}:`, fetchErr)
+      }
     }
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch MSI from CDN/GitHub: ${response.status} ${response.statusText}`)
+    if (!fetched) {
+      throw new Error(`Failed to fetch MSI from all candidate URLs`)
     }
 
-    const arrayBuffer = await response.arrayBuffer()
+    const arrayBuffer = await fetched.arrayBuffer()
     msiData = Buffer.from(arrayBuffer)
     sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
-    console.info(`[Windows Installer] Loaded MSI from CDN/GitHub: ${msiName}`)
+    console.info(`[Windows Installer] Loaded MSI via HTTP fetch`)
   }
 
   // Create zip using adm-zip
@@ -201,15 +211,26 @@ async function buildWindowsInstallerBundle(
   zip.addFile(msiName, msiData)
   zip.addFile("registration.token", Buffer.from(token, "utf-8"))
   
-  // Add install helper script
-  try {
-    const helperScriptPath = path.join(process.cwd(), "agent-tray", "install-helper.ps1")
-    const helperScriptData = await fs.readFile(helperScriptPath)
-    zip.addFile("install-helper.ps1", helperScriptData)
+  // Add install helper script — try filesystem paths then self-hosted URL
+  let helperData: Buffer | null = null
+  const helperFsPaths = [
+    path.join(process.cwd(), "public", "tray", "install-helper.ps1"),
+    path.join(process.cwd(), "agent-tray", "install-helper.ps1"),
+  ]
+  for (const hp of helperFsPaths) {
+    try { helperData = await fs.readFile(hp); break } catch { /* try next */ }
+  }
+  if (!helperData && requestOrigin) {
+    try {
+      const helperResp = await fetch(`${requestOrigin}/tray/install-helper.ps1`)
+      if (helperResp.ok) helperData = Buffer.from(await helperResp.arrayBuffer())
+    } catch { /* ignore */ }
+  }
+  if (helperData) {
+    zip.addFile("install-helper.ps1", helperData)
     console.info("[Windows Installer] Added install-helper.ps1 to bundle")
-  } catch (error) {
-    console.warn("[Windows Installer] Could not add install-helper.ps1:", error)
-    // Continue without the helper script - user can still run MSI directly
+  } else {
+    console.warn("[Windows Installer] Could not include install-helper.ps1 — bundle will have MSI + token only")
   }
   
   const zipData = zip.toBuffer()
@@ -369,7 +390,7 @@ export async function GET(request: NextRequest) {
       case "macos":
         return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
       case "windows":
-        return await serveWindowsInstaller(accountId, account.name, registrationToken, clientIp, request.headers.get("user-agent"))
+        return await serveWindowsInstaller(accountId, account.name, registrationToken, clientIp, request.headers.get("user-agent"), request.nextUrl.origin)
       case "linux":
         return await serveStaticInstaller("linux", accountId, clientIp, request.headers.get("user-agent"))
       default:
@@ -436,12 +457,13 @@ async function serveWindowsInstaller(
   token: string,
   clientIp?: string,
   userAgent?: string | null,
+  requestOrigin?: string,
 ) {
   try {
     // Build a dynamic MSI + token bundle from the base installer
     try {
       console.info("[Windows Installer] Building MSI + token bundle")
-      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent)
+      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
     } catch (bundleError) {
       console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
     }
