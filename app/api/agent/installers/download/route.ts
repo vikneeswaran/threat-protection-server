@@ -15,7 +15,7 @@ const RATE_LIMIT_MAX_REQUESTS = Number(process.env.INSTALLER_RATE_LIMIT_MAX ?? 3
 
 const INSTALLER_BUILD_GH_TOKEN = process.env.INSTALLER_BUILD_GH_TOKEN
 const INSTALLER_BUILD_GH_REPO = process.env.INSTALLER_BUILD_GH_REPO ?? "vikneeswaran/threat-protection-agent"
-const INSTALLER_BUILD_WORKFLOW = process.env.INSTALLER_BUILD_WORKFLOW ?? "build-windows-msi-on-demand.yml"
+const INSTALLER_WINDOWS_MSI_FILENAME = process.env.INSTALLER_WINDOWS_MSI_FILENAME ?? "KuaminiSecurityClient-1.0.5.msi"
 
 // In-memory rate-limit buckets (per IP); best-effort for serverless
 const rateLimitBuckets = new Map<string, number[]>()
@@ -113,7 +113,8 @@ async function findLatestWindowsMsi(basePath: string): Promise<string> {
 
   // Fall back to GitHub API listing (Vercel deployment)
   if (!INSTALLER_BUILD_GH_TOKEN) {
-    throw new Error("Missing INSTALLER_BUILD_GH_TOKEN for MSI discovery")
+    console.info(`[Windows Installer] No GitHub token, using fallback MSI: ${INSTALLER_WINDOWS_MSI_FILENAME}`)
+    return INSTALLER_WINDOWS_MSI_FILENAME
   }
 
   const apiUrl = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/contents/public/tray?ref=main`
@@ -278,44 +279,6 @@ async function resolveBundlePath(candidates: string[]) {
   throw new Error(`Bundle not found. Tried: ${candidates.join(", ")}`)
 }
 
-async function triggerWindowsBuild(params: {
-  token: string
-  accountId: string
-  accountName: string
-}) {
-  if (!INSTALLER_BUILD_GH_TOKEN) {
-    return { ok: false, error: "Missing INSTALLER_BUILD_GH_TOKEN" }
-  }
-
-  const url = `https://api.github.com/repos/${INSTALLER_BUILD_GH_REPO}/actions/workflows/${INSTALLER_BUILD_WORKFLOW}/dispatches`
-  const body = {
-    ref: "main",
-    inputs: {
-      token: params.token,
-      accountId: params.accountId,
-      accountName: params.accountName,
-    },
-  }
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Accept": "application/vnd.github+json",
-      "Authorization": `Bearer ${INSTALLER_BUILD_GH_TOKEN}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    return { ok: false, error: `Dispatch failed: ${response.status} ${text}` }
-  }
-
-  return { ok: true }
-}
-
 export async function GET(request: NextRequest) {
   try {
     if (!TOKEN_SECRET) {
@@ -423,12 +386,13 @@ async function serveStaticInstaller(platform: string, accountId: string, clientI
     const basePath = path.join(process.cwd(), "public", "tray")
     const candidates =
       platform === "windows"
-        ? ["KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
+        ? [INSTALLER_WINDOWS_MSI_FILENAME, "KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
         : ["KuaminiSecurityClient-linux.tar.gz", "linux.tar.gz", "linux.zip"]
 
     const filePath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
     const data = await fs.readFile(filePath)
     const sha256 = await getFileSha256(filePath)
+    const resolvedName = path.basename(filePath)
 
     void safeAuditLog({
       action: "installer_download",
@@ -440,8 +404,18 @@ async function serveStaticInstaller(platform: string, accountId: string, clientI
       details: { platform, sha256, static: true },
     })
 
-    const filename = platform === "windows" ? `KuaminiSecurityClient-${accountId.slice(0, 8)}.msi` : `KuaminiSecurityClient-${accountId.slice(0, 8)}.tar.gz`
-    const contentType = platform === "windows" ? "application/octet-stream" : "application/gzip"
+    const filename =
+      platform === "windows"
+        ? resolvedName.endsWith(".zip")
+          ? `KuaminiSecurityClient-${accountId.slice(0, 8)}.zip`
+          : `KuaminiSecurityClient-${accountId.slice(0, 8)}.msi`
+        : `KuaminiSecurityClient-${accountId.slice(0, 8)}.tar.gz`
+    const contentType =
+      platform === "windows"
+        ? resolvedName.endsWith(".zip")
+          ? "application/zip"
+          : "application/octet-stream"
+        : "application/gzip"
 
     return new NextResponse(data, {
       headers: {
@@ -458,7 +432,7 @@ async function serveStaticInstaller(platform: string, accountId: string, clientI
 
 async function serveWindowsInstaller(
   accountId: string,
-  accountName: string,
+  _accountName: string,
   token: string,
   clientIp?: string,
   userAgent?: string | null,
@@ -472,22 +446,8 @@ async function serveWindowsInstaller(
       console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
     }
 
-
-    // Bundle build failed; trigger on-demand build if not already done
-    const dispatch = await triggerWindowsBuild({ token, accountId, accountName })
-    if (!dispatch.ok) {
-      console.error("Windows installer build dispatch failed:", dispatch.error)
-      return NextResponse.json({ error: "Windows installer is being prepared. Please retry shortly." }, { status: 202, headers: { "Retry-After": "15" } })
-    }
-
-    return NextResponse.json(
-      {
-        status: "building",
-        message: "Windows installer is being prepared. Please retry in ~30 seconds.",
-        retryAfter: 15,
-      },
-      { status: 202, headers: { "Retry-After": "15" } },
-    )
+    // No on-demand build dispatch: immediately serve static artifact fallback.
+    return await serveStaticInstaller("windows", accountId, clientIp, userAgent)
   } catch (error) {
     console.error("Error preparing Windows installer:", error)
     return NextResponse.json({ error: "Windows installer not available" }, { status: 404 })
