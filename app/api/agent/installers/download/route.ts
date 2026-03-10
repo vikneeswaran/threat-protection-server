@@ -492,42 +492,20 @@ async function serveWindowsInstaller(
   requestOrigin?: string,
 ) {
   try {
-    // Build a dynamic MSI + token bundle from the base installer
-    try {
-      console.info("[Windows Installer] Building MSI + token bundle")
-      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
-    } catch (bundleError) {
-      console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
-    }
-
-    // Fallback: serve direct static MSI to avoid endless "preparing" loops
-    // in serverless environments where bundle assembly can fail repeatedly.
+    // Production-safe path: always serve direct static MSI.
+    // Dynamic bundle generation can fail in serverless and trap the UI in 202 retries.
     try {
       const msiName = await findLatestWindowsMsi(path.join(process.cwd(), "public", "tray"))
       const base = requestOrigin || process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
       const msiUrl = new URL(`/tray/${msiName}`, base)
-      console.info(`[Windows Installer] Falling back to direct MSI redirect: ${msiUrl.toString()}`)
+      console.info(`[Windows Installer] Serving direct MSI redirect: ${msiUrl.toString()}`)
       return NextResponse.redirect(msiUrl, { status: 302 })
     } catch (fallbackError) {
-      console.warn("[Windows Installer] Direct MSI fallback failed:", fallbackError)
+      console.warn("[Windows Installer] Direct MSI redirect failed, trying static file read:", fallbackError)
     }
 
-
-    // Bundle build failed; trigger on-demand build if not already done
-    const dispatch = await triggerWindowsBuild({ token, accountId, accountName })
-    if (!dispatch.ok) {
-      console.error("Windows installer build dispatch failed:", dispatch.error)
-      return NextResponse.json({ error: "Windows installer is being prepared. Please retry shortly." }, { status: 202, headers: { "Retry-After": "15" } })
-    }
-
-    return NextResponse.json(
-      {
-        status: "building",
-        message: "Windows installer is being prepared. Please retry in ~30 seconds.",
-        retryAfter: 15,
-      },
-      { status: 202, headers: { "Retry-After": "15" } },
-    )
+    // Last fallback: serve static installer bytes directly.
+    return await serveStaticInstaller("windows", accountId, clientIp, userAgent)
   } catch (error) {
     console.error("Error preparing Windows installer:", error)
     return NextResponse.json({ error: "Windows installer not available" }, { status: 404 })
