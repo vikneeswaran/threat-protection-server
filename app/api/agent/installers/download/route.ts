@@ -163,82 +163,104 @@ async function buildWindowsInstallerBundle(
   userAgent?: string | null,
   requestOrigin?: string,
 ): Promise<NextResponse> {
-  const basePath = path.join(process.cwd(), "public", "tray")
-  const msiName = await findLatestWindowsMsi(basePath)
-  const msiPath = path.join(basePath, msiName)
+  // Determine MSI filename and CDN URL — no large file reads in serverless
+  const msiName = INSTALLER_WINDOWS_MSI_FILENAME
+  const origin = (requestOrigin ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://kuaminisystems.com").replace(/\/$/, "")
+  const msiUrl = `${origin}/tray/${msiName}`
 
-  let msiData: Buffer
-  let sha256: string
+  // Generate a self-contained install helper that downloads the MSI from CDN at install time
+  const installHelper = `#Requires -RunAsAdministrator
+<#
+.SYNOPSIS
+Kuamini Security Client - Auto Installer
 
-  // Try to read from filesystem first (local development)
-  try {
-    msiData = await fs.readFile(msiPath)
-    sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
-    console.info(`[Windows Installer] Loaded MSI from filesystem: ${msiName}`)
-  } catch {
-    // Fall back to fetching MSI via HTTP — try self-hosted origin first (always reachable on Vercel)
-    const candidateUrls = [
-      requestOrigin ? `${requestOrigin}/tray/${msiName}` : null,
-      `https://kuaminisystems.com/tray/${msiName}`,
-      `https://www.kuaminisystems.com/tray/${msiName}`,
-      `https://raw.githubusercontent.com/${INSTALLER_BUILD_GH_REPO}/main/public/tray/${msiName}`,
-    ].filter(Boolean) as string[]
+Extracts the registration token, downloads the MSI installer if not already
+present, and runs a silent installation.
 
-    let fetched: Response | null = null
-    for (const url of candidateUrls) {
-      console.info(`[Windows Installer] Trying to fetch MSI from: ${url}`)
-      try {
-        const resp = await fetch(url)
-        if (resp.ok) { fetched = resp; break }
-        console.warn(`[Windows Installer] ${url} returned ${resp.status}`)
-      } catch (fetchErr) {
-        console.warn(`[Windows Installer] fetch failed for ${url}:`, fetchErr)
-      }
-    }
+.EXAMPLE
+.\\install-helper.ps1
+#>
 
-    if (!fetched) {
-      throw new Error(`Failed to fetch MSI from all candidate URLs`)
-    }
+param([switch]$Quiet)
 
-    const arrayBuffer = await fetched.arrayBuffer()
-    msiData = Buffer.from(arrayBuffer)
-    sha256 = crypto.createHash("sha256").update(msiData).digest("hex")
-    console.info(`[Windows Installer] Loaded MSI via HTTP fetch`)
-  }
+$ErrorActionPreference = "Stop"
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+$msiName   = "${msiName}"
+$msiUrl    = "${msiUrl}"
+$msiPath   = Join-Path $scriptPath $msiName
+$tokenPath = Join-Path $scriptPath "registration.token"
 
-  // Create zip using adm-zip
-  const zip = new AdmZip()
-  zip.addFile(msiName, msiData)
-  zip.addFile("registration.token", Buffer.from(token, "utf-8"))
-  
-  // Add install helper script — try filesystem paths then self-hosted URL
-  let helperData: Buffer | null = null
-  const helperFsPaths = [
-    path.join(process.cwd(), "public", "tray", "install-helper.ps1"),
-    path.join(process.cwd(), "agent-tray", "install-helper.ps1"),
-  ]
-  for (const hp of helperFsPaths) {
-    try { helperData = await fs.readFile(hp); break } catch { /* try next */ }
-  }
-  if (!helperData && requestOrigin) {
+Write-Host "Kuamini Security Client Installer" -ForegroundColor Green
+Write-Host "-----------------------------------" -ForegroundColor Green
+
+# Validate token file
+if (!(Test-Path $tokenPath)) {
+    Write-Host "ERROR: registration.token not found in $scriptPath" -ForegroundColor Red
+    exit 1
+}
+$token = (Get-Content $tokenPath -Raw).Trim()
+if (-not $token) {
+    Write-Host "ERROR: registration.token is empty" -ForegroundColor Red
+    exit 1
+}
+Write-Host "Token loaded ($($token.Length) bytes)" -ForegroundColor Cyan
+
+# Download MSI if not already present
+if (!(Test-Path $msiPath)) {
+    Write-Host "Downloading installer from CDN..." -ForegroundColor Yellow
+    Write-Host "  URL: $msiUrl" -ForegroundColor Gray
     try {
-      const helperResp = await fetch(`${requestOrigin}/tray/install-helper.ps1`)
-      if (helperResp.ok) helperData = Buffer.from(await helperResp.arrayBuffer())
-    } catch { /* ignore */ }
-  }
-  if (helperData) {
-    zip.addFile("install-helper.ps1", helperData)
-    console.info("[Windows Installer] Added install-helper.ps1 to bundle")
-  } else {
-    console.warn("[Windows Installer] Could not include install-helper.ps1 — bundle will have MSI + token only")
-  }
-  
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
+        Write-Host "Download complete: $msiName" -ForegroundColor Green
+    } catch {
+        Write-Host "ERROR: Failed to download installer: $_" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host "MSI already present: $msiName" -ForegroundColor Cyan
+}
+
+# Run silent MSI install with registration token
+Write-Host "Installing Kuamini Security Client..." -ForegroundColor Yellow
+$msiArgs = @("/i", "`"$msiPath`"", "REGISTRATION_TOKEN=`"$token`"", "/qn", "/l*v", "`"$scriptPath\\install.log`"")
+$proc = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+if ($proc.ExitCode -ne 0) {
+    Write-Host "Installation failed. Exit code: $($proc.ExitCode)" -ForegroundColor Red
+    Write-Host "See install.log for details." -ForegroundColor Yellow
+    exit $proc.ExitCode
+}
+
+Write-Host "Installation complete!" -ForegroundColor Green
+Write-Host "The Kuamini tray icon should appear in your system tray." -ForegroundColor Cyan
+`
+
+  const readme = `Kuamini Security Client (Windows)
+=========================================
+1. Right-click install-helper.ps1 and choose "Run as Administrator"
+   OR open PowerShell as Administrator and run:
+     .\\install-helper.ps1
+
+2. The script will:
+   - Read your registration token (registration.token)
+   - Download the MSI installer (~13MB) from our CDN
+   - Run a silent installation
+
+3. After install, the Kuamini tray icon appears in the system tray.
+   If the icon is red, wait 30 seconds and it should connect.
+
+Note: If PowerShell shows "script is not digitally signed", run:
+  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+`
+
+  // Build tiny ZIP: token + install-helper + README (no MSI — downloaded at install time)
+  const zip = new AdmZip()
+  zip.addFile("registration.token", Buffer.from(token, "utf-8"))
+  zip.addFile("install-helper.ps1", Buffer.from(installHelper, "utf-8"))
+  zip.addFile("README.txt", Buffer.from(readme, "utf-8"))
   const zipData = zip.toBuffer()
 
-  // Include version in bundle filename for console display
-  const versionMatch = /-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u.exec(msiName)
-  const version = versionMatch ? versionMatch[1] : "latest"
-  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}-v${version}.zip`
+  const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}-windows.zip`
 
   void safeAuditLog({
     action: "installer_download",
@@ -247,16 +269,17 @@ async function buildWindowsInstallerBundle(
     accountId,
     ip: clientIp,
     userAgent,
-    details: { platform: "windows", sha256, bundle: "msi+token", msi: msiName, version },
+    details: { platform: "windows", bundle: "token+helper", msi: msiName, msiUrl },
   })
+
+  console.info(`[Windows Installer] Serving lightweight bundle for account ${accountId.slice(0, 8)}, MSI URL: ${msiUrl}`)
 
   return new NextResponse(new Uint8Array(zipData), {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${bundleName}"`,
-      "X-Checksum-SHA256": sha256,
-      "X-Bundle-Type": "msi+token",
-      "X-MSI-Version": version,
+      "X-Bundle-Type": "token+helper",
+      "X-MSI-Url": msiUrl,
     },
   })
 }
