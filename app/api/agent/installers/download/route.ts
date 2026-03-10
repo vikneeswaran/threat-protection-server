@@ -492,13 +492,20 @@ async function serveWindowsInstaller(
   requestOrigin?: string,
 ) {
   try {
-    // Production-safe path: always serve direct static MSI.
-    // Dynamic bundle generation can fail in serverless and trap the UI in 202 retries.
+    // Primary path: build MSI + token ZIP bundle for guided installation.
+    try {
+      console.info("[Windows Installer] Building MSI + token bundle")
+      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
+    } catch (bundleError) {
+      console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
+    }
+
+    // Fallback path: serve direct MSI if bundle assembly fails.
     try {
       const msiName = await findLatestWindowsMsi(path.join(process.cwd(), "public", "tray"))
       const base = requestOrigin || process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
       const msiUrl = new URL(`/tray/${msiName}`, base)
-      console.info(`[Windows Installer] Serving direct MSI redirect: ${msiUrl.toString()}`)
+      console.info(`[Windows Installer] Falling back to direct MSI redirect: ${msiUrl.toString()}`)
       return NextResponse.redirect(msiUrl, { status: 302 })
     } catch (fallbackError) {
       console.warn("[Windows Installer] Direct MSI redirect failed, trying static file read:", fallbackError)
