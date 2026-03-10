@@ -223,7 +223,7 @@ if (!(Test-Path $msiPath)) {
 
 # Run silent MSI install with registration token
 Write-Host "Installing Kuamini Security Client..." -ForegroundColor Yellow
-$msiArgs = @("/i", "`"$msiPath`"", "REGISTRATION_TOKEN=`"$token`"", "/qn", "/l*v", "`"$scriptPath\\install.log`"")
+$msiArgs = @("/i", $msiPath, "REGISTRATION_TOKEN=$token", "/qn", "/l*v", (Join-Path $scriptPath "install.log"))
 $proc = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
 if ($proc.ExitCode -ne 0) {
     Write-Host "Installation failed. Exit code: $($proc.ExitCode)" -ForegroundColor Red
