@@ -166,7 +166,12 @@ async function buildWindowsInstallerBundle(
   // Determine MSI filename from available artifacts (avoids hardcoded version drift)
   const origin = (requestOrigin ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://kuaminisystems.com").replace(/\/$/, "")
   const trayBasePath = path.join(process.cwd(), "public", "tray")
-  const msiName = await findLatestWindowsMsi(trayBasePath)
+  let msiName: string
+  try {
+    msiName = await findLatestWindowsMsi(trayBasePath)
+  } catch {
+    msiName = INSTALLER_WINDOWS_MSI_FILENAME
+  }
   const msiUrl = `${origin}/tray/${msiName}`
 
   // Include MSI in the ZIP bundle. Prefer local file access, then fall back to CDN fetch.
@@ -181,15 +186,37 @@ async function buildWindowsInstallerBundle(
   try {
     const msiPath = await resolveBundlePath(msiCandidates)
     msiData = await fs.readFile(msiPath)
+    msiName = path.basename(msiPath)
     console.info(`[Windows Installer] Using local MSI from ${msiPath}`)
   } catch {
-    const msiResponse = await fetch(msiUrl)
-    if (!msiResponse.ok) {
-      throw new Error(`Failed to fetch MSI from CDN: ${msiResponse.status}`)
+    // Fallback: extract MSI from a prebuilt Windows ZIP if present.
+    try {
+      const baseZipPath = await resolveBundlePath([
+        path.join(process.cwd(), "public", "tray", "windows.zip"),
+        path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-windows.zip"),
+      ])
+      const baseZip = new AdmZip(baseZipPath)
+      const msiEntry = baseZip
+        .getEntries()
+        .find((entry) => !entry.isDirectory && entry.entryName.toLowerCase().endsWith(".msi"))
+
+      if (!msiEntry) {
+        throw new Error(`No MSI entry found in ${path.basename(baseZipPath)}`)
+      }
+
+      msiData = msiEntry.getData()
+      msiName = path.basename(msiEntry.entryName)
+      msiSource = "local-zip"
+      console.info(`[Windows Installer] Extracted MSI from ZIP ${baseZipPath}: ${msiName}`)
+    } catch {
+      const msiResponse = await fetch(msiUrl)
+      if (!msiResponse.ok) {
+        throw new Error(`Failed to fetch MSI from CDN: ${msiResponse.status}`)
+      }
+      msiData = Buffer.from(await msiResponse.arrayBuffer())
+      msiSource = "cdn"
+      console.info(`[Windows Installer] Using CDN MSI from ${msiUrl}`)
     }
-    msiData = Buffer.from(await msiResponse.arrayBuffer())
-    msiSource = "cdn"
-    console.info(`[Windows Installer] Using CDN MSI from ${msiUrl}`)
   }
 
   // Generate a self-contained install helper that installs the bundled MSI.
@@ -501,10 +528,11 @@ async function serveWindowsInstaller(
     return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
   } catch (error) {
     console.error("Error preparing Windows installer:", error)
+    const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json(
       {
         error: "Failed to generate Windows ZIP bundle",
-        details: "Installer bundle must include MSI, registration token, and install helper. Please retry shortly or contact support if the issue persists.",
+        details: `Installer bundle must include MSI, registration token, and install helper. Root cause: ${message}`,
       },
       { status: 503 },
     )
