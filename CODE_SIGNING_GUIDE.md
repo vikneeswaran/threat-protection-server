@@ -8,6 +8,31 @@ Code signing is essential for production distribution to prevent security warnin
 
 ## Windows Code Signing (Microsoft Authenticode)
 
+### Quick Start (YubiKey EV)
+
+Use this minimal flow for day-to-day signing:
+
+```powershell
+# 1) Verify token and cert visibility
+certutil -scinfo
+
+# 2) Set certificate thumbprint and SignTool path
+$thumb = "A601BE630D3BA76BC6ECD38CB3470770D16648D4"
+$signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
+
+# 3) Sign MSI(s)
+& $signtool sign /sha1 $thumb /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /v "public\tray\KuaminiSecurityClient-1.0.5.msi"
+
+# 4) Sign scripts
+$cert = Get-ChildItem Cert:\CurrentUser\My\$thumb
+Set-AuthenticodeSignature -FilePath "public\tray\install-helper.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+Set-AuthenticodeSignature -FilePath "public\tray\uninstall-kuamini-windows.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+
+# 5) Verify
+& $signtool verify /pa /v "public\tray\KuaminiSecurityClient-1.0.5.msi"
+Get-AuthenticodeSignature "public\tray\install-helper.ps1" | Format-List Status,SignerCertificate,TimeStamperCertificate
+```
+
 ### Prerequisites
 
 **What You Need:**
@@ -97,6 +122,62 @@ signtool /?
 ---
 
 ### Step 3: Sign Your Windows Executable
+
+#### Recommended: EV Certificate on YubiKey (CA-Issued)
+
+This is the validated flow for hardware-backed signing keys.
+
+1. Insert YubiKey and verify smart card access:
+
+```powershell
+certutil -scinfo
+```
+
+2. Confirm your signing cert appears and private key verifies in the output.
+
+3. If needed, import public cert/chain into Windows certificate stores:
+
+```powershell
+# Signing cert (Current User personal store)
+certutil -user -addstore My "C:\Users\<you>\Certificates\KuaminiCodeSigning.cer"
+
+# Optional but recommended chain install
+certutil -addstore CA "C:\Users\<you>\Certificates\intermediateCA.crt"
+certutil -addstore CA "C:\Users\<you>\Certificates\IntermediateCertificate1.crt"
+certutil -addstore CA "C:\Users\<you>\Certificates\IntermediateCertificate2.crt"
+certutil -addstore Root "C:\Users\<you>\Certificates\RootCertificate.crt"
+```
+
+4. Get certificate thumbprint from `CurrentUser\\My`:
+
+```powershell
+Get-ChildItem Cert:\CurrentUser\My |
+  Where-Object { $_.Subject -like "*Kuamini Systems Private Limited*" } |
+  Select-Object Subject, Thumbprint, HasPrivateKey, NotAfter
+```
+
+5. Sign MSI artifacts with SignTool (PIN prompt from YubiKey):
+
+```powershell
+$thumb = "<YOUR_THUMBPRINT>"
+$signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
+
+& $signtool sign /sha1 $thumb /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /v "public\tray\KuaminiSecurityClient-1.0.5.msi"
+& $signtool sign /sha1 $thumb /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /v "public\tray\KuaminiSecurityClient-<account>.msi"
+```
+
+6. Sign PowerShell installer/uninstaller scripts (Authenticode):
+
+```powershell
+$thumb = "<YOUR_THUMBPRINT>"
+$cert = Get-ChildItem Cert:\CurrentUser\My\$thumb
+
+Set-AuthenticodeSignature -FilePath "public\tray\install-helper.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+Set-AuthenticodeSignature -FilePath "public\tray\uninstall-kuamini-windows.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+Set-AuthenticodeSignature -FilePath "uninstallers\uninstall-kuamini-windows.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+Set-AuthenticodeSignature -FilePath "uninstallers\uninstall-kuamini-windows-robust.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+Set-AuthenticodeSignature -FilePath "uninstallers\uninstall-kuamini-windows-v3.1.ps1" -Certificate $cert -TimestampServer "http://timestamp.digicert.com"
+```
 
 #### For EV Certificate (USB Token)
 
@@ -237,8 +318,29 @@ if ($LASTEXITCODE -eq 0) {
 # Verify signature
 signtool verify /pa /v "path\to\KuaminiSecurityClient.exe"
 
+# Verify PowerShell script signature
+Get-AuthenticodeSignature "path\to\install-helper.ps1" | Format-List Status,SignerCertificate,TimeStamperCertificate
+
 # Check details in File Properties
 # Right-click EXE → Properties → Digital Signatures tab
+```
+
+For this project, verify all signed Windows scripts:
+
+```powershell
+$targets = @(
+  "public\tray\install-helper.ps1",
+  "public\tray\uninstall-kuamini-windows.ps1",
+  "uninstallers\uninstall-kuamini-windows.ps1",
+  "uninstallers\uninstall-kuamini-windows-robust.ps1",
+  "uninstallers\uninstall-kuamini-windows-v3.1.ps1"
+)
+
+foreach ($t in $targets) {
+  if (Test-Path $t) {
+    Get-AuthenticodeSignature $t | Select-Object Path, Status, SignerCertificate | Format-List
+  }
+}
 ```
 
 **What to Look For:**
@@ -249,6 +351,15 @@ signtool verify /pa /v "path\to\KuaminiSecurityClient.exe"
 ---
 
 ### Step 5: Build SmartScreen Reputation (Standard Cert Only)
+
+### Distribution Note (All Machines)
+
+Signed artifacts are portable. Once MSI/PS1 files are signed and timestamped, the signature remains valid on any machine where the trust chain is recognized.
+
+For broad compatibility across endpoints:
+1. Always timestamp signatures.
+2. Keep intermediate/root CA certificates current on managed endpoints.
+3. Verify with `signtool verify` and `Get-AuthenticodeSignature` in CI or release checks.
 
 **For Standard Certificates:**
 - Initial distribution will show SmartScreen warning
