@@ -90,11 +90,48 @@ export async function GET(request: NextRequest) {
   }
 
   Write-Host "Installing Kuamini Security Client..." -ForegroundColor Yellow
-  $msiArgs = @("/i", $msiPath, "REGISTRATION_TOKEN=$regToken", "/qn", "/l*v", (Join-Path $scriptPath "install.log"))
+  $msiArgs = @(
+    "/i",
+    $msiPath,
+    "REGISTRATION_TOKEN=$regToken",
+    "REGISTRATIONTOKEN=$regToken",
+    "/qn",
+    "/l*v",
+    (Join-Path $scriptPath "install.log")
+  )
   $proc = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
   if ($proc.ExitCode -ne 0) {
     Write-Host "Installation failed. Exit code: $($proc.ExitCode)" -ForegroundColor Red
     exit $proc.ExitCode
+  }
+
+  # Fallback: ensure user-level config exists for first launch
+  try {
+    $configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
+    New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+    $configPath = Join-Path $configDir "config.json"
+    $cfg = @{
+      api_base = "https://kuaminisystems.com/api/agent"
+      registration_token = $regToken
+      auto_register = $true
+    }
+    $cfg | ConvertTo-Json | Out-File -FilePath $configPath -Encoding UTF8
+    Write-Host "Wrote config: $configPath" -ForegroundColor Cyan
+  } catch {
+    Write-Host "Warning: failed to write user config: $_" -ForegroundColor Yellow
+  }
+
+  # Start tray app in current interactive session
+  try {
+    $exePath = "C:\Program Files\Kuamini Security Client\KuaminiSecurityClient.exe"
+    if (Test-Path $exePath) {
+      Start-Process -FilePath $exePath | Out-Null
+      Write-Host "Started tray app." -ForegroundColor Green
+    } else {
+      Write-Host "Warning: tray executable not found at $exePath" -ForegroundColor Yellow
+    }
+  } catch {
+    Write-Host "Warning: failed to start tray app: $_" -ForegroundColor Yellow
   }
 
   Write-Host "Installation complete!" -ForegroundColor Green
