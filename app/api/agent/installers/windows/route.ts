@@ -123,12 +123,34 @@ export async function GET(request: NextRequest) {
 
   # Start tray app in current interactive session
   try {
-    $exePath = "C:\Program Files\Kuamini Security Client\KuaminiSecurityClient.exe"
-    if (Test-Path $exePath) {
+    $exeCandidates = @(
+      (Join-Path $env:ProgramFiles "Kuamini Security Client\\KuaminiSecurityClient.exe"),
+      (Join-Path ${env:ProgramFiles(x86)} "Kuamini Security Client\\KuaminiSecurityClient.exe")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    $exePath = $exeCandidates | Select-Object -First 1
+    if (-not $exePath) {
+      $searchRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ -and (Test-Path $_) }
+      foreach ($root in $searchRoots) {
+        $found = Get-ChildItem -Path $root -Filter "KuaminiSecurityClient.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) {
+          $exePath = $found.FullName
+          break
+        }
+      }
+    }
+
+    if ($exePath) {
       Start-Process -FilePath $exePath | Out-Null
-      Write-Host "Started tray app." -ForegroundColor Green
+      Start-Sleep -Seconds 2
+      $running = Get-Process -Name "KuaminiSecurityClient" -ErrorAction SilentlyContinue
+      if ($running) {
+        Write-Host "Started tray app: $exePath" -ForegroundColor Green
+      } else {
+        Write-Host "Warning: launch attempted but process is not running yet." -ForegroundColor Yellow
+      }
     } else {
-      Write-Host "Warning: tray executable not found at $exePath" -ForegroundColor Yellow
+      Write-Host "Warning: tray executable not found under Program Files locations." -ForegroundColor Yellow
     }
   } catch {
     Write-Host "Warning: failed to start tray app: $_" -ForegroundColor Yellow
