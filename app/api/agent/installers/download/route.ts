@@ -163,19 +163,41 @@ async function buildWindowsInstallerBundle(
   userAgent?: string | null,
   requestOrigin?: string,
 ): Promise<NextResponse> {
-  // Determine MSI filename and CDN URL — no large file reads in serverless
+  // Determine MSI filename and CDN URL fallback
   const msiName = INSTALLER_WINDOWS_MSI_FILENAME
   const origin = (requestOrigin ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://kuaminisystems.com").replace(/\/$/, "")
   const msiUrl = `${origin}/tray/${msiName}`
 
-  // Generate a self-contained install helper that downloads the MSI from CDN at install time
+  // Include MSI in the ZIP bundle. Prefer local file access, then fall back to CDN fetch.
+  const msiCandidates = [
+    path.join(process.cwd(), "public", "tray", msiName),
+    path.join(process.cwd(), "agent-tray", "dist", msiName),
+  ]
+
+  let msiData: Buffer
+  let msiSource = "local"
+
+  try {
+    const msiPath = await resolveBundlePath(msiCandidates)
+    msiData = await fs.readFile(msiPath)
+    console.info(`[Windows Installer] Using local MSI from ${msiPath}`)
+  } catch {
+    const msiResponse = await fetch(msiUrl)
+    if (!msiResponse.ok) {
+      throw new Error(`Failed to fetch MSI from CDN: ${msiResponse.status}`)
+    }
+    msiData = Buffer.from(await msiResponse.arrayBuffer())
+    msiSource = "cdn"
+    console.info(`[Windows Installer] Using CDN MSI from ${msiUrl}`)
+  }
+
+  // Generate a self-contained install helper that installs the bundled MSI.
   const installHelper = `#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
 Kuamini Security Client - Auto Installer
 
-Extracts the registration token, downloads the MSI installer if not already
-present, and runs a silent installation.
+Extracts the registration token and runs a silent MSI installation.
 
 .EXAMPLE
 .\\install-helper.ps1
@@ -205,21 +227,12 @@ if (-not $token) {
 }
 Write-Host "Token loaded ($($token.Length) bytes)" -ForegroundColor Cyan
 
-# Download MSI if not already present
+# Validate bundled MSI
 if (!(Test-Path $msiPath)) {
-    Write-Host "Downloading installer from CDN..." -ForegroundColor Yellow
-    Write-Host "  URL: $msiUrl" -ForegroundColor Gray
-    try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
-        Write-Host "Download complete: $msiName" -ForegroundColor Green
-    } catch {
-        Write-Host "ERROR: Failed to download installer: $_" -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host "MSI already present: $msiName" -ForegroundColor Cyan
+  Write-Host "ERROR: Bundled MSI not found at $msiPath" -ForegroundColor Red
+  exit 1
 }
+Write-Host "MSI found: $msiName" -ForegroundColor Cyan
 
 # Run silent MSI install with registration token
 Write-Host "Installing Kuamini Security Client..." -ForegroundColor Yellow
@@ -243,7 +256,7 @@ Write-Host "The Kuamini tray icon should appear in your system tray." -Foregroun
 
 2. The script will:
    - Read your registration token (registration.token)
-   - Download the MSI installer (~13MB) from our CDN
+  - Use the bundled MSI installer
    - Run a silent installation
 
 3. After install, the Kuamini tray icon appears in the system tray.
@@ -253,8 +266,9 @@ Note: If PowerShell shows "script is not digitally signed", run:
   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 `
 
-  // Build tiny ZIP: token + install-helper + README (no MSI — downloaded at install time)
+  // Build full ZIP: MSI + token + install-helper + README
   const zip = new AdmZip()
+  zip.addFile(msiName, msiData)
   zip.addFile("registration.token", Buffer.from(token, "utf-8"))
   zip.addFile("install-helper.ps1", Buffer.from(installHelper, "utf-8"))
   zip.addFile("README.txt", Buffer.from(readme, "utf-8"))
@@ -269,17 +283,16 @@ Note: If PowerShell shows "script is not digitally signed", run:
     accountId,
     ip: clientIp,
     userAgent,
-    details: { platform: "windows", bundle: "token+helper", msi: msiName, msiUrl },
+    details: { platform: "windows", bundle: "msi+token+helper", msi: msiName, msiSource },
   })
 
-  console.info(`[Windows Installer] Serving lightweight bundle for account ${accountId.slice(0, 8)}, MSI URL: ${msiUrl}`)
+  console.info(`[Windows Installer] Serving MSI bundle for account ${accountId.slice(0, 8)} (${msiSource})`)
 
   return new NextResponse(new Uint8Array(zipData), {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${bundleName}"`,
-      "X-Bundle-Type": "token+helper",
-      "X-MSI-Url": msiUrl,
+      "X-Bundle-Type": "msi+token+helper",
     },
   })
 }
