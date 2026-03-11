@@ -298,14 +298,15 @@ try {
 
 # Start tray app in current interactive session
 try {
+  $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
   $exeCandidates = @(
     (Join-Path $env:ProgramFiles "Kuamini Security Client\\KuaminiSecurityClient.exe"),
-    (Join-Path ${env:ProgramFiles(x86)} "Kuamini Security Client\\KuaminiSecurityClient.exe")
+    (Join-Path $programFilesX86 "Kuamini Security Client\\KuaminiSecurityClient.exe")
   ) | Where-Object { $_ -and (Test-Path $_) }
 
   $exePath = $exeCandidates | Select-Object -First 1
   if (-not $exePath) {
-    $searchRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ -and (Test-Path $_) }
+    $searchRoots = @($env:ProgramFiles, $programFilesX86) | Where-Object { $_ -and (Test-Path $_) }
     foreach ($root in $searchRoots) {
       $found = Get-ChildItem -Path $root -Filter "KuaminiSecurityClient.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
       if ($found) {
