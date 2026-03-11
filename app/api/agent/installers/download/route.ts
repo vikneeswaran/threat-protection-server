@@ -163,9 +163,10 @@ async function buildWindowsInstallerBundle(
   userAgent?: string | null,
   requestOrigin?: string,
 ): Promise<NextResponse> {
-  // Determine MSI filename and CDN URL fallback
-  const msiName = INSTALLER_WINDOWS_MSI_FILENAME
+  // Determine MSI filename from available artifacts (avoids hardcoded version drift)
   const origin = (requestOrigin ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://kuaminisystems.com").replace(/\/$/, "")
+  const trayBasePath = path.join(process.cwd(), "public", "tray")
+  const msiName = await findLatestWindowsMsi(trayBasePath)
   const msiUrl = `${origin}/tray/${msiName}`
 
   // Include MSI in the ZIP bundle. Prefer local file access, then fall back to CDN fetch.
@@ -496,19 +497,17 @@ async function serveWindowsInstaller(
   requestOrigin?: string,
 ) {
   try {
-    // Build a dynamic MSI + token bundle from the base installer
-    try {
-      console.info("[Windows Installer] Building MSI + token bundle")
-      return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
-    } catch (bundleError) {
-      console.warn("[Windows Installer] Failed to build MSI bundle:", bundleError)
-    }
-
-    // No on-demand build dispatch: immediately serve static artifact fallback.
-    return await serveStaticInstaller("windows", accountId, clientIp, userAgent)
+    console.info("[Windows Installer] Building MSI + token bundle")
+    return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
   } catch (error) {
     console.error("Error preparing Windows installer:", error)
-    return NextResponse.json({ error: "Windows installer not available" }, { status: 404 })
+    return NextResponse.json(
+      {
+        error: "Failed to generate Windows ZIP bundle",
+        details: "Installer bundle must include MSI, registration token, and install helper. Please retry shortly or contact support if the issue persists.",
+      },
+      { status: 503 },
+    )
   }
 }
 
