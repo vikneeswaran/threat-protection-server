@@ -61,120 +61,47 @@ export async function GET(request: NextRequest) {
     const msiAbsolutePath = path.join(trayDir, msiFileName)
     const msiData = await fs.readFile(msiAbsolutePath)
 
-    const installHelper = `#Requires -RunAsAdministrator
-  param([switch]$Quiet)
+    const installHelperPath = path.join(trayDir, 'install-helper.ps1')
+    const installCmdPath = path.join(trayDir, 'install-windows.cmd')
+    const uninstallScriptPath = path.join(trayDir, 'uninstall-kuamini-windows.ps1')
+    const uninstallCmdPath = path.join(trayDir, 'uninstall-windows.cmd')
 
-  $ErrorActionPreference = "Stop"
-  $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-  $msiName   = "${msiFileName}"
-  $msiPath   = Join-Path $scriptPath $msiName
-  $tokenPath = Join-Path $scriptPath "registration.token"
-
-  Write-Host "Kuamini Security Client Installer" -ForegroundColor Green
-  Write-Host "-----------------------------------" -ForegroundColor Green
-
-  if (!(Test-Path $tokenPath)) {
-    Write-Host "ERROR: registration.token not found in $scriptPath" -ForegroundColor Red
-    exit 1
-  }
-
-  $regToken = (Get-Content $tokenPath -Raw).Trim()
-  if (-not $regToken) {
-    Write-Host "ERROR: registration.token is empty" -ForegroundColor Red
-    exit 1
-  }
-
-  if (!(Test-Path $msiPath)) {
-    Write-Host "ERROR: Bundled MSI not found at $msiPath" -ForegroundColor Red
-    exit 1
-  }
-
-  Write-Host "Installing Kuamini Security Client..." -ForegroundColor Yellow
-  $msiArgs = @(
-    "/i",
-    $msiPath,
-    "REGISTRATION_TOKEN=$regToken",
-    "REGISTRATIONTOKEN=$regToken",
-    "/qn",
-    "/l*v",
-    (Join-Path $scriptPath "install.log")
-  )
-  $proc = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-  if ($proc.ExitCode -ne 0) {
-    Write-Host "Installation failed. Exit code: $($proc.ExitCode)" -ForegroundColor Red
-    exit $proc.ExitCode
-  }
-
-  # Fallback: ensure user-level config exists for first launch
-  try {
-    $configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
-    New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-    $configPath = Join-Path $configDir "config.json"
-    $cfg = @{
-      api_base = "https://kuaminisystems.com/api/agent"
-      registration_token = $regToken
-      auto_register = $true
-    }
-    $cfg | ConvertTo-Json | Out-File -FilePath $configPath -Encoding UTF8
-    Write-Host "Wrote config: $configPath" -ForegroundColor Cyan
-  } catch {
-    Write-Host "Warning: failed to write user config: $_" -ForegroundColor Yellow
-  }
-
-  # Start tray app in current interactive session
-  try {
-    $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
-    $exeCandidates = @(
-      (Join-Path $env:ProgramFiles "Kuamini Security Client\\KuaminiSecurityClient.exe"),
-      (Join-Path $programFilesX86 "Kuamini Security Client\\KuaminiSecurityClient.exe")
-    ) | Where-Object { $_ -and (Test-Path $_) }
-
-    $exePath = $exeCandidates | Select-Object -First 1
-    if (-not $exePath) {
-      $searchRoots = @($env:ProgramFiles, $programFilesX86) | Where-Object { $_ -and (Test-Path $_) }
-      foreach ($root in $searchRoots) {
-        $found = Get-ChildItem -Path $root -Filter "KuaminiSecurityClient.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($found) {
-          $exePath = $found.FullName
-          break
-        }
-      }
-    }
-
-    if ($exePath) {
-      Start-Process -FilePath $exePath | Out-Null
-      Start-Sleep -Seconds 2
-      $running = Get-Process -Name "KuaminiSecurityClient" -ErrorAction SilentlyContinue
-      if ($running) {
-        Write-Host "Started tray app: $exePath" -ForegroundColor Green
-      } else {
-        Write-Host "Warning: launch attempted but process is not running yet." -ForegroundColor Yellow
-      }
-    } else {
-      Write-Host "Warning: tray executable not found under Program Files locations." -ForegroundColor Yellow
-    }
-  } catch {
-    Write-Host "Warning: failed to start tray app: $_" -ForegroundColor Yellow
-  }
-
-  Write-Host "Installation complete!" -ForegroundColor Green
-  `
+    const installHelperData = await fs.readFile(installHelperPath)
+    const installCmdData = await fs.readFile(installCmdPath)
+    const uninstallScriptData = await fs.readFile(uninstallScriptPath).catch(() => null)
+    const uninstallCmdData = await fs.readFile(uninstallCmdPath).catch(() => null)
 
     const readme = `Kuamini Security Client (Windows)
   =========================================
   1. Unzip this bundle.
-  2. Run install-helper.ps1 as Administrator.
+  2. Run install-windows.cmd as Administrator (recommended).
+     Alternate: run install-helper.ps1 as Administrator.
 
   This bundle contains:
   - ${msiFileName}
   - registration.token
-  - install-helper.ps1
+  - install-helper.ps1 (digitally signed)
+  - install-windows.cmd
+
+  Optional uninstall files (if present):
+  - uninstall-kuamini-windows.ps1 (digitally signed)
+  - uninstall-windows.cmd
+
+  Note: Downloaded PowerShell scripts can show a one-time security warning due
+  to Mark-of-the-Web. The .cmd launchers avoid this prompt for normal use.
   `
 
     const zip = new AdmZip()
     zip.addFile(msiFileName, msiData)
     zip.addFile('registration.token', Buffer.from(token, 'utf-8'))
-    zip.addFile('install-helper.ps1', Buffer.from(installHelper, 'utf-8'))
+    zip.addFile('install-helper.ps1', installHelperData)
+    zip.addFile('install-windows.cmd', installCmdData)
+    if (uninstallScriptData) {
+      zip.addFile('uninstall-kuamini-windows.ps1', uninstallScriptData)
+    }
+    if (uninstallCmdData) {
+      zip.addFile('uninstall-windows.cmd', uninstallCmdData)
+    }
     zip.addFile('README.txt', Buffer.from(readme, 'utf-8'))
     const zipData = zip.toBuffer()
 

@@ -219,146 +219,78 @@ async function buildWindowsInstallerBundle(
     }
   }
 
-  // Generate a self-contained install helper that installs the bundled MSI.
-  const installHelper = `#Requires -RunAsAdministrator
-<#
-.SYNOPSIS
-Kuamini Security Client - Auto Installer
+  // Use pre-signed helper scripts from public/tray so signatures remain valid.
+  const installHelperPath = path.join(process.cwd(), "public", "tray", "install-helper.ps1")
+  const installCmdPath = path.join(process.cwd(), "public", "tray", "install-windows.cmd")
+  const uninstallScriptPath = path.join(process.cwd(), "public", "tray", "uninstall-kuamini-windows.ps1")
+  const uninstallCmdPath = path.join(process.cwd(), "public", "tray", "uninstall-windows.cmd")
 
-Extracts the registration token and runs a silent MSI installation.
+  let installHelperData: Buffer
+  let installCmdData: Buffer
+  let uninstallScriptData: Buffer | null = null
+  let uninstallCmdData: Buffer | null = null
 
-.EXAMPLE
-.\\install-helper.ps1
-#>
-
-param([switch]$Quiet)
-
-$ErrorActionPreference = "Stop"
-$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$msiName   = "${msiName}"
-$msiUrl    = "${msiUrl}"
-$msiPath   = Join-Path $scriptPath $msiName
-$tokenPath = Join-Path $scriptPath "registration.token"
-
-Write-Host "Kuamini Security Client Installer" -ForegroundColor Green
-Write-Host "-----------------------------------" -ForegroundColor Green
-
-# Validate token file
-if (!(Test-Path $tokenPath)) {
-    Write-Host "ERROR: registration.token not found in $scriptPath" -ForegroundColor Red
-    exit 1
-}
-$token = (Get-Content $tokenPath -Raw).Trim()
-if (-not $token) {
-    Write-Host "ERROR: registration.token is empty" -ForegroundColor Red
-    exit 1
-}
-Write-Host "Token loaded ($($token.Length) bytes)" -ForegroundColor Cyan
-
-# Validate bundled MSI
-if (!(Test-Path $msiPath)) {
-  Write-Host "ERROR: Bundled MSI not found at $msiPath" -ForegroundColor Red
-  exit 1
-}
-Write-Host "MSI found: $msiName" -ForegroundColor Cyan
-
-# Run silent MSI install with registration token
-Write-Host "Installing Kuamini Security Client..." -ForegroundColor Yellow
-$msiArgs = @(
-  "/i",
-  $msiPath,
-  "REGISTRATION_TOKEN=$token",
-  "REGISTRATIONTOKEN=$token",
-  "/qn",
-  "/l*v",
-  (Join-Path $scriptPath "install.log")
-)
-$proc = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
-if ($proc.ExitCode -ne 0) {
-    Write-Host "Installation failed. Exit code: $($proc.ExitCode)" -ForegroundColor Red
-    Write-Host "See install.log for details." -ForegroundColor Yellow
-    exit $proc.ExitCode
-}
-
-# Fallback: ensure user-level config exists for first launch
-try {
-  $configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
-  New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-  $configPath = Join-Path $configDir "config.json"
-  $cfg = @{
-    api_base = "https://kuaminisystems.com/api/agent"
-    registration_token = $token
-    auto_register = $true
-  }
-  $cfg | ConvertTo-Json | Out-File -FilePath $configPath -Encoding UTF8
-  Write-Host "Wrote config: $configPath" -ForegroundColor Cyan
-} catch {
-  Write-Host "Warning: failed to write user config: $_" -ForegroundColor Yellow
-}
-
-# Start tray app in current interactive session
-try {
-  $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
-  $exeCandidates = @(
-    (Join-Path $env:ProgramFiles "Kuamini Security Client\\KuaminiSecurityClient.exe"),
-    (Join-Path $programFilesX86 "Kuamini Security Client\\KuaminiSecurityClient.exe")
-  ) | Where-Object { $_ -and (Test-Path $_) }
-
-  $exePath = $exeCandidates | Select-Object -First 1
-  if (-not $exePath) {
-    $searchRoots = @($env:ProgramFiles, $programFilesX86) | Where-Object { $_ -and (Test-Path $_) }
-    foreach ($root in $searchRoots) {
-      $found = Get-ChildItem -Path $root -Filter "KuaminiSecurityClient.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-      if ($found) {
-        $exePath = $found.FullName
-        break
-      }
+  try {
+    installHelperData = await fs.readFile(installHelperPath)
+  } catch {
+    const response = await fetch(`${origin}/tray/install-helper.ps1`)
+    if (!response.ok) {
+      throw new Error(`Failed to load signed install-helper.ps1: ${response.status}`)
     }
+    installHelperData = Buffer.from(await response.arrayBuffer())
   }
 
-  if ($exePath) {
-    Start-Process -FilePath $exePath | Out-Null
-    Start-Sleep -Seconds 2
-    $running = Get-Process -Name "KuaminiSecurityClient" -ErrorAction SilentlyContinue
-    if ($running) {
-      Write-Host "Started tray app: $exePath" -ForegroundColor Green
-    } else {
-      Write-Host "Warning: launch attempted but process is not running yet." -ForegroundColor Yellow
-    }
-  } else {
-    Write-Host "Warning: tray executable not found under Program Files locations." -ForegroundColor Yellow
+  try {
+    installCmdData = await fs.readFile(installCmdPath)
+  } catch {
+    installCmdData = Buffer.from("@echo off\r\nsetlocal\r\nset SCRIPT_DIR=%~dp0\r\npowershell -NoProfile -ExecutionPolicy Bypass -File \"%SCRIPT_DIR%install-helper.ps1\" %*\r\nendlocal\r\n", "utf-8")
   }
-} catch {
-  Write-Host "Warning: failed to start tray app: $_" -ForegroundColor Yellow
-}
 
-Write-Host "Installation complete!" -ForegroundColor Green
-Write-Host "The Kuamini tray icon should appear in your system tray." -ForegroundColor Cyan
-`
+  try {
+    uninstallScriptData = await fs.readFile(uninstallScriptPath)
+  } catch {
+    uninstallScriptData = null
+  }
+
+  try {
+    uninstallCmdData = await fs.readFile(uninstallCmdPath)
+  } catch {
+    uninstallCmdData = null
+  }
 
   const readme = `Kuamini Security Client (Windows)
 =========================================
-1. Right-click install-helper.ps1 and choose "Run as Administrator"
-   OR open PowerShell as Administrator and run:
-     .\\install-helper.ps1
+1. Unzip this bundle.
+2. Run install-windows.cmd as Administrator (recommended).
+   Alternate: run install-helper.ps1 as Administrator.
 
-2. The script will:
-   - Read your registration token (registration.token)
-  - Use the bundled MSI installer
-   - Run a silent installation
+This bundle contains:
+- ${msiName}
+- registration.token
+- install-helper.ps1 (digitally signed)
+- install-windows.cmd
 
-3. After install, the Kuamini tray icon appears in the system tray.
-   If the icon is red, wait 30 seconds and it should connect.
+Optional uninstall files (if present):
+- uninstall-kuamini-windows.ps1 (digitally signed)
+- uninstall-windows.cmd
 
-Note: If PowerShell shows "script is not digitally signed", run:
-  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+Why use .cmd launchers:
+- Downloaded PowerShell scripts can show a one-time security warning due to Mark-of-the-Web.
+- The .cmd launchers run with ExecutionPolicy Bypass for this script invocation and avoid that prompt.
 `
 
-  // Build full ZIP: MSI + token + install-helper + README
+  // Build full ZIP: MSI + token + signed helper + cmd launcher + README
   const zip = new AdmZip()
   zip.addFile(msiName, msiData)
   zip.addFile("registration.token", Buffer.from(token, "utf-8"))
-  zip.addFile("install-helper.ps1", Buffer.from(installHelper, "utf-8"))
+  zip.addFile("install-helper.ps1", installHelperData)
+  zip.addFile("install-windows.cmd", installCmdData)
+  if (uninstallScriptData) {
+    zip.addFile("uninstall-kuamini-windows.ps1", uninstallScriptData)
+  }
+  if (uninstallCmdData) {
+    zip.addFile("uninstall-windows.cmd", uninstallCmdData)
+  }
   zip.addFile("README.txt", Buffer.from(readme, "utf-8"))
   const zipData = zip.toBuffer()
 
@@ -371,7 +303,7 @@ Note: If PowerShell shows "script is not digitally signed", run:
     accountId,
     ip: clientIp,
     userAgent,
-    details: { platform: "windows", bundle: "msi+token+helper", msi: msiName, msiSource },
+    details: { platform: "windows", bundle: "msi+token+helper+cmd", msi: msiName, msiSource },
   })
 
   console.info(`[Windows Installer] Serving MSI bundle for account ${accountId.slice(0, 8)} (${msiSource})`)
@@ -380,7 +312,7 @@ Note: If PowerShell shows "script is not digitally signed", run:
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${bundleName}"`,
-      "X-Bundle-Type": "msi+token+helper",
+      "X-Bundle-Type": "msi+token+helper+cmd",
     },
   })
 }
