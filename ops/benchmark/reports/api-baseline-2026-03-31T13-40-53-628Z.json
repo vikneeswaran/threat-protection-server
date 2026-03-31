@@ -1,0 +1,29 @@
+{
+  "createdAt": "2026-03-31T13:40:53.628Z",
+  "baseUrl": "https://kuaminisystems.com",
+  "runsPerEndpoint": 7,
+  "metrics": [
+    {
+      "endpoint": "/api/health",
+      "samples": 7,
+      "p50Ms": 339,
+      "p95Ms": 944,
+      "avgMs": 435.14,
+      "errorRatePct": 0,
+      "failureStatuses": []
+    },
+    {
+      "endpoint": "/",
+      "samples": 7,
+      "p50Ms": 95,
+      "p95Ms": 114,
+      "avgMs": 98.86,
+      "errorRatePct": 0,
+      "failureStatuses": []
+    }
+  ],
+  "thresholdEvaluation": {
+    "passed": true,
+    "failures": []
+  }
+}

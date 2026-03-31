@@ -21,6 +21,7 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "test:watch": "vitest --watch",
+    "benchmark:baseline": "node scripts/benchmark/collect-api-baseline.mjs",
     "type-check": "tsc --noEmit",
     "validate": "npm run lint && npm run type-check && npm run test",
     "build:agent": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/build-windows-msi.ps1",
