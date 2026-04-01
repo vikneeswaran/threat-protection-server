@@ -1,0 +1,12 @@
+{
+  "endpoints": {
+    "/api/health": {
+      "maxP95Ms": 1200,
+      "maxErrorRatePct": 0
+    },
+    "/": {
+      "maxP95Ms": 2000,
+      "maxErrorRatePct": 0
+    }
+  }
+}
