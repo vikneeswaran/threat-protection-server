@@ -16,6 +16,14 @@ export default [
   },
   {
     files: ['**/*.{js,mjs,cjs,jsx}'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        Buffer: 'readonly',
+        fetch: 'readonly',
+      },
+    },
     rules: {
       ...js.configs.recommended.rules,
       'prefer-const': 'error',
