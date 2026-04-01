@@ -1,0 +1,50 @@
+name: Quality and Release Gate
+
+on:
+  pull_request:
+    branches:
+      - qa
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run lint
+        run: pnpm run lint
+
+      - name: Run type check
+        run: pnpm run type-check
+
+      - name: Run tests
+        run: pnpm run test
+
+  main-promotion-guard:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate source branch for production promotions
+        run: |
+          if [ "${{ github.head_ref }}" != "qa" ]; then
+            echo "Production promotions must come from the qa branch."
+            echo "Current PR source branch: ${{ github.head_ref }}"
+            exit 1
+          fi
+          echo "Source branch check passed: qa -> main"

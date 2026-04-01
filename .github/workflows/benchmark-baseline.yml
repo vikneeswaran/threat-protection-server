@@ -1,0 +1,40 @@
+name: Benchmark Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL to benchmark"
+        required: false
+        default: "https://kuaminisystems.com"
+      runs:
+        description: "Number of probes per endpoint"
+        required: false
+        default: "7"
+  schedule:
+    - cron: "0 4 * * 1"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run benchmark baseline
+        run: npm run benchmark:baseline
+        env:
+          BENCHMARK_BASE_URL: ${{ github.event.inputs.base_url || 'https://kuaminisystems.com' }}
+          BENCHMARK_RUNS: ${{ github.event.inputs.runs || '7' }}
+
+      - name: Upload benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-baseline-reports
+          path: ops/benchmark/reports/
+          retention-days: 30
