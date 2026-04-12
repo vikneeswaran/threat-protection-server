@@ -1,54 +1,35 @@
 # AWS Cloud Migration Runbook
 
-This runbook defines the detailed migration path from Vercel to AWS for both Production and QA.
+This runbook defines the deployment path from Vercel to AWS for Production.
 
 ## Scope
 
 - Production URL: `https://www.kuaminisystems.com`
-- QA URL: `https://qa.kuaminisystems.com`
 - Existing domain provider: Hostinger
-- Deployment target: AWS Free Tier-first setup
+- Deployment target: AWS Free Tier
 - App stack: Next.js + Node.js + PostgreSQL
 
 ---
 
-## Important Domain Clarification
+## Architecture (Budget-Optimized)
 
-You do **not** need to buy a new domain for QA.
-
-`qa.kuaminisystems.com` is a subdomain under your existing domain `kuaminisystems.com`. You can create it in Hostinger DNS at no additional domain purchase cost.
+- **EC2 `t2.micro`** hosting Production app
+   - PM2 process: `kuamini-production` (port 3000)
+   - Nginx reverse proxy
+- **RDS PostgreSQL `db.t3.micro`**
+   - DB: `kuamini_prod`
+   - Multi-AZ: disabled (saves cost)
+   - Automated backups: 7 days
 
 ---
 
-## Architecture (Free Tier Practical)
+## Deployment Flow
 
-### Budget-First Mode (Recommended for lowest cost)
-- **One EC2 `t2.micro` only** hosting both Production and QA apps
-   - PM2 process 1: prod (port 3000)
-   - PM2 process 2: qa (port 3001)
-   - Nginx routes by host header:
-      - `www.kuaminisystems.com` → `localhost:3000`
-      - `qa.kuaminisystems.com` → `localhost:3001`
-- One RDS PostgreSQL `db.t3.micro`
-   - DB: `kuamini_prod`
-   - DB: `kuamini_qa`
+### GitHub Workflow
 
-### Standard Mode (Higher isolation, may exceed Free Tier)
-### Production
-- EC2 `t2.micro` (Ubuntu)
-- Nginx reverse proxy
-- Node app via PM2
-- RDS PostgreSQL `db.t3.micro`
+Simplified workflow (no QA):
 
-### QA
-- EC2 `t2.micro` (Ubuntu)
-- Nginx reverse proxy
-- Node app via PM2
-- Separate DB recommended:
-  - Option A: Separate QA RDS (better isolation)
-  - Option B: Same RDS, separate database/schema (lower cost)
-
-### DNS/SSL
+- Push to `main` → validate → deploy to production
 - Hostinger DNS A records
 - Let’s Encrypt SSL via Certbot
 
@@ -477,13 +458,12 @@ Auto-deploy `qa` and `main` branches to respective EC2 servers.
 
 ---
 
-## 4B) GitHub Branch Governance (already enabled)
+## 4B) GitHub Branch Governance (Production-only)
 
-- `feature/*` → PR into `qa`
-- `qa` requires `validate`
+- `feature/*` → PR into `main`
 - `main` requires:
-  - `validate`
-  - `main-promotion-guard`
+  - `validate` (lint, type-check, tests)
+  - No QA gate (direct to production)
 
 ---
 
