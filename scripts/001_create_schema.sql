@@ -52,10 +52,25 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TYPE user_role AS ENUM ('super_admin', 'admin', 'operator', 'viewer');
 
 -- ============================================
--- 4. USERS / PROFILES
+-- 4. LOCAL USERS (replaces Supabase auth.users)
+-- ============================================
+CREATE TABLE IF NOT EXISTS app_users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT,
+  full_name TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  email_verified BOOLEAN DEFAULT FALSE,
+  last_login_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
+-- 5. USERS / PROFILES
 -- ============================================
 CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT,

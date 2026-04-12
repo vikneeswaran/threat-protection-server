@@ -15,12 +15,12 @@ export default async function DashboardLayout({
   try {
     const { data, error } = await supabase.auth.getUser()
     if (error) {
-      console.info("[v0] Dashboard layout auth error:", error.message)
+      console.info("[app] Dashboard layout auth error:", error.message)
       redirect("/securityAgent/auth/login")
     }
     user = data.user
   } catch (err) {
-    console.info("[v0] Dashboard layout auth exception:", err)
+    console.info("[app] Dashboard layout auth exception:", err)
     redirect("/securityAgent/auth/login")
   }
 
@@ -43,11 +43,11 @@ export default async function DashboardLayout({
       .maybeSingle()
 
     if (error) {
-      console.info("[v0] Dashboard layout profile error:", error.message)
+      console.info("[app] Dashboard layout profile error:", error.message)
     }
     profile = data
   } catch (err) {
-    console.info("[v0] Dashboard layout profile exception:", err)
+    console.info("[app] Dashboard layout profile exception:", err)
   }
 
   if (!profile) {

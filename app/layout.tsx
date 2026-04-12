@@ -1,7 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
@@ -14,7 +13,7 @@ export const metadata: Metadata = {
   description:
     "Welcome to Kuamini Systems Private Limited, your trusted partner in delivering innovative business solutions. We specialize in enhancing operational efficiency and driving growth for businesses of all sizes.",
   keywords: ["Kuamini Systems", "Innovative Software Solutions", "AI", "Cloud Integration", "Software Development"],
-  generator: "v0.app",
+  generator: "Kuamini Systems",
   icons: {
     icon: [
       {
@@ -46,7 +45,6 @@ export default function RootLayout({
           {children}
           <Toaster />
         </ThemeProvider>
-        <Analytics />
       </body>
     </html>
   )

@@ -1,5 +1,5 @@
 {
-  "name": "my-v0-project",
+  "name": "threat-protection-agent",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -59,7 +59,6 @@
     "@radix-ui/react-tooltip": "1.1.6",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
-    "@vercel/analytics": "latest",
     "adm-zip": "^0.5.16",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
