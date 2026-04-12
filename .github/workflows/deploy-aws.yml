@@ -30,7 +30,7 @@ jobs:
           key: ${{ secrets.AWS_EC2_SSH_KEY }}
           script: |
             set -e
-            cd /home/ubuntu/threat-protection-agent
+            cd /home/ubuntu/apps/kuamini-prod
 
             echo "Pulling latest code..."
             git fetch origin
