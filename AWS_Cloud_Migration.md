@@ -11,6 +11,50 @@ This runbook defines the deployment path from Vercel to AWS for Production.
 
 ---
 
+## Quick Start — New Production-Only Workflow
+
+**No QA infrastructure required.** Direct testing on production.
+
+### For developers:
+
+1. Create feature branch: `git checkout -b feature/your-feature`
+2. Make changes + commit
+3. Push: `git push origin feature/your-feature`
+4. Create PR into `main` on GitHub
+5. Wait for validation (lint, tests, type-check)
+6. Merge to `main`
+7. **Automatic deployment to production** via GitHub Actions
+8. Test at `https://www.kuaminisystems.com`
+
+### CI/CD Pipeline
+
+```
+feature/New_Testing
+       ↓ (create PR to main)
+[Validation: lint + type-check + tests]
+       ↓ (if passes, merge)
+main branch
+       ↓ (push to main)
+GitHub Actions
+       ↓ (deploy-aws.yml)
+SSH to production EC2
+  → git pull main
+  → pnpm install --frozen-lockfile
+  → pnpm run build
+  → pm2 restart kuamini-production
+       ↓
+Production app live at https://www.kuaminisystems.com
+```
+
+### Important notes
+
+- **No QA branch protection:** any feature branch can merge directly to `main`
+- **Production is testing environment:** verify thoroughly before merging
+- **Manual testing required:** before/after each production deployment
+- **Rollback plan:** keep stable branch checkpoints in case of issues
+
+---
+
 ## Architecture (Budget-Optimized)
 
 - **EC2 `t2.micro`** hosting Production app
