@@ -32,7 +32,6 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import type { Profile, Account } from "@/lib/types/database"
 
@@ -101,8 +100,7 @@ export function SecuritySidebar({ profile, account }: SecuritySidebarProps) {
   const router = useRouter()
 
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await fetch("/api/auth/local/logout", { method: "POST" })
     router.push("/securityAgent/auth/login")
   }
 

@@ -2,7 +2,6 @@
 
 import type React from "react"
 
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -30,16 +29,21 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch("/api/auth/local/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       })
-      if (error) {throw error}
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Login failed" }))
+        throw new Error(payload.error || "Login failed")
+      }
+
       router.push("/securityAgent/dashboard")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
@@ -49,22 +53,8 @@ export default function LoginPage() {
   }
 
   const handleGitHubLogin = async () => {
-    const supabase = createClient()
-    setIsGitHubLoading(true)
-    setError(null)
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: `${window.location.origin}/securityAgent/auth/callback`,
-        },
-      })
-      if (error) {throw error}
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred")
-      setIsGitHubLoading(false)
-    }
+    setIsGitHubLoading(false)
+    setError("GitHub login is disabled. Use email and password.")
   }
 
   return (
