@@ -13,12 +13,12 @@ export default async function Installers() {
     } = await supabase.auth.getUser()
 
     if (error) {
-      console.info("[v0] Installers page auth error:", error.message)
+      console.info("[app] Installers page auth error:", error.message)
       redirect("/securityAgent/auth/login")
     }
     user = authUser
   } catch (err) {
-    console.info("[v0] Installers page auth exception:", err)
+    console.info("[app] Installers page auth exception:", err)
     redirect("/securityAgent/auth/login")
   }
 
@@ -35,11 +35,11 @@ export default async function Installers() {
       .maybeSingle()
 
     if (error) {
-      console.info("[v0] Installers page profile error:", error.message)
+      console.info("[app] Installers page profile error:", error.message)
     }
     profile = data
   } catch (err) {
-    console.info("[v0] Installers page profile exception:", err)
+    console.info("[app] Installers page profile exception:", err)
   }
 
   if (!profile) {

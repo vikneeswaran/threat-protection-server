@@ -1,0 +1,51 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set deployment target
+        id: target
+        run: |
+          echo "host=${{ secrets.AWS_EC2_HOST_PROD }}" >> $GITHUB_OUTPUT
+          echo "pm2_name=kuamini-production" >> $GITHUB_OUTPUT
+          echo "env_file=.env.production" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.target.outputs.host }}
+          username: ${{ secrets.AWS_EC2_USER }}
+          key: ${{ secrets.AWS_EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/apps/kuamini-prod
+
+            echo "Pulling latest code..."
+            git fetch origin
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+
+            echo "Installing dependencies..."
+            pnpm install --frozen-lockfile
+
+            echo "Building application..."
+            pnpm run build
+
+            echo "Restarting application..."
+            pm2 restart ${{ steps.target.outputs.pm2_name }} || \
+              pm2 start "pnpm start" --name ${{ steps.target.outputs.pm2_name }}
+            pm2 save
+
+            echo "Deployment complete for ${{ github.ref_name }}"

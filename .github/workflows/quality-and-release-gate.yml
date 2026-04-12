@@ -3,7 +3,6 @@ name: Quality and Release Gate
 on:
   pull_request:
     branches:
-      - qa
       - main
   workflow_dispatch:
 
@@ -35,16 +34,3 @@ jobs:
 
       - name: Run tests
         run: pnpm run test
-
-  main-promotion-guard:
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate source branch for production promotions
-        run: |
-          if [ "${{ github.head_ref }}" != "qa" ]; then
-            echo "Production promotions must come from the qa branch."
-            echo "Current PR source branch: ${{ github.head_ref }}"
-            exit 1
-          fi
-          echo "Source branch check passed: qa -> main"
