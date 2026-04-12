@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - qa
 
 permissions:
   contents: read
@@ -19,15 +18,9 @@ jobs:
       - name: Set deployment target
         id: target
         run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "host=${{ secrets.AWS_EC2_HOST_PROD }}" >> $GITHUB_OUTPUT
-            echo "pm2_name=kuamini-production" >> $GITHUB_OUTPUT
-            echo "env_file=.env.production" >> $GITHUB_OUTPUT
-          else
-            echo "host=${{ secrets.AWS_EC2_HOST_QA }}" >> $GITHUB_OUTPUT
-            echo "pm2_name=kuamini-qa" >> $GITHUB_OUTPUT
-            echo "env_file=.env.qa" >> $GITHUB_OUTPUT
-          fi
+          echo "host=${{ secrets.AWS_EC2_HOST_PROD }}" >> $GITHUB_OUTPUT
+          echo "pm2_name=kuamini-production" >> $GITHUB_OUTPUT
+          echo "env_file=.env.production" >> $GITHUB_OUTPUT
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
