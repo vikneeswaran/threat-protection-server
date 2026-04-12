@@ -19,7 +19,7 @@ jobs:
         id: target
         run: |
           echo "host=${{ secrets.AWS_EC2_HOST_PROD }}" >> $GITHUB_OUTPUT
-          echo "pm2_name=kuamini-production" >> $GITHUB_OUTPUT
+          echo "pm2_name=kuamini-prod" >> $GITHUB_OUTPUT
           echo "env_file=.env.production" >> $GITHUB_OUTPUT
 
       - name: Deploy via SSH
@@ -39,6 +39,15 @@ jobs:
 
             echo "Installing dependencies..."
             pnpm install --frozen-lockfile
+
+            echo "Preparing memory for build..."
+            if ! swapon --show | grep -q '/swapfile'; then
+              sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+            fi
+            export NODE_OPTIONS="--max_old_space_size=768"
 
             echo "Building application..."
             pnpm run build
