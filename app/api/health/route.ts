@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const required = [
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "NEXT_PUBLIC_SUPABASE_REDIRECT_URL",
-    "NEXT_PUBLIC_API_BASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
-  ]
+  const required = ["DATABASE_URL", "NEXT_PUBLIC_API_BASE_URL"]
 
   const env: Record<string, boolean> = {}
   const missing: string[] = []

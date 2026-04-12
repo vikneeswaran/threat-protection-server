@@ -2,7 +2,6 @@
 
 import type React from "react"
 
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -26,7 +25,6 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
@@ -43,49 +41,30 @@ export default function RegisterPage() {
     }
 
     try {
-      // First check if email already exists in profiles table
-      const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("email", email)
-        .single()
-
-      if (existingProfile) {
-        setError("Email already registered. Please use a different email or sign in.")
-        setIsLoading(false)
-        return
-      }
-
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo:
-            // Prefer explicit redirect URL env var (set this to your production callback URL).
-            process.env.NEXT_PUBLIC_SUPABASE_REDIRECT_URL ||
-            // Fallback to production domain callback. No localhost defaults kept in repo.
-            "https://kuaminisystems.com/securityAgent/auth/callback",
-          data: {
-            full_name: fullName,
-            organization_name: organizationName,
-            license_tier: licenseTier,
-            role: "super_admin",
-          },
-        },
+      const response = await fetch("/api/auth/local/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationName,
+          fullName,
+          email,
+          password,
+          licenseTier,
+        }),
       })
 
-      if (error) {
-        // If the user already exists, show clear error message
-        const msg = error.message || ""
-        if (msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("user already exists") || msg.toLowerCase().includes("duplicate")) {
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Registration failed" }))
+        const msg = payload.error || "Registration failed"
+        if (msg.toLowerCase().includes("already")) {
           setError("Email already registered. Please use a different email or sign in.")
           setIsLoading(false)
           return
         }
-        throw error
+        throw new Error(msg)
       }
 
-      router.push("/securityAgent/auth/verify-email")
+      router.push("/securityAgent/dashboard")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
     } finally {
