@@ -9,27 +9,33 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Innovative Software Solutions for Business | Kuamini Systems",
+  title: "Kuamini Systems - Security & Threat Protection",
   description:
-    "Welcome to Kuamini Systems Private Limited, your trusted partner in delivering innovative business solutions. We specialize in enhancing operational efficiency and driving growth for businesses of all sizes.",
-  keywords: ["Kuamini Systems", "Innovative Software Solutions", "AI", "Cloud Integration", "Software Development"],
+    "Kuamini Systems: Advanced threat protection and security solutions for enterprises. Detect, respond, and mitigate threats in real-time.",
+  keywords: ["Kuamini Systems", "Threat Protection", "Security", "Endpoint Protection", "Endpoint Tray"],
   generator: "Kuamini Systems",
   icons: {
     icon: [
       {
+        url: "/icon.svg",
+        type: "image/svg+xml",
+      },
+      {
         url: "/icon-light-32x32.png",
         media: "(prefers-color-scheme: light)",
+        sizes: "32x32",
       },
       {
         url: "/icon-dark-32x32.png",
         media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
+        sizes: "32x32",
       },
     ],
-    apple: "/apple-icon.png",
+    apple: {
+      url: "/apple-icon.png",
+      sizes: "180x180",
+    },
+    shortcut: "/icon.svg",
   },
 }
 
