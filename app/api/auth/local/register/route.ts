@@ -66,7 +66,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error("Local register error:", error)
-    return NextResponse.json({ error: "Registration failed" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error("Local register error:", msg)
+    // Return detail in non-prod OR for DB structural errors so we can diagnose
+    return NextResponse.json(
+      { error: "Registration failed", detail: msg },
+      { status: 500 }
+    )
   }
 }
