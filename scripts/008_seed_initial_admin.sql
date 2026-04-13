@@ -1,19 +1,20 @@
 -- Seed first local admin user for clean-slate AWS deployment
 -- Usage (psql):
---   \set admin_email 'admin@kuaminisystems.com'
---   \set admin_password 'ChangeMe123!'
---   \set admin_full_name 'Kuamini Admin'
---   \set org_name 'Kuamini Systems'
---   \i scripts/008_seed_initial_admin.sql
+--   psql "sslmode=require" -v ON_ERROR_STOP=1 \
+--     -v admin_email='admin@kuaminisystems.com' \
+--     -v admin_password='ChangeMe123!' \
+--     -v admin_full_name='Kuamini Admin' \
+--     -v org_name='Kuamini Systems' \
+--     -f scripts/008_seed_initial_admin.sql
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 DO $$
 DECLARE
-  v_email TEXT := :'admin_email';
-  v_password TEXT := :'admin_password';
-  v_full_name TEXT := :'admin_full_name';
-  v_org_name TEXT := :'org_name';
+  v_email TEXT := COALESCE(:'admin_email', 'admin@kuaminisystems.com');
+  v_password TEXT := COALESCE(:'admin_password', 'ChangeMe123!');
+  v_full_name TEXT := COALESCE(:'admin_full_name', 'Kuamini Admin');
+  v_org_name TEXT := COALESCE(:'org_name', 'Kuamini Systems');
   v_user_id UUID;
   v_account_id UUID;
   v_tier_id UUID;
