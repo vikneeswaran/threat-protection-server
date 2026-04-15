@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
 import crypto from "crypto"
 import fs from "fs/promises"
 import path from "path"
 import AdmZip from "adm-zip"
 import os from "os"
+import { getSessionUser } from "@/lib/auth/session"
+import { query } from "@/lib/db"
 
 // Token and rate-limit settings (tunable via env)
 const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
@@ -111,7 +111,7 @@ async function findLatestWindowsMsi(basePath: string): Promise<string> {
     console.info("[Windows Installer] Cannot list filesystem, will try CDN")
   }
 
-  // Fall back to GitHub API listing (Vercel deployment)
+  // Fall back to GitHub API listing (AWS EC2 deployment)
   if (!INSTALLER_BUILD_GH_TOKEN) {
     console.info(`[Windows Installer] No GitHub token, using fallback MSI: ${INSTALLER_WINDOWS_MSI_FILENAME}`)
     return INSTALLER_WINDOWS_MSI_FILENAME
@@ -328,17 +328,22 @@ async function safeAuditLog(params: {
   details?: Record<string, unknown>
 }) {
   try {
-    const admin = createAdminClient()
-    await admin.from("audit_logs").insert({
-      account_id: params.accountId,
-      user_id: params.userId ?? null,
-      action: params.action,
-      entity_type: params.entityType,
-      entity_id: params.entityId,
-      details: params.details ?? null,
-      ip_address: params.ip ?? null,
-      user_agent: params.userAgent ?? null,
-    })
+    await query(
+      `
+        INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details, ip_address, user_agent)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+      `,
+      [
+        params.accountId,
+        params.userId ?? null,
+        params.action,
+        params.entityType,
+        params.entityId,
+        JSON.stringify(params.details ?? null),
+        params.ip ?? null,
+        params.userAgent ?? null,
+      ],
+    )
   } catch (error) {
     console.warn("Failed to write audit log", error)
   }
@@ -362,7 +367,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Installer token secret not configured" }, { status: 500 })
     }
 
-    const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
     const platform = searchParams.get("platform") // macos, windows, linux
     const accountId = searchParams.get("accountId")
@@ -380,49 +384,36 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access to this account
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    const user = await getSessionUser()
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Verify account access
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const profileResult = await query<{ account_id: string; role: string }>(
+      `SELECT account_id::text, role FROM profiles WHERE id = $1 LIMIT 1`,
+      [user.id],
+    )
+    const profile = profileResult.rows[0]
 
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
-    const { data: account } = await supabase
-      .from("accounts")
-      .select("*, license_tier:license_tiers(*)")
-      .eq("id", accountId)
-      .single()
+    const accountResult = await query<{ id: string; name: string; parent_account_id: string | null }>(
+      `SELECT id::text, name, parent_account_id::text FROM accounts WHERE id = $1 LIMIT 1`,
+      [accountId],
+    )
+    const account = accountResult.rows[0]
 
     if (!account) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 })
     }
 
     // Check if user has access to this account
-    const isOwner = account.owner_id === user.id
-    const isSuperAdmin = profile.role === "super_admin"
+    const isSameAccount = profile.account_id === account.id
+    const isParentAdmin = ["super_admin", "admin"].includes(profile.role) && account.parent_account_id === profile.account_id
 
-    let membershipOk = false
-    if (!isOwner && !isSuperAdmin) {
-      const { data: membership } = await supabase
-        .from("account_members")
-        .select("id")
-        .eq("account_id", accountId)
-        .eq("user_id", user.id)
-        .maybeSingle()
-
-      membershipOk = Boolean(membership)
-    }
-
-    if (!(isOwner || isSuperAdmin || membershipOk)) {
+    if (!(isSameAccount || isParentAdmin)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 

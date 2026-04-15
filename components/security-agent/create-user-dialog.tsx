@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import type { UserRole } from "@/lib/types/database"
 import { toast } from "sonner"
 
@@ -53,21 +52,19 @@ export function CreateUserDialog({ accountId, currentUserRole, currentUserId }: 
     e.preventDefault()
     setIsLoading(true)
 
-    const supabase = createClient()
-
     try {
-      // Note: In a real application, you would send an invitation email
-      // For now, we'll create a placeholder that shows the invitation was sent
-      toast.success(`Invitation sent to ${email}. They will receive an email to set up their account.`)
-
-      // Create audit log
-      await supabase.from("audit_logs").insert({
-        account_id: accountId,
-        user_id: currentUserId,
-        action: "user_create",
-        entity_type: "user",
-        details: { email, role, invited: true },
+      const response = await fetch("/api/console/users/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId, currentUserId, email, fullName, role }),
       })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to send invitation" }))
+        throw new Error(payload.error || "Failed to send invitation")
+      }
+
+      toast.success(`Invitation recorded for ${email}.`)
 
       setOpen(false)
       setEmail("")

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { getPool, query } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
@@ -10,108 +10,62 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Missing required fields" }, { status: 400 })
     }
 
-    const admin = createAdminClient()
-
-    // Find the existing auth user by email (SDK has no getUserByEmail helper)
     const normalizedEmail = String(email).toLowerCase()
-    const perPage = 200
-    let page = 1
-    let userData: { id: string; email?: string | null } | null = null
-
-    while (true) {
-      const { data: pageData, error: userErr } = await admin.auth.admin.listUsers({ page, perPage })
-
-      if (userErr) {
-        console.error("admin.listUsers error:", userErr)
-        return NextResponse.json({ message: "Failed to lookup user by email" }, { status: 500 })
-      }
-
-      const match = pageData?.users?.find((u) => u.email?.toLowerCase?.() === normalizedEmail)
-      if (match) {
-        userData = match
-        break
-      }
-
-      if (!pageData || pageData.users.length < perPage) {break}
-      page += 1
-    }
+    const userResult = await query<{ id: string; email: string }>(
+      `SELECT id::text, email FROM app_users WHERE email = $1 LIMIT 1`,
+      [normalizedEmail],
+    )
+    const userData = userResult.rows[0] ?? null
 
     if (!userData) {
-      return NextResponse.json({ message: "Auth user not found for email" }, { status: 404 })
+      return NextResponse.json({ message: "Local user not found for email" }, { status: 404 })
     }
 
     // Get the license tier details
-    const { data: tierData } = await admin
-      .from("license_tiers")
-      .select("id, max_endpoints, trial_days")
-      .eq("name", license_tier || "free")
-      .limit(1)
-      .single()
-
-    const tier = tierData
+    const tierResult = await query<{ id: string; max_endpoints: number; trial_days: number | null }>(
+      `SELECT id::text, max_endpoints, trial_days FROM license_tiers WHERE name = $1 LIMIT 1`,
+      [license_tier || "free"],
+    )
+    const tier = tierResult.rows[0]
 
     // Calculate expiry if trial days
     const expiresAt = tier && tier.trial_days > 0 ? new Date(Date.now() + tier.trial_days * 24 * 60 * 60 * 1000).toISOString() : null
 
-    // Create account
-    const { data: accountData, error: accountError } = await admin
-      .from("accounts")
-      .insert({
-        name: organization_name,
-        level: 1,
-        license_tier_id: tier?.id || null,
-        total_licenses: tier?.max_endpoints || 0,
-        license_expires_at: expiresAt,
-      })
-      .select()
-      .single()
-
-    if (accountError || !accountData) {
-      console.error("Account creation error:", accountError)
-      return NextResponse.json({ message: "Failed to create account" }, { status: 500 })
+    const existingProfile = await query<{ id: string }>(`SELECT id::text FROM profiles WHERE id = $1 LIMIT 1`, [userData.id])
+    if (existingProfile.rows[0]) {
+      return NextResponse.json({ message: "Profile already exists", invited: false })
     }
 
-    // Create profile linked to existing auth user (allow same email across multiple orgs)
-    const { error: profileError } = await admin.from("profiles").insert({
-      id: userData.id,
-      account_id: accountData.id,
-      email,
-      full_name: full_name || null,
-      role: "super_admin",
-    })
-
-    if (profileError) {
-      console.error("Profile creation error:", profileError)
-      return NextResponse.json({ message: "Failed to create profile" }, { status: 500 })
-    }
-
-    // Attempt to send an invite / magic link to the user so they can sign in and access the new organization.
-    let invited = false
+    const pool = getPool()
+    const client = await pool.connect()
     try {
-      const redirectTo = process.env.NEXT_PUBLIC_SUPABASE_REDIRECT_URL ||
-        "https://kuaminisystems.com/securityAgent/auth/callback"
+      await client.query("BEGIN")
+      const accountResult = await client.query<{ id: string }>(
+        `
+          INSERT INTO accounts (name, level, license_tier_id, total_licenses, license_expires_at)
+          VALUES ($1, 1, $2, $3, $4)
+          RETURNING id::text
+        `,
+        [organization_name, tier?.id || null, tier?.max_endpoints || 0, expiresAt],
+      )
 
-      // Use the Supabase admin API to generate a magic link if available. This is best-effort and will not
-      // fail the whole request if the method is unavailable or errors.
-      try {
-        // `generateLink` may not exist on all sdk versions; cast to any for a best-effort call.
-        // If your Supabase SDK provides a specific method to send magic links/invite, replace this with that call.
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const gen = (admin as any).auth?.admin?.generateLink
-        if (typeof gen === "function") {
-          await gen("magiclink", email, { redirectTo })
-          invited = true
-        }
-      } catch (e) {
-        console.warn("Invite generation failed (sdk may not support generateLink):", e)
-      }
+      await client.query(
+        `
+          INSERT INTO profiles (id, account_id, email, full_name, role, is_active)
+          VALUES ($1, $2, $3, $4, 'super_admin', TRUE)
+        `,
+        [userData.id, accountResult.rows[0].id, normalizedEmail, full_name || null],
+      )
 
-    } catch (e) {
-      console.warn("Invite attempt failed:", e)
+      await client.query("COMMIT")
+    } catch (error) {
+      await client.query("ROLLBACK")
+      throw error
+    } finally {
+      client.release()
     }
 
-    return NextResponse.json({ message: "ok", invited })
+    return NextResponse.json({ message: "ok", invited: false })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ message: "Unexpected error" }, { status: 500 })

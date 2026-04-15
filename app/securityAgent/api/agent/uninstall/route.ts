@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { getSessionUser } from "@/lib/auth/session"
+import { query } from "@/lib/db"
 
 function getUninstallCommands(os: string) {
   switch (os.toLowerCase()) {
@@ -36,10 +36,7 @@ function getUninstallCommands(os: string) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getSessionUser()
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -50,17 +47,14 @@ export async function POST(request: Request) {
     if (!endpoint_id && !agent_id) {
       return NextResponse.json({ error: "endpoint_id or agent_id is required" }, { status: 400 })
     }
-
-    const admin = createAdminClient()
-
     // Get profile/role
-    const { data: profile, error: profileError } = await admin
-      .from("profiles")
-      .select("id, account_id, role")
-      .eq("id", user.id)
-      .maybeSingle()
+    const profileResult = await query<{ id: string; account_id: string; role: string }>(
+      `SELECT id::text, account_id::text, role FROM profiles WHERE id = $1 LIMIT 1`,
+      [user.id],
+    )
+    const profile = profileResult.rows[0]
 
-    if (profileError || !profile) {
+    if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
@@ -69,48 +63,73 @@ export async function POST(request: Request) {
     }
 
     // Locate endpoint within the admin's account
-    const endpointQuery = admin
-      .from("endpoints")
-      .select("id, account_id, hostname, os, agent_id, mac_address, ip_address")
-      .eq("account_id", profile.account_id)
-      .limit(1)
+    const endpointResult = endpoint_id
+      ? await query<{
+          id: string
+          account_id: string
+          hostname: string | null
+          os: string | null
+          agent_id: string | null
+          mac_address: string | null
+          ip_address: string | null
+        }>(
+          `
+            SELECT id::text, account_id::text, hostname, os, agent_id, mac_address, ip_address
+            FROM endpoints
+            WHERE account_id = $1 AND id = $2
+            LIMIT 1
+          `,
+          [profile.account_id, endpoint_id],
+        )
+      : await query<{
+          id: string
+          account_id: string
+          hostname: string | null
+          os: string | null
+          agent_id: string | null
+          mac_address: string | null
+          ip_address: string | null
+        }>(
+          `
+            SELECT id::text, account_id::text, hostname, os, agent_id, mac_address, ip_address
+            FROM endpoints
+            WHERE account_id = $1 AND agent_id = $2
+            LIMIT 1
+          `,
+          [profile.account_id, agent_id],
+        )
+    const endpoint = endpointResult.rows[0]
 
-    if (endpoint_id) {
-      endpointQuery.eq("id", endpoint_id)
-    }
-
-    if (!endpoint_id && agent_id) {
-      endpointQuery.eq("agent_id", agent_id)
-    }
-
-    const { data: endpoint, error: endpointError } = await endpointQuery.maybeSingle()
-
-    if (endpointError || !endpoint) {
+    if (!endpoint) {
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     // Delete endpoint (triggers will decrement used_licenses)
-    const { error: deleteError } = await admin.from("endpoints").delete().eq("id", endpoint.id)
-
-    if (deleteError) {
+    try {
+      await query(`DELETE FROM endpoints WHERE id = $1`, [endpoint.id])
+    } catch (deleteError) {
       console.error("Failed to delete endpoint:", deleteError)
       return NextResponse.json({ error: "Failed to delete endpoint" }, { status: 500 })
     }
 
     // Audit log
-    await admin.from("audit_logs").insert({
-      account_id: endpoint.account_id,
-      user_id: user.id,
-      action: "delete",
-      entity_type: "endpoint",
-      entity_id: endpoint.id,
-      details: {
-        hostname: endpoint.hostname,
-        agent_id: endpoint.agent_id,
-        mac_address: endpoint.mac_address,
-        ip_address: endpoint.ip_address,
-      },
-    })
+    await query(
+      `
+        INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details)
+        VALUES ($1, $2, 'delete', 'endpoint', $3, $4::jsonb)
+      `,
+      [
+        endpoint.account_id,
+        user.id,
+        endpoint.id,
+        JSON.stringify({
+          hostname: endpoint.hostname,
+          agent_id: endpoint.agent_id,
+          mac_address: endpoint.mac_address,
+          ip_address: endpoint.ip_address,
+        }),
+      ],
+    )
 
     const uninstall = getUninstallCommands(os || endpoint.os || "")
 

@@ -1,6 +1,6 @@
 # DB Communication Matrix (P0)
 
-This matrix documents how each major API route communicates with Supabase tables.
+This matrix documents how each major API route communicates with PostgreSQL tables in AWS RDS.
 
 ## API ↔ DB Mapping
 

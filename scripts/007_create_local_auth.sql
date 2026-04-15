@@ -1,4 +1,4 @@
--- Local auth replacement for Supabase auth
+-- Local auth replacement for legacy external auth
 -- Run against RDS database after schema restore.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS app_sessions (
 CREATE INDEX IF NOT EXISTS idx_app_sessions_user_id ON app_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_expires_at ON app_sessions(expires_at);
 
--- 3) Remove Supabase auth FK on profiles and attach to app_users.
+-- 3) Remove legacy auth FK on profiles and attach to app_users.
 DO $$
 DECLARE
   con_name TEXT;

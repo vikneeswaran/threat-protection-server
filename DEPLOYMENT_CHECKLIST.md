@@ -20,7 +20,7 @@ Reference documents:
 ### Phase 1: Database (5 minutes)
 
 1. **Apply Database Migration:**
-   - Go to Supabase Dashboard → SQL Editor
+   - Connect to AWS RDS PostgreSQL with `psql`
    - Run contents of `scripts/006_add_threat_scan_tables.sql`
    - Verify all tables and columns created
 
@@ -49,12 +49,12 @@ Reference documents:
 2. **Files Modified:**
    - `app/api/agent/threat/route.ts` - Updated threat field handling
 
-3. **Deploy to Vercel:**
+3. **Deploy to AWS:**
    ```bash
    git add .
    git commit -m "feat: implement threat detection with remote scan commands"
    git push origin main
-   # Vercel auto-deploys
+   # GitHub Actions auto-deploys to AWS EC2
    ```
 
 4. **Verify Deployment:**
@@ -319,8 +319,8 @@ ORDER BY last_seen DESC;
 
 ## Support Contacts
 
-- **Database Issues:** Check Supabase logs
-- **API Issues:** Check Vercel logs
+- **Database Issues:** Check PostgreSQL logs and AWS RDS metrics
+- **API Issues:** Check PM2 logs, nginx logs, and GitHub Actions output
 - **Agent Issues:** Check agent.log on endpoint
 - **Threats Not Reporting:** Verify endpoint_id in config.json
 

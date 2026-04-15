@@ -11,7 +11,7 @@ Complete system architecture, component design, and threat detection integration
 The Kuamini Threat Protection Agent is a comprehensive security solution with:
 - **Modern web-based management console** (Next.js + React)
 - **Distributed endpoint security agents** (Python + system APIs)
-- **Cloud-hosted backend** (Vercel + Supabase)
+- **Cloud-hosted backend** (AWS EC2 + RDS PostgreSQL)
 - **Real-time threat detection & response** (integrated optional module)
 - **Enterprise-grade security** with minimal resource footprint
 
@@ -25,7 +25,7 @@ The system follows a **client-server architecture** with a cloud-hosted manageme
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Kuamini Management Console                  │
 │                      (Web Application)                          │
-│                    Hosted on Vercel Platform                    │
+│                    Hosted on AWS EC2 with nginx                    │
 └─────────────────────────────────────────────────────────────────┘
                             ↓↑
               ┌─────────────────────────────┐
@@ -34,8 +34,8 @@ The system follows a **client-server architecture** with a cloud-hosted manageme
               └─────────────────────────────┘
                             ↓↑
               ┌─────────────────────────────┐
-              │  Supabase Backend           │
-              │ (PostgreSQL Database)       │
+              │  AWS RDS PostgreSQL         │
+              │ (Managed Database)          │
               └─────────────────────────────┘
                             ↓↑
     ┌──────────────────────────────────────────────────┐
@@ -124,11 +124,10 @@ components/
 lib/
 ├── config.ts                   # Configuration (API URLs, agent settings)
 ├── utils.ts                    # Utility functions
-├── supabase/
-│   ├── admin.ts               # Supabase admin client
-│   ├── client.ts              # Supabase client-side client
-│   ├── proxy.ts               # Proxy client
-│   └── server.ts              # Server-side client
+├── db.ts                       # AWS RDS PostgreSQL connection pool
+├── auth/
+│   ├── session.ts             # Local session management
+│   └── console.ts             # Console auth helpers
 └── types/                      # TypeScript type definitions
 
 public/
@@ -149,22 +148,21 @@ styles/
 - ESM module system
 
 **Deployment:**
-- **Platform**: Vercel
-- **Configuration**: vercel.json
+- **Platform**: AWS EC2
+- **Configuration**: GitHub Actions workflow
 - **Build Command**: `pnpm run build`
 - **Install Command**: `pnpm install --frozen-lockfile`
 - **Start Command**: `next start`
 
 **Environment Variables:**
 ```
-NEXT_PUBLIC_SUPABASE_URL=<url>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<key>
-NEXT_PUBLIC_SUPABASE_REDIRECT_URL=<url>
-NEXT_PUBLIC_API_BASE_URL=https://kuaminisystems.com/api/agent
-SUPABASE_SERVICE_ROLE_KEY=<key>
+DATABASE_URL=postgres://user:password@aws-rds-endpoint:5432/threat_db
+DATABASE_SSL=true|false
+GITHUB_TOKEN=<token>
 INSTALLER_TOKEN_SECRET=<secret>
 DEBUG_REGISTRATION=true|false
 NODE_ENV=production|development
+AWS_REGION=<region>
 ```
 
 ---
@@ -176,18 +174,18 @@ NODE_ENV=production|development
 | Component | Technology | Version |
 |-----------|-----------|---------|
 | **Framework** | Next.js API Routes | 16.0.7 |
-| **Runtime** | Node.js (Serverless on Vercel) | 20.x+ |
+| **Runtime** | Node.js (EC2 with PM2) | 20.x+ |
 | **Language** | TypeScript | 5.x |
-| **Database Client** | Supabase JS Client & Admin SDK | Latest |
-| **Authentication** | Supabase Auth | Built-in |
+| **Database Client** | PostgreSQL pg driver | Latest |
+| **Authentication** | Local session (PostgreSQL backed) | Custom |
 | **Validation** | Zod | 3.25.76 |
 
 ### 3.2 Backend Architecture Pattern
 
-The backend follows a **serverless architecture** with Next.js API Routes deployed on Vercel:
+The backend runs as a stateful service with Next.js API Routes deployed on AWS EC2:
 
 ```
-API Request → Vercel Edge Network → Next.js Route Handler → Supabase
+API Request → nginx (reverse proxy) → Next.js Route Handler (PM2) → AWS RDS PostgreSQL
 ```
 
 ### 3.3 API Structure
@@ -224,10 +222,10 @@ GET    /api/health                  # API health & env check
 **Key Features:**
 - **Request Handling**: JSON body parsing with error recovery
 - **Token Validation**: JWT signature verification with HMAC-SHA256
-- **Admin Access**: Uses Supabase service role for elevated privileges
+- **Database Access**: Direct AWS RDS PostgreSQL queries via pg driver
 - **Error Handling**: Detailed error responses (debug mode optional)
 - **Type Safety**: Full TypeScript support
-- **Concurrent Requests**: Stateless serverless functions
+- **Session Management**: Local session with httpOnly cookie storage
 
 **Example: Agent Registration Flow**
 
@@ -238,7 +236,7 @@ GET    /api/health                  # API health & env check
 3. Verify registration token (JWT or base64 format)
 4. Decode token to get account_id
 5. Check for existing endpoint (by agent_id or hostname+mac)
-6. Insert/Update endpoint record in Supabase
+6. Insert/Update endpoint record in AWS RDS PostgreSQL
 7. Log audit trail
 8. Return endpoint_id
 ```
@@ -276,10 +274,10 @@ GET    /api/health                  # API health & env check
 
 | Component | Technology | Details |
 |-----------|-----------|---------|
-| **DBMS** | PostgreSQL | Managed via Supabase |
-| **Hosting** | Supabase Cloud | Auto-scaling, backups, replication |
-| **Authentication** | Supabase Auth | Row-level security (RLS) |
-| **Real-time** | Supabase Realtime | Websocket subscriptions |
+| **DBMS** | PostgreSQL 15+ | AWS RDS with SSL |
+| **Hosting** | AWS RDS | Auto-scaling, automated backups, Multi-AZ |
+| **Connection** | pg driver with pooling | Persistent pool from Node.js EC2 instances |
+| **Query Language** | SQL | Direct SQL queries with parameterized statements |
 
 ### 4.2 Database Schema
 
@@ -360,27 +358,31 @@ CREATE TABLE agent_versions (
 );
 ```
 
-### 4.3 Row-Level Security (RLS)
+### 4.3 Data Isolation & Security
 
-- Accounts can only access their own endpoints
-- Users can only see threats/logs for their account
-- Service role key bypasses RLS (server-side operations)
+- Accounts can only access their own endpoints and data via SQL WHERE clauses
+- Users can only see threats/logs for their account (enforced at API layer)
+- Server-side queries perform privilege checks via session validation
+- All data access is parameterized to prevent SQL injection
 
-### 4.4 Supabase Client Configuration
+### 4.4 Database Query Patterns
 
-**Admin Client** (Server-side, bypasses RLS):
+**Connection Pool** (Server-side, persistent):
 ```typescript
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+import { getPool } from '@/lib/db';
+const pool = getPool();
+const result = await pool.query(
+  'SELECT * FROM endpoints WHERE account_id = $1',
+  [accountId]
 )
 ```
 
-**Public Client** (Client-side, respects RLS):
+**Server Utility** (Helper for common queries):
 ```typescript
-const supabasePublic = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+import { query } from '@/lib/db';
+const result = await query(
+  'SELECT * FROM threats WHERE endpoint_id = $1',
+  [endpointId]
 )
 ```
 
@@ -584,12 +586,12 @@ pyinstaller KuaminiSecurityClient-linux.spec
 │  - Check duplicate endpoints            │
 └──────────────┬──────────────────────────┘
                │
-               │ Supabase Query
+               │ AWS RDS Query
                │ SELECT/INSERT endpoints
                │
                ↓
 ┌──────────────────────────────────────────┐
-│  Supabase PostgreSQL                    │
+│  AWS RDS PostgreSQL                     │
 │  - Create/update endpoint record        │
 │  - Return endpoint_id                   │
 │  - Log audit event                      │
@@ -626,16 +628,16 @@ pyinstaller KuaminiSecurityClient-linux.spec
 │  - Determine severity                   │
 └──────────────┬──────────────────────────┘
                │
-               │ Supabase Mutation
+               │ AWS RDS Mutation
                │ INSERT threats table
                │
                ↓
 ┌──────────────────────────────────────────┐
-│  Supabase PostgreSQL                    │
+│  AWS RDS PostgreSQL                     │
 │  - Store threat record                  │
 │  - Update endpoint status                │
-│  - Trigger realtime alert               │
 │  - Log audit event                      │
+│  - Trigger webhook notifications        │
 └──────────────┬──────────────────────────┘
                │
                │ Realtime Webhook
@@ -679,16 +681,16 @@ Agent Startup
 |-----------|--------|----------|--------|-----------|
 | Web Browser | Next.js API | HTTPS | REST (JSON) | JSON |
 | Desktop Agent | Next.js API | HTTPS | REST (JSON) | JSON |
-| Next.js API | Supabase | Direct SQL | Supabase Client | SQL/Realtime |
-| Dashboard | Database | WebSocket | Realtime Sub | Events |
-| Admin Console | Supabase Auth | HTTPS | JWT | Token |
+| Next.js API | AWS RDS | Direct SQL | pg driver | SQL |
+| Dashboard | Console | Fetch API | REST + Session | JSON |
+| Admin Console | Local DB | Session | Cookie + Query | Data |
 
 ### 7.2 Authentication & Authorization
 
 **Frontend Authentication:**
-- Supabase Auth (email/password)
-- JWT tokens stored in browser
-- Row-level security on database
+- Local session with email/password
+- httpOnly cookie (`kta_session`) for session ID
+- Server-side permission checks for data access
 
 **Agent Authentication:**
 - Registration token (JWT or base64)
@@ -718,16 +720,16 @@ Local Machine
 **Local Development Servers:**
 - Frontend: `localhost:3000` (Next.js dev server)
 - API: `localhost:3000/api/*` (built into Next.js)
-- Database: Supabase remote (cloud instance)
+- Database: Local PostgreSQL or AWS RDS (dev instance)
 
 ### 8.2 Production Environment
 
 ```
-├─ Frontend & API: Vercel (Serverless)
-├─ Database: Supabase (PostgreSQL on AWS)
+├─ Frontend & API: AWS EC2 with nginx
+├─ Database: AWS RDS PostgreSQL
 ├─ Domain: kuaminisystems.com
-├─ CDN: Vercel Edge Network
-└─ Storage: Supabase Object Storage (for installers)
+├─ Reverse Proxy: nginx with SSL/TLS
+└─ Storage: S3 for installers and backups
 ```
 
 ### 8.3 Deployment Pipeline
@@ -737,17 +739,20 @@ Local Machine
    ↓
 2. GitHub/Git Hook
    ↓
-3. Vercel Auto-Deploy
+3. GitHub Actions Auto-Deploy to AWS
+   ├─ Install: pnpm install --frozen-lockfile
+   ├─ Build: pnpm run build
+3. GitHub Actions Auto-Deploy to AWS
    ├─ Install: pnpm install --frozen-lockfile
    ├─ Build: pnpm run build
    ├─ Type Check: tsc --noEmit
    └─ Lint: eslint .
    ↓
-4. Deployment
-   ├─ Next.js compilation
-   ├─ API route bundling
-   ├─ Static asset optimization
-   └─ Deploy to edge network
+4. Deployment to AWS EC2
+   ├─ Transfer build artifacts via SSH/SCP
+   ├─ Run database migrations
+   ├─ Restart PM2 process
+   └─ Verify nginx routing
    ↓
 5. Live on Production
    └─ https://kuaminisystems.com
@@ -755,20 +760,23 @@ Local Machine
 
 ### 8.4 Environment Variables
 
-**Frontend (.env.local):**
+**Frontend & Backend (.env.production):**
 ```
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhb...
-NEXT_PUBLIC_SUPABASE_REDIRECT_URL=https://kuaminisystems.com
-NEXT_PUBLIC_API_BASE_URL=https://kuaminisystems.com/api/agent
-```
-
-**Backend (.env.local):**
-```
-SUPABASE_SERVICE_ROLE_KEY=eyJhb...
+DATABASE_URL=postgres://user:password@aws-rds.amazonaws.com:5432/threat_db
+DATABASE_SSL=true
+GITHUB_TOKEN=ghp_xxxx
 INSTALLER_TOKEN_SECRET=your-secret-key
 DEBUG_REGISTRATION=false
 NODE_ENV=production
+AWS_REGION=us-east-1
+```
+
+**Session & Security (.env.production):**
+```
+SESSION_SECRET=your-session-secret
+COOKIE_SECURE=true
+COOKIE_HTTPONLY=true
+COOKIE_SAMESITE=strict
 ```
 
 ---
@@ -786,18 +794,20 @@ NODE_ENV=production
 - **Linting**: ESLint 9.x, TypeScript ESLint
 
 ### 9.2 Backend Stack
-- **Runtime**: Node.js 20+ (Serverless on Vercel)
+- **Runtime**: Node.js 20+ (EC2 with PM2)
 - **Framework**: Next.js 16.0.7 (API Routes)
 - **Language**: TypeScript
-- **Database ORM**: Supabase Client
+- **Database Client**: PostgreSQL pg driver
+- **Connection Pool**: pg pool
 - **Validation**: Zod
-- **Authentication**: Supabase Auth with JWT
+- **Authentication**: Local session (PostgreSQL backed)
 
 ### 9.3 Database Stack
 - **DBMS**: PostgreSQL 15+
-- **Provider**: Supabase
-- **Client**: Supabase JS SDK
-- **Features**: RLS, Realtime, Auth, Storage
+- **Hosting**: AWS RDS (Multi-AZ)
+- **Client**: PostgreSQL pg driver
+- **Connection Pool**: pg pool with 20 connections
+- **Features**: SSL/TLS, automated backups, automated failover
 
 ### 9.4 Desktop Agent Stack
 - **Language**: Python 3.x
@@ -808,11 +818,13 @@ NODE_ENV=production
 - **Supported OS**: Windows, macOS, Linux
 
 ### 9.5 DevOps Stack
-- **Hosting**: Vercel
-- **Database**: Supabase Cloud
-- **Version Control**: Git
-- **CI/CD**: Vercel Auto-Deploy
-- **Monitoring**: Vercel Analytics
+- **Hosting**: AWS EC2 (Ubuntu 24.04 LTS)
+- **Database**: AWS RDS PostgreSQL
+- **Version Control**: GitHub
+- **CI/CD**: GitHub Actions
+- **Process Manager**: PM2
+- **Reverse Proxy**: nginx with SSL/TLS
+- **Monitoring**: CloudWatch, custom logging
 
 ---
 
@@ -831,22 +843,22 @@ NODE_ENV=production
 │  Application Security                  │
 │  - JWT token validation                │
 │  - HMAC-SHA256 signature verification  │
-│  - Rate limiting (Vercel)              │
+│  - Rate limiting (application-level)   │
 │  - Input validation (Zod)              │
 └────────────────────────────────────────┘
          ↓
 ┌────────────────────────────────────────┐
 │  Database Security                     │
-│  - Row-Level Security (RLS)            │
-│  - Column-level encryption             │
-│  - Audit logging                       │
-│  - Service role separation             │
+│  - Application-level access control    │
+│  - SQL parameterized queries           │
+│  - Audit logging to PostgreSQL         │
+│  - Connection pooling with SSL/TLS     │
 └────────────────────────────────────────┘
          ↓
 ┌────────────────────────────────────────┐
 │  Agent Security                        │
 │  - Token-based authentication          │
-│  - CA bundle verification              │
+│  - Certificate verification            │
 │  - Configuration encryption            │
 │  - Singleton enforcement               │
 └────────────────────────────────────────┘
@@ -855,7 +867,7 @@ NODE_ENV=production
 ### 10.2 Secret Management
 
 - API keys in environment variables
-- Database credentials in Supabase vault
+- Database credentials in AWS Secrets Manager or encrypted .env
 - Token secret for installer tokens
 - Never committed to git (via .gitignore)
 
@@ -913,17 +925,17 @@ Response: { success: boolean, threat_id: uuid }
 
 - **Next.js Image Optimization**: Custom configuration
 - **Code Splitting**: Automatic route-based splitting
-- **Caching**: Vercel edge caching for static assets
+- **Caching**: nginx caching for static assets
 - **TypeScript**: Strict mode for compile-time safety
 - **Tree Shaking**: Unused code elimination via ESBuild
 
 ### 12.2 Backend Optimizations
 
-- **Serverless**: Automatic scaling with Vercel
+- **Scalability**: Horizontal scaling with additional EC2 instances and AWS load balancer
 - **Database Indexing**: On account_id, endpoint_id, status
-- **Connection Pooling**: Supabase managed
-- **Realtime Subscriptions**: Efficient websocket connections
-- **RLS Policies**: Efficient row filtering
+- **Connection Pooling**: pg pool with 20 connection limit per instance
+- **Query Optimization**: Parameterized statements, prepared statements
+- **Caching**: nginx response caching for static endpoints
 
 ### 12.3 Agent Optimizations
 
@@ -938,20 +950,20 @@ Response: { success: boolean, threat_id: uuid }
 
 ### 13.1 Horizontal Scaling
 
-**Frontend:**
-- Vercel auto-scaling across global regions
-- CDN edge caching for static assets
-- Automatic load balancing
+**Frontend & API:**
+- AWS Auto Scaling across multiple EC2 instances
+- nginx load balancing with health checks
+- Static assets cached by nginx
 
 **Backend:**
-- Serverless functions scale automatically
-- Each request is independent and stateless
-- Database connection pooling via Supabase
+- PM2 cluster mode for multi-process scaling
+- Multiple EC2 instances behind AWS ELB/ALB
+- Each request validated against session/token
 
 **Database:**
-- PostgreSQL managed by Supabase
-- Automatic replication and failover
-- Read replicas for reporting queries
+- AWS RDS PostgreSQL with Multi-AZ deployment
+- Automated backups and failover
+- Read replicas for analytics queries (optional)
 
 **Agents:**
 - Distributed client architecture
@@ -960,7 +972,7 @@ Response: { success: boolean, threat_id: uuid }
 
 ### 13.2 Performance Metrics
 
-- **Time to First Byte**: <100ms (Vercel Edge)
+- **Time to First Byte**: <100ms (nginx cached)
 - **Database Query**: <50ms (indexed queries)
 - **Agent Heartbeat**: <1s (HTTPS)
 - **Threat Detection**: Real-time (within scan interval)
@@ -971,10 +983,11 @@ Response: { success: boolean, threat_id: uuid }
 
 ### 14.1 Third-Party Services
 
-- **Supabase**: Database, Auth, Storage
-- **Vercel**: Hosting, Deployment, Analytics
+- **AWS RDS**: Database hosting and management
+- **AWS EC2**: Compute and hosting
+- **GitHub**: Version control and CI/CD
 - **Google Fonts**: Geist font family (via next/font)
-- **Vercel Analytics**: Usage tracking
+- **S3**: Installer and backup storage
 
 ### 14.2 External APIs
 
@@ -1044,7 +1057,7 @@ npm run validate
 
 - Agent updates require manual installation
 - No peer-to-peer agent communication
-- Single Supabase deployment region
+- Single AWS region deployment (can be expanded)
 - Limited threat intelligence integration
 
 ### 16.2 Planned Enhancements
@@ -1052,7 +1065,7 @@ npm run validate
 - Automatic agent updates via API
 - Advanced threat analytics dashboard
 - Machine learning threat detection
-- Multi-region Supabase deployments
+- Multi-region AWS deployments
 - Agent clustering for large deployments
 - Mobile management app (React Native)
 
@@ -1061,8 +1074,9 @@ npm run validate
 ## 17. Documentation References
 
 - **Next.js Docs**: https://nextjs.org/docs
-- **Supabase Docs**: https://supabase.com/docs
-- **Vercel Docs**: https://vercel.com/docs
+- **AWS RDS Docs**: https://docs.aws.amazon.com/rds/
+- **AWS EC2 Docs**: https://docs.aws.amazon.com/ec2/
+- **PostgreSQL Docs**: https://www.postgresql.org/docs/
 - **TypeScript Docs**: https://www.typescriptlang.org/docs
 - **Radix UI Docs**: https://www.radix-ui.com/docs
 

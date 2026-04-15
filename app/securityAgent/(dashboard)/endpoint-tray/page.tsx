@@ -1,35 +1,21 @@
 import { EndpointTrayUI } from "@/components/endpoint-tray-ui"
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { requireConsoleContext } from "@/lib/auth/console"
+import { query } from "@/lib/db"
 
 export default async function EndpointTrayPage() {
-  const supabase = await createClient()
+  const { profile } = await requireConsoleContext()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/securityAgent/auth/login")
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*, account:accounts(*)")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (!profile) {
-    redirect("/securityAgent/auth/setup")
-  }
-
-  // Get first endpoint for demo
-  const { data: endpoint } = await supabase
-    .from("endpoints")
-    .select("id, hostname")
-    .eq("account_id", profile.account.id)
-    .limit(1)
-    .maybeSingle()
+  const endpointResult = await query<{ id: string; hostname: string }>(
+    `
+      SELECT id::text, hostname
+      FROM endpoints
+      WHERE account_id = $1
+      ORDER BY created_at ASC
+      LIMIT 1
+    `,
+    [profile.account.id],
+  )
+  const endpoint = endpointResult.rows[0]
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted">

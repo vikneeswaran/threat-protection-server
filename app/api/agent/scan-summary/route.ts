@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { query } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,21 +23,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
-    )
-
     // Get endpoint if not provided
     let resolvedEndpointId = endpoint_id
     if (!resolvedEndpointId) {
-      const { data: endpoint } = await supabaseAdmin
-        .from("endpoints")
-        .select("id")
-        .eq("agent_id", agent_id)
-        .eq("account_id", account_id)
-        .maybeSingle()
+      const endpointResult = await query<{ id: string }>(
+        `SELECT id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
+        [agent_id, account_id],
+      )
+      const endpoint = endpointResult.rows[0]
 
       if (!endpoint) {
         return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
@@ -46,44 +39,42 @@ export async function POST(request: NextRequest) {
     }
 
     // Record the scan summary
-    const { data: scanSummary, error: insertError } = await supabaseAdmin
-      .from("scan_summaries")
-      .insert({
+    const scanSummaryResult = await query<{ id: string }>(
+      `
+        INSERT INTO scan_summaries (
+          account_id, endpoint_id, scan_id, scan_type, start_time, end_time, total_threats, severity_breakdown
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        RETURNING id::text
+      `,
+      [
         account_id,
-        endpoint_id: resolvedEndpointId,
+        resolvedEndpointId,
         scan_id,
         scan_type,
-        start_time: start_time || new Date().toISOString(),
-        end_time: end_time || new Date().toISOString(),
+        start_time || new Date().toISOString(),
+        end_time || new Date().toISOString(),
         total_threats,
-        severity_breakdown: severity_breakdown || {
-          critical: 0,
-          high: 0,
-          medium: 0,
-          low: 0,
-        },
-      })
-      .select("id")
-      .single()
-
-    if (insertError) {
-      console.error("Failed to record scan summary:", insertError)
-      return NextResponse.json({ error: "Failed to record scan summary" }, { status: 500 })
-    }
+        JSON.stringify(
+          severity_breakdown || {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+          },
+        ),
+      ],
+    )
+    const scanSummary = scanSummaryResult.rows[0]
 
     // Log the scan summary
-    await supabaseAdmin.from("audit_logs").insert({
-      account_id,
-      action: "scan_completed",
-      entity_type: "scan",
-      entity_id: scanSummary.id,
-      details: {
-        scan_type,
-        total_threats,
-        endpoint_id: resolvedEndpointId,
-        severity_breakdown,
-      },
-    })
+    await query(
+      `
+        INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details)
+        VALUES ($1, 'scan_completed', 'scan', $2, $3::jsonb)
+      `,
+      [account_id, scanSummary.id, JSON.stringify({ scan_type, total_threats, endpoint_id: resolvedEndpointId, severity_breakdown })],
+    )
 
     console.info(`[SCAN SUMMARY] Recorded scan ${scan_id}: ${total_threats} threats detected (${scan_type})`)
 

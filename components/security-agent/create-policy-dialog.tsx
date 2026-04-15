@@ -20,7 +20,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Plus } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import type { PolicyType } from "@/lib/types/database"
 import { toast } from "sonner"
 
@@ -100,29 +99,17 @@ export function CreatePolicyDialog({ accountId, userId }: CreatePolicyDialogProp
     e.preventDefault()
     setIsLoading(true)
 
-    const supabase = createClient()
-
     try {
-      const { error } = await supabase.from("policies").insert({
-        account_id: accountId,
-        name,
-        description: description || null,
-        type,
-        config: getDefaultConfig(type),
-        is_default: isDefault,
-        created_by: userId,
+      const response = await fetch("/api/console/policies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId, userId, name, description, type, isDefault, config: getDefaultConfig(type) }),
       })
 
-      if (error) {throw error}
-
-      // Create audit log
-      await supabase.from("audit_logs").insert({
-        account_id: accountId,
-        user_id: userId,
-        action: "policy_change",
-        entity_type: "policy",
-        details: { name, type, action: "created" },
-      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to create policy" }))
+        throw new Error(payload.error || "Failed to create policy")
+      }
 
       toast.success("Policy created successfully")
       setOpen(false)

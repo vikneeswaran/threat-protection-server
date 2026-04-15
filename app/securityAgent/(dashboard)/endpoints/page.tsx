@@ -1,9 +1,26 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 import { EndpointsList } from "@/components/security-agent/endpoints-list"
 import { EndpointFilters } from "@/components/security-agent/endpoint-filters"
+import { requireConsoleContext } from "@/lib/auth/console"
+import { query } from "@/lib/db"
 import { withComputedStatuses } from "@/lib/endpoint-status"
+
+type EndpointRow = {
+  id: string
+  account_id: string
+  hostname: string
+  os: "windows" | "macos" | "linux"
+  os_version: string | null
+  agent_version: string | null
+  agent_id: string | null
+  ip_address: string | null
+  mac_address: string | null
+  status: "online" | "offline" | "disconnected"
+  last_seen_at: string | null
+  registered_at: string
+  created_at: string
+  updated_at: string
+}
 
 export default async function EndpointsPage({
   searchParams,
@@ -11,99 +28,81 @@ export default async function EndpointsPage({
   searchParams: Promise<{ status?: string; os?: string; search?: string }>
 }) {
   const params = await searchParams
-  const supabase = await createClient()
+  const { profile } = await requireConsoleContext()
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    redirect("/securityAgent/auth/login")
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("*, account:accounts(*)")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (profileError || !profile) {
-    redirect("/securityAgent/auth/setup")
-  }
-
-  let query = supabase
-    .from("endpoints")
-    .select("*")
-    .eq("account_id", profile.account_id)
-    .order("last_seen_at", { ascending: false, nullsFirst: false })
-
-  if (params.status && params.status !== "all") {
-    query = query.eq("status", params.status)
-  }
+  const whereClauses = ["account_id = $1"]
+  const values: unknown[] = [profile.account.id]
 
   if (params.os && params.os !== "all") {
-    query = query.eq("os", params.os)
+    values.push(params.os)
+    whereClauses.push(`os::text = $${values.length}`)
   }
 
   if (params.search) {
-    query = query.or(`hostname.ilike.%${params.search}%,ip_address.ilike.%${params.search}%`)
+    values.push(`%${params.search}%`)
+    whereClauses.push(`(hostname ILIKE $${values.length} OR ip_address ILIKE $${values.length})`)
   }
 
-  const { data: endpoints, error: endpointsError } = await query
-
-  if (endpointsError) {
-    console.info("[app] Endpoints fetch error:", endpointsError.message)
-  }
+  const endpointsResult = await query<EndpointRow>(
+    `
+      SELECT
+        id::text,
+        account_id::text,
+        hostname,
+        os::text as os,
+        os_version,
+        agent_version,
+        agent_id,
+        ip_address,
+        mac_address,
+        status::text as status,
+        last_seen_at,
+        registered_at,
+        created_at,
+        updated_at
+      FROM endpoints
+      WHERE ${whereClauses.join(" AND ")}
+      ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
+    `,
+    values,
+  )
 
   // Compute actual status based on last_seen_at
-  const endpointsWithComputedStatus = endpoints ? withComputedStatuses(endpoints) : []
+  const endpointsWithComputedStatus = withComputedStatuses(endpointsResult.rows)
 
-  const endpointIds = endpoints?.map((e) => e.id) || []
-  let threatCounts: Record<string, number> = {}
+  const filteredEndpoints =
+    params.status && params.status !== "all"
+      ? endpointsWithComputedStatus.filter((endpoint) => endpoint.computed_status === params.status)
+      : endpointsWithComputedStatus
 
-  if (endpointIds.length > 0) {
-    const { data: threats, error: threatsError } = await supabase
-      .from("threats")
-      .select("endpoint_id")
-      .in("endpoint_id", endpointIds)
-      .eq("status", "detected")
+  const threatCountsResult = await query<{ endpoint_id: string; threat_count: string }>(
+    `
+      SELECT endpoint_id::text, COUNT(*)::text as threat_count
+      FROM threats
+      WHERE account_id = $1 AND status = 'detected'
+      GROUP BY endpoint_id
+    `,
+    [profile.account.id],
+  )
 
-    if (threatsError) {
-      console.info("[app] Threats fetch error:", threatsError.message)
-    }
+  const threatCounts = threatCountsResult.rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.endpoint_id] = Number(row.threat_count)
+    return acc
+  }, {})
 
-    if (threats) {
-      threatCounts = threats.reduce(
-        (acc, threat) => {
-          acc[threat.endpoint_id] = (acc[threat.endpoint_id] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      )
-    }
-  }
-
-  const endpointsWithThreats = endpointsWithComputedStatus.map((endpoint) => ({
+  const endpointsWithThreats = filteredEndpoints.map((endpoint) => ({
     ...endpoint,
     activeThreats: threatCounts[endpoint.id] || 0,
   }))
 
-  const { data: allEndpoints } = await supabase
-    .from("endpoints")
-    .select("status, os, last_seen_at")
-    .eq("account_id", profile.account_id)
-
-  // Compute stats with real-time status
-  const allWithComputedStatus = allEndpoints ? withComputedStatuses(allEndpoints) : []
   const stats = {
-    total: allWithComputedStatus.length,
-    online: allWithComputedStatus.filter((e) => e.computed_status === "online").length,
-    offline: allWithComputedStatus.filter((e) => e.computed_status === "offline").length,
-    disconnected: allWithComputedStatus.filter((e) => e.computed_status === "disconnected").length,
-    windows: allWithComputedStatus.filter((e) => e.os === "windows").length,
-    macos: allWithComputedStatus.filter((e) => e.os === "macos").length,
-    linux: allWithComputedStatus.filter((e) => e.os === "linux").length,
+    total: endpointsWithComputedStatus.length,
+    online: endpointsWithComputedStatus.filter((e) => e.computed_status === "online").length,
+    offline: endpointsWithComputedStatus.filter((e) => e.computed_status === "offline").length,
+    disconnected: endpointsWithComputedStatus.filter((e) => e.computed_status === "disconnected").length,
+    windows: endpointsWithComputedStatus.filter((e) => e.os === "windows").length,
+    macos: endpointsWithComputedStatus.filter((e) => e.os === "macos").length,
+    linux: endpointsWithComputedStatus.filter((e) => e.os === "linux").length,
   }
 
   return (

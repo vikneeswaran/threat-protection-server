@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { query } from "@/lib/db"
-import { createSession } from "@/lib/auth/session"
+import { generateVerificationToken, getVerificationEmailTemplate, getVerificationEmailPlainText } from "@/lib/email/verification"
+import { sendVerificationEmail } from "@/lib/email/send"
 
 type LicenseTierRow = { id: string }
 
@@ -37,11 +38,12 @@ export async function POST(request: Request) {
 
     const passwordHash = await bcrypt.hash(password, 12)
 
+    // Create user with email_verified = FALSE
     const created = await query<{ user_id: string }>(
       `
       WITH created_user AS (
         INSERT INTO app_users (email, password_hash, full_name, email_verified, is_active)
-        VALUES ($1, $2, $3, TRUE, TRUE)
+        VALUES ($1, $2, $3, FALSE, TRUE)
         RETURNING id
       ),
       created_account AS (
@@ -62,9 +64,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to create account" }, { status: 500 })
     }
 
-    await createSession(userId)
+    // Generate verification token
+    const { token, tokenHash } = generateVerificationToken()
 
-    return NextResponse.json({ ok: true })
+    // Store token hash in database with 24-hour expiry
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    await query(
+      `
+      INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+      VALUES ($1, $2, $3)
+      `,
+      [userId, tokenHash, expiresAt]
+    )
+
+    // Build verification link
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const verificationLink = `${baseUrl}/securityAgent/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`
+
+    // Send verification email
+    const htmlTemplate = getVerificationEmailTemplate(verificationLink, fullName, organizationName)
+    const textTemplate = getVerificationEmailPlainText(verificationLink, fullName, organizationName)
+
+    await sendVerificationEmail(email, fullName, organizationName, verificationLink, htmlTemplate, textTemplate)
+
+    // Return success without creating session
+    return NextResponse.json({
+      ok: true,
+      message: "Account created. Please check your email to verify your address.",
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error("Local register error:", msg)

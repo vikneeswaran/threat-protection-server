@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Copy, Check, Download, ArrowLeft, AlertCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { config } from "@/lib/config"
 
 export default function ScriptPage() {
@@ -31,32 +30,19 @@ export default function ScriptPage() {
 
       if (!token) {
         try {
-          const supabase = createBrowserClient()
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
+          const meResponse = await fetch("/api/auth/local/me", { credentials: "include" })
+          const mePayload = await meResponse.json().catch(() => ({ user: null }))
+          const user = mePayload.user
 
-          if (!user) {
+          if (!meResponse.ok || !user) {
             setError("You must be logged in to generate installer scripts")
             setLoading(false)
             return
           }
 
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("account_id, account:accounts(id, name)")
-            .eq("id", user.id)
-            .maybeSingle()
-
-          if (!profile || !profile.account) {
-            setError("Could not find your account information")
-            setLoading(false)
-            return
-          }
-
           tokenData = {
-            accountId: (profile.account as { id: string; name: string }).id,
-            accountName: (profile.account as { id: string; name: string }).name,
+            accountId: user.account_id,
+            accountName: user.account_name || "Kuamini Account",
           }
           token = btoa(
             JSON.stringify({

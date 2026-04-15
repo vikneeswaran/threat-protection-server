@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-
-const supabaseAdmin = createAdminClient()
+import { query } from "@/lib/db"
 
 /**
  * POST /api/agent/heartbeat
@@ -40,11 +38,11 @@ export async function POST(request: NextRequest) {
 
     // If only agent_id provided, look up the endpoint
     if (!endpoint_id && agent_id) {
-      const { data: foundEndpoint } = await supabaseAdmin
-        .from("endpoints")
-        .select("id")
-        .eq("agent_id", agent_id)
-        .maybeSingle()
+      const foundEndpointResult = await query<{ id: string }>(
+        `SELECT id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+        [agent_id],
+      )
+      const foundEndpoint = foundEndpointResult.rows[0]
 
       if (!foundEndpoint) {
         return NextResponse.json({ error: "Endpoint not found for agent_id" }, { status: 404 })
@@ -54,39 +52,51 @@ export async function POST(request: NextRequest) {
     }
 
     // Update endpoint status
-    const { data: endpoint, error } = await supabaseAdmin
-      .from("endpoints")
-      .update({
-        status: status || "online",
-        last_seen_at: new Date().toISOString(),
-        agent_version,
-        ip_address,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", endpoint_id)
-      .select("*, account:accounts(id)")
-      .single()
+    const endpointResult = await query<{ id: string; account_id: string }>(
+      `
+        UPDATE endpoints
+        SET status = $1,
+            last_seen_at = NOW(),
+            agent_version = COALESCE($2, agent_version),
+            ip_address = COALESCE($3, ip_address),
+            updated_at = NOW()
+        WHERE id = $4
+        RETURNING id::text, account_id::text
+      `,
+      [status || "online", agent_version || null, ip_address || null, endpoint_id],
+    )
+    const endpoint = endpointResult.rows[0]
 
-    if (error || !endpoint) {
+    if (!endpoint) {
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     // Fetch policies assigned to this endpoint
-    const { data: policies } = await supabaseAdmin
-      .from("endpoint_policies")
-      .select("policy:policies(*)")
-      .eq("endpoint_id", endpoint_id)
+    const assignedPoliciesResult = await query<{ policy: Record<string, unknown> }>(
+      `
+        SELECT row_to_json(p.*) AS policy
+        FROM endpoint_policies ep
+        JOIN policies p ON p.id = ep.policy_id
+        WHERE ep.endpoint_id = $1
+      `,
+      [endpoint_id],
+    )
 
     // Also fetch account-level default policies
-    const { data: defaultPolicies } = await supabaseAdmin
-      .from("policies")
-      .select("*")
-      .eq("account_id", endpoint.account.id)
-      .eq("is_default", true)
-      .eq("is_active", true)
+    const defaultPoliciesResult = await query<Record<string, unknown>>(
+      `
+        SELECT row_to_json(p.*) AS policy
+        FROM policies p
+        WHERE p.account_id = $1 AND p.is_default = TRUE AND p.is_active = TRUE
+      `,
+      [endpoint.account_id],
+    )
 
-    const allPolicies = [...(policies?.map((p) => p.policy) || []), ...(defaultPolicies || [])].filter(
-      (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i,
+    const allPolicies = [
+      ...assignedPoliciesResult.rows.map((row) => row.policy),
+      ...defaultPoliciesResult.rows.map((row) => row.policy),
+    ].filter(
+      (p, i, arr) => p && arr.findIndex((x) => x && x.id === p.id) === i,
     )
 
     return NextResponse.json({

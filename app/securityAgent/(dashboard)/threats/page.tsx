@@ -1,9 +1,30 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 import { ThreatsList } from "@/components/security-agent/threats-list"
 import { ThreatFilters } from "@/components/security-agent/threat-filters"
 import { ThreatStats } from "@/components/security-agent/threat-stats"
+import { requireConsoleContext } from "@/lib/auth/console"
+import { query } from "@/lib/db"
+
+type ThreatRow = {
+  id: string
+  account_id: string
+  endpoint_id: string
+  name: string
+  description: string | null
+  severity: "critical" | "high" | "medium" | "low" | "info"
+  status: "detected" | "quarantined" | "killed" | "allowed" | "resolved"
+  file_path: string | null
+  file_hash: string | null
+  process_name: string | null
+  detection_engine: string | null
+  detected_at: string
+  resolved_at: string | null
+  resolved_by: string | null
+  created_at: string
+  updated_at: string
+  endpoint_hostname: string | null
+  endpoint_os: "windows" | "macos" | "linux" | null
+}
 
 export default async function ThreatsPage({
   searchParams,
@@ -11,68 +32,80 @@ export default async function ThreatsPage({
   searchParams: Promise<{ severity?: string; status?: string; search?: string }>
 }) {
   const params = await searchParams
-  const supabase = await createClient()
+  const { user, profile } = await requireConsoleContext()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/securityAgent/auth/login")
-  }
-
-  // Get user profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*, account:accounts(*)")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (!profile) {
-    redirect("/securityAgent/auth/setup")
-  }
-
-  // Build query with filters
-  let query = supabase
-    .from("threats")
-    .select(`
-      *,
-      endpoint:endpoints(hostname, os)
-    `)
-    .eq("account_id", profile.account.id)
-    .order("detected_at", { ascending: false })
+  const whereClauses = ["t.account_id = $1"]
+  const values: unknown[] = [profile.account.id]
 
   if (params.severity && params.severity !== "all") {
-    query = query.eq("severity", params.severity)
+    values.push(params.severity)
+    whereClauses.push(`t.severity::text = $${values.length}`)
   }
 
   if (params.status && params.status !== "all") {
-    query = query.eq("status", params.status)
+    values.push(params.status)
+    whereClauses.push(`t.status::text = $${values.length}`)
   }
 
   if (params.search) {
-    query = query.or(`name.ilike.%${params.search}%,file_path.ilike.%${params.search}%`)
+    values.push(`%${params.search}%`)
+    whereClauses.push(`(t.name ILIKE $${values.length} OR t.file_path ILIKE $${values.length})`)
   }
 
-  const { data: threats } = await query.limit(100)
+  const threatsResult = await query<ThreatRow>(
+    `
+      SELECT
+        t.id::text,
+        t.account_id::text,
+        t.endpoint_id::text,
+        t.name,
+        t.description,
+        t.severity::text as severity,
+        t.status::text as status,
+        t.file_path,
+        t.file_hash,
+        t.process_name,
+        t.detection_engine,
+        t.detected_at,
+        t.resolved_at,
+        t.resolved_by::text,
+        t.created_at,
+        t.updated_at,
+        e.hostname as endpoint_hostname,
+        e.os::text as endpoint_os
+      FROM threats t
+      LEFT JOIN endpoints e ON e.id = t.endpoint_id
+      WHERE ${whereClauses.join(" AND ")}
+      ORDER BY t.detected_at DESC
+      LIMIT 100
+    `,
+    values,
+  )
 
-  // Get stats for all threats
-  const { data: allThreats } = await supabase
-    .from("threats")
-    .select("severity, status")
-    .eq("account_id", profile.account.id)
+  const allThreatsResult = await query<Pick<ThreatRow, "severity" | "status">>(
+    `SELECT severity::text as severity, status::text as status FROM threats WHERE account_id = $1`,
+    [profile.account.id],
+  )
+  const allThreats = allThreatsResult.rows
 
   const stats = {
-    total: allThreats?.length || 0,
-    critical: allThreats?.filter((t) => t.severity === "critical").length || 0,
-    high: allThreats?.filter((t) => t.severity === "high").length || 0,
-    medium: allThreats?.filter((t) => t.severity === "medium").length || 0,
-    low: allThreats?.filter((t) => t.severity === "low").length || 0,
-    info: allThreats?.filter((t) => t.severity === "info").length || 0,
-    detected: allThreats?.filter((t) => t.status === "detected").length || 0,
-    quarantined: allThreats?.filter((t) => t.status === "quarantined").length || 0,
-    resolved: allThreats?.filter((t) => t.status === "resolved").length || 0,
+    total: allThreats.length,
+    critical: allThreats.filter((t) => t.severity === "critical").length,
+    high: allThreats.filter((t) => t.severity === "high").length,
+    medium: allThreats.filter((t) => t.severity === "medium").length,
+    low: allThreats.filter((t) => t.severity === "low").length,
+    info: allThreats.filter((t) => t.severity === "info").length,
+    detected: allThreats.filter((t) => t.status === "detected").length,
+    quarantined: allThreats.filter((t) => t.status === "quarantined").length,
+    resolved: allThreats.filter((t) => t.status === "resolved").length,
   }
+
+  const threats = threatsResult.rows.map((threat) => ({
+    ...threat,
+    endpoint: threat.endpoint_hostname
+      ? { hostname: threat.endpoint_hostname, os: threat.endpoint_os ?? "linux" }
+      : null,
+  }))
 
   return (
     <>
@@ -81,7 +114,7 @@ export default async function ThreatsPage({
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <ThreatStats stats={stats} />
         <ThreatFilters stats={stats} currentFilters={params} />
-        <ThreatsList threats={threats || []} userRole={profile.role} userId={user.id} accountId={profile.account.id} />
+        <ThreatsList threats={threats as never[]} userRole={profile.role} userId={user.id} accountId={profile.account.id} />
       </main>
     </>
   )

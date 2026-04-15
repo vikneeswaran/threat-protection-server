@@ -17,7 +17,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Plus } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import type { Account } from "@/lib/types/database"
 import { toast } from "sonner"
 
@@ -54,52 +53,17 @@ export function CreateSubAccountDialog({ parentAccount, userId }: CreateSubAccou
       return
     }
 
-    const supabase = createClient()
-
     try {
-      // Create the sub-account
-      const { data: newAccount, error: accountError } = await supabase
-        .from("accounts")
-        .insert({
-          name,
-          parent_account_id: parentAccount.id,
-          level: parentAccount.level + 1,
-          license_tier_id: parentAccount.license_tier_id,
-          total_licenses: licensesToAllocate,
-          license_expires_at: parentAccount.license_expires_at,
-        })
-        .select()
-        .single()
-
-      if (accountError) {throw accountError}
-
-      // Update parent account's allocated licenses
-      const { error: updateError } = await supabase
-        .from("accounts")
-        .update({
-          allocated_licenses: parentAccount.allocated_licenses + licensesToAllocate,
-        })
-        .eq("id", parentAccount.id)
-
-      if (updateError) {throw updateError}
-
-      // Create license allocation record
-      await supabase.from("license_allocations").insert({
-        from_account_id: parentAccount.id,
-        to_account_id: newAccount.id,
-        quantity: licensesToAllocate,
-        allocated_by: userId,
+      const response = await fetch("/api/console/sub-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, licenses: licensesToAllocate }),
       })
 
-      // Create audit log
-      await supabase.from("audit_logs").insert({
-        account_id: parentAccount.id,
-        user_id: userId,
-        action: "account_create",
-        entity_type: "account",
-        entity_id: newAccount.id,
-        details: { name, licenses: licensesToAllocate },
-      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to create sub-account" }))
+        throw new Error(payload.error || "Failed to create sub-account")
+      }
 
       toast.success("Sub-account created successfully")
       setOpen(false)

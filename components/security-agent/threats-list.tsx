@@ -25,7 +25,6 @@ import { Label } from "@/components/ui/label"
 import type { Threat, Endpoint, UserRole, ThreatActionType } from "@/lib/types/database"
 import { formatDistanceToNow } from "date-fns"
 import { MoreHorizontal, AlertTriangle, Shield, Trash2, CheckCircle, Ban, Eye, RotateCcw } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -69,54 +68,23 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
     if (!actionDialog.threat || !actionDialog.action) {return}
     setIsLoading(true)
 
-    const supabase = createClient()
-
     try {
-      // Update threat status
-      const newStatus =
-        actionDialog.action === "quarantine"
-          ? "quarantined"
-          : actionDialog.action === "kill"
-            ? "killed"
-            : actionDialog.action === "allow"
-              ? "allowed"
-              : actionDialog.action === "restore"
-                ? "detected"
-                : "resolved"
-
-      const { error: threatError } = await supabase
-        .from("threats")
-        .update({
-          status: newStatus,
-          resolved_at: ["resolved", "allowed"].includes(newStatus) ? new Date().toISOString() : null,
-          resolved_by: ["resolved", "allowed"].includes(newStatus) ? userId : null,
-        })
-        .eq("id", actionDialog.threat.id)
-
-      if (threatError) {throw threatError}
-
-      // Record the action
-      await supabase.from("threat_actions").insert({
-        threat_id: actionDialog.threat.id,
-        action: actionDialog.action,
-        performed_by: userId,
-        notes: notes || null,
-      })
-
-      // Audit log
-      await supabase.from("audit_logs").insert({
-        account_id: accountId,
-        user_id: userId,
-        action: "threat_action",
-        entity_type: "threat",
-        entity_id: actionDialog.threat.id,
-        details: {
-          threat_name: actionDialog.threat.name,
+      const response = await fetch("/api/console/threat-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threatId: actionDialog.threat.id,
           action: actionDialog.action,
-          previous_status: actionDialog.threat.status,
-          new_status: newStatus,
-        },
+          notes,
+          accountId,
+          userId,
+        }),
       })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to perform action" }))
+        throw new Error(payload.error || "Failed to perform action")
+      }
 
       toast.success(`Threat ${actionDialog.action}ed successfully`)
       setActionDialog({ open: false, threat: null, action: null })

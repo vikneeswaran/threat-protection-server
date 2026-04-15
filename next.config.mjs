@@ -27,6 +27,8 @@ const nextConfig = {
     buildActivity: false,
     buildActivityPosition: 'bottom-right',
   },
+  // AWS EC2 deployment configuration
+  output: process.env.STANDALONE === 'true' ? 'standalone' : undefined,
 }
 
 export default nextConfig

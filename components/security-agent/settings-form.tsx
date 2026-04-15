@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Lock } from "lucide-react"
 import type { UserRole } from "@/lib/types/database"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -37,26 +36,17 @@ export function SettingsForm({ accountId, settings, lockedSettings, userRole, us
     if (!canEdit) {return}
     setIsLoading(true)
 
-    const supabase = createClient()
-
     try {
-      const { error } = await supabase
-        .from("account_settings")
-        .update({
-          settings: { ...settings, ...formSettings },
-        })
-        .eq("account_id", accountId)
-
-      if (error) {throw error}
-
-      // Audit log
-      await supabase.from("audit_logs").insert({
-        account_id: accountId,
-        user_id: userId,
-        action: "settings_change",
-        entity_type: "settings",
-        details: { changed: formSettings },
+      const response = await fetch("/api/console/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId, userId, settings: { ...settings, ...formSettings } }),
       })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to save settings" }))
+        throw new Error(payload.error || "Failed to save settings")
+      }
 
       toast.success("Settings saved successfully")
       router.refresh()

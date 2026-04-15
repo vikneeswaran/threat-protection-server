@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { query } from "@/lib/db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,38 +14,33 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+    const endpointResult = await query<{ id: string }>(
+      `SELECT id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
+      [agent_id, account_id],
     )
+    const endpoint = endpointResult.rows[0]
 
-    // Find endpoint by agent_id
-    const { data: endpoint, error: endpointError } = await supabaseAdmin
-      .from("endpoints")
-      .select("id")
-      .eq("agent_id", agent_id)
-      .eq("account_id", account_id)
-      .maybeSingle()
-
-    if (endpointError || !endpoint) {
+    if (!endpoint) {
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     // Get pending scan commands
-    const { data: commands, error: commandError } = await supabaseAdmin
-      .from("scan_commands")
-      .select("*")
-      .eq("endpoint_id", endpoint.id)
-      .eq("status", "pending")
-      .order("priority", { ascending: false })
-      .order("created_at", { ascending: true })
-      .limit(1) // Get highest priority pending command
-
-    if (commandError) {
-      console.error("Error fetching scan commands:", commandError)
-      return NextResponse.json({ error: "Failed to fetch commands" }, { status: 500 })
-    }
+    const commandsResult = await query<{
+      id: string
+      scan_type: string
+      priority: number
+      created_at: string
+    }>(
+      `
+        SELECT id::text, scan_type::text, priority, created_at::text
+        FROM scan_commands
+        WHERE endpoint_id = $1 AND status = 'pending'
+        ORDER BY priority DESC, created_at ASC
+        LIMIT 1
+      `,
+      [endpoint.id],
+    )
+    const commands = commandsResult.rows
 
     if (!commands || commands.length === 0) {
       return NextResponse.json({
@@ -57,13 +52,7 @@ export async function GET(request: NextRequest) {
     const command = commands[0]
 
     // Update command status to 'running'
-    await supabaseAdmin
-      .from("scan_commands")
-      .update({
-        status: "running",
-        started_at: new Date().toISOString(),
-      })
-      .eq("id", command.id)
+    await query(`UPDATE scan_commands SET status = 'running', started_at = NOW() WHERE id = $1`, [command.id])
 
     return NextResponse.json({
       has_pending_command: true,
@@ -96,45 +85,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid scan_type" }, { status: 400 })
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
-    )
-
     // Find endpoint if not provided
     let resolvedEndpointId = endpoint_id
     if (!resolvedEndpointId) {
-      const { data: endpoint, error: endpointError } = await supabaseAdmin
-        .from("endpoints")
-        .select("id")
-        .eq("agent_id", agent_id)
-        .eq("account_id", account_id)
-        .maybeSingle()
+      const endpointResult = await query<{ id: string }>(
+        `SELECT id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
+        [agent_id, account_id],
+      )
+      const endpoint = endpointResult.rows[0]
 
-      if (endpointError || !endpoint) {
+      if (!endpoint) {
         return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
       }
       resolvedEndpointId = endpoint.id
     }
 
     // Create new scan command
-    const { data: command, error: commandError } = await supabaseAdmin
-      .from("scan_commands")
-      .insert({
-        account_id,
-        endpoint_id: resolvedEndpointId,
-        scan_type,
-        priority: body.priority || 1,
-        status: "pending",
-      })
-      .select("id")
-      .single()
-
-    if (commandError) {
-      console.error("Failed to create scan command:", commandError)
-      return NextResponse.json({ error: "Failed to create command" }, { status: 500 })
-    }
+    const commandResult = await query<{ id: string }>(
+      `
+        INSERT INTO scan_commands (account_id, endpoint_id, scan_type, priority, status)
+        VALUES ($1, $2, $3, $4, 'pending')
+        RETURNING id::text
+      `,
+      [account_id, resolvedEndpointId, scan_type, body.priority || 1],
+    )
+    const command = commandResult.rows[0]
 
     console.info(`[SCAN COMMAND] Created scan command for endpoint: ${resolvedEndpointId}, type: ${scan_type}`)
 

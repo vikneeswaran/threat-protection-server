@@ -1,47 +1,60 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import { Shield, Mail } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
-import { useToast } from "@/hooks/use-toast"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import Link from "next/link"
+import { Shield, Loader2, CheckCircle, AlertCircle } from "lucide-react"
+
+type VerificationState = "loading" | "success" | "error"
 
 export default function VerifyEmailPage() {
-  const supabase = createClient()
-  const { toast } = useToast()
-  const [email, setEmail] = useState("")
-  const [isSending, setIsSending] = useState(false)
+  const searchParams = useSearchParams()
+  const token = searchParams.get("token")
+  const email = searchParams.get("email")
 
-  const handleResend = async () => {
-    if (!email) {
-      toast({ title: "Email required", description: "Enter your email to resend the link." })
-      return
+  const [state, setState] = useState<VerificationState>("loading")
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    const verifyEmail = async () => {
+      if (!token || !email) {
+        setState("error")
+        setError("Invalid verification link. Missing token or email.")
+        return
+      }
+
+      try {
+        const response = await fetch(
+          `/api/auth/local/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`
+        )
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({ error: "Verification failed" }))
+          setState("error")
+          setError(data.error || "Verification failed. The link may have expired.")
+          return
+        }
+
+        const data = await response.json()
+        setState("success")
+        setMessage(data.message || "Email verified successfully!")
+
+        // Redirect to dashboard after 3 seconds
+        setTimeout(() => {
+          window.location.href = "/securityAgent/dashboard"
+        }, 3000)
+      } catch (err) {
+        console.error("Verification error:", err)
+        setState("error")
+        setError("An error occurred during verification. Please try again.")
+      }
     }
-    setIsSending(true)
-    try {
-      // Supabase resend API: send the sign-up confirmation again
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_SUPABASE_REDIRECT_URL ||
-            "https://kuaminisystems.com/securityAgent/auth/callback",
-        },
-      })
-      if (error) {throw error}
-      toast({ title: "Verification sent", description: "Please check your inbox and spam folder." })
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to resend verification"
-      toast({ title: "Resend failed", description: msg })
-    } finally {
-      setIsSending(false)
-    }
-  }
+
+    verifyEmail()
+  }, [token, email])
 
   return (
     <div className="flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10">
@@ -52,42 +65,96 @@ export default function VerifyEmailPage() {
               <Shield className="h-10 w-10 text-primary" />
               <span className="text-2xl font-bold text-foreground">KuaminiThreatProtect</span>
             </div>
+            <p className="text-sm text-muted-foreground">Email Verification</p>
           </div>
+
           <Card>
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                <Mail className="h-8 w-8 text-primary" />
-              </div>
-              <CardTitle className="text-2xl">Check your email</CardTitle>
-              <CardDescription>We&apos;ve sent you a verification link</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-sm text-muted-foreground mb-4">
-                Please check your email inbox and click the verification link to activate your account. Once verified,
-                you&apos;ll be able to access your security console.
-              </p>
-              <div className="mt-4 grid gap-2 text-left">
-                <Label htmlFor="email">Didn&apos;t get it? Resend to:</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                  <Button type="button" onClick={handleResend} disabled={isSending}>
-                    {isSending ? "Sending..." : "Resend"}
-                  </Button>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Or {" "}
-                  <Link href="/securityAgent/auth/register" className="text-primary underline underline-offset-4">
-                    try again
-                  </Link>
-                </p>
-              </div>
-            </CardContent>
+            {state === "loading" && (
+              <>
+                <CardHeader>
+                  <CardTitle className="text-2xl text-center">Verifying Email</CardTitle>
+                  <CardDescription className="text-center">Please wait while we verify your email address</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="h-12 w-12 text-primary animate-spin" />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Verifying your email and setting up your account...
+                    </p>
+                  </div>
+                </CardContent>
+              </>
+            )}
+
+            {state === "success" && (
+              <>
+                <CardHeader>
+                  <div className="flex justify-center mb-4">
+                    <CheckCircle className="h-12 w-12 text-green-600" />
+                  </div>
+                  <CardTitle className="text-2xl text-center">Email Verified!</CardTitle>
+                  <CardDescription className="text-center">Your account is ready to use</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-4">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <p className="text-sm text-green-800">{message}</p>
+                    </div>
+
+                    <div className="text-center text-sm text-muted-foreground">
+                      <p>You will be redirected to your dashboard in a few seconds...</p>
+                    </div>
+
+                    <Link href="/securityAgent/dashboard">
+                      <Button className="w-full">Go to Dashboard</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </>
+            )}
+
+            {state === "error" && (
+              <>
+                <CardHeader>
+                  <div className="flex justify-center mb-4">
+                    <AlertCircle className="h-12 w-12 text-destructive" />
+                  </div>
+                  <CardTitle className="text-2xl text-center">Verification Failed</CardTitle>
+                  <CardDescription className="text-center">Unable to verify your email</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-4">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-sm text-red-800">{error}</p>
+                    </div>
+
+                    <div className="text-center text-sm text-muted-foreground">
+                      <p>Possible reasons:</p>
+                      <ul className="list-disc list-inside text-left mt-2 text-xs">
+                        <li>The link has expired (valid for 24 hours)</li>
+                        <li>The link was already used</li>
+                        <li>The link is incorrect or invalid</li>
+                      </ul>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Link href="/securityAgent/auth/register">
+                        <Button variant="outline" className="w-full">
+                          Create New Account
+                        </Button>
+                      </Link>
+                      <Link href="/securityAgent/auth/login">
+                        <Button className="w-full">Go to Login</Button>
+                      </Link>
+                    </div>
+
+                    <div className="text-center text-xs text-muted-foreground">
+                      <p>If you need help, please contact our support team.</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </>
+            )}
           </Card>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { query } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,48 +23,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+    await query(
+      `
+        UPDATE scan_commands
+        SET status = $1,
+            result_scan_id = $2,
+            completed_at = NOW(),
+            error_message = $3
+        WHERE id = $4 AND account_id = $5
+      `,
+      [status, scan_id || null, error_message || null, command_id, account_id],
     )
-
-    // Update the scan command with results
-    const { error: updateError } = await supabaseAdmin
-      .from("scan_commands")
-      .update({
-        status,
-        result_scan_id: scan_id || null,
-        completed_at: new Date().toISOString(),
-        error_message: error_message || null,
-      })
-      .eq("id", command_id)
-      .eq("account_id", account_id)
-
-    if (updateError) {
-      console.error("Failed to update scan command:", updateError)
-      return NextResponse.json({ error: "Failed to update command" }, { status: 500 })
-    }
 
     // If this was a successful scan, also update the scan summary endpoint info
     if (status === "completed" && scan_id && total_threats !== undefined) {
       // Find endpoint for this scan
-      const { data: command } = await supabaseAdmin
-        .from("scan_commands")
-        .select("endpoint_id")
-        .eq("id", command_id)
-        .single()
+      const commandResult = await query<{ endpoint_id: string }>(
+        `SELECT endpoint_id::text FROM scan_commands WHERE id = $1 LIMIT 1`,
+        [command_id],
+      )
+      const command = commandResult.rows[0]
 
       if (command) {
         // Update endpoint with last scan info
-        await supabaseAdmin
-          .from("agent_instances")
-          .update({
-            last_threat_scan: new Date().toISOString(),
-            threat_count_last_scan: total_threats,
-          })
-          .eq("agent_id", agent_id)
-          .eq("account_id", account_id)
+        await query(
+          `
+            UPDATE agent_instances
+            SET last_threat_scan = NOW(), threat_count_last_scan = $1
+            WHERE agent_id = $2 AND account_id = $3
+          `,
+          [total_threats, agent_id, account_id],
+        )
       }
     }
 

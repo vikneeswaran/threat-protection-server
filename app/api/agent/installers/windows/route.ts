@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import fs from 'fs/promises'
 import path from 'path'
 import AdmZip from 'adm-zip'
@@ -106,25 +105,7 @@ export async function GET(request: NextRequest) {
     const zipData = zip.toBuffer()
 
     const bundleName = `KuaminiSecurityClient-${(accountId || 'account').slice(0, 8)}-windows.zip`
-
-    // 5. Log this download for audit purposes
-    try {
-      const supabase = await createClient()
-      const session = await supabase.auth.getSession()
-      
-      if (session.data.session?.user) {
-        // Log to audit trail
-        console.info(
-          `[Installer Download] User: ${session.data.session.user.email}, ` +
-          `AccountId: ${accountId || 'not-provided'}, Token: ${token.substring(0, 20)}...`
-        )
-      }
-    } catch (error) {
-      console.error('Failed to log installer download:', error)
-      // Don't fail the download, just log the error
-    }
-
-    // 6. Return ZIP bundle with token + helper + MSI
+    // 5. Return ZIP bundle with token + helper + MSI
     return new NextResponse(new Uint8Array(zipData), {
       status: 200,
       headers: {

@@ -8,6 +8,7 @@ type LoginUserRow = {
   email: string
   password_hash: string | null
   is_active: boolean
+  email_verified: boolean
 }
 
 export async function POST(request: Request) {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
 
     const result = await query<LoginUserRow>(
       `
-        SELECT id, email, password_hash, is_active
+        SELECT id, email, password_hash, is_active, email_verified
         FROM app_users
         WHERE email = $1
         LIMIT 1
@@ -33,6 +34,14 @@ export async function POST(request: Request) {
     const user = result.rows[0]
     if (!user || !user.password_hash || !user.is_active) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Check if email is verified
+    if (!user.email_verified) {
+      return NextResponse.json(
+        { error: "Please verify your email address before logging in. Check your inbox for the verification link." },
+        { status: 403 }
+      )
     }
 
     const matches = await bcrypt.compare(password, user.password_hash)

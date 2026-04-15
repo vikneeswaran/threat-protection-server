@@ -88,7 +88,7 @@ bash <(curl -s https://kuaminisystems.com/tray/install-kuamini-linux.sh) YOUR_TO
 ┌─────────────────────────────────────┐
 │  Management Console (Web App)       │
 │  https://kuaminisystems.com         │
-│  (Vercel + Next.js + React)         │
+│  (AWS EC2 + Next.js + React)         │
 └───────────────┬─────────────────────┘
                 │ REST API
                 ↓
@@ -99,7 +99,7 @@ bash <(curl -s https://kuaminisystems.com/tray/install-kuamini-linux.sh) YOUR_TO
                 │
                 ↓
 ┌─────────────────────────────────────┐
-│  Supabase Database (PostgreSQL)     │
+│  AWS RDS PostgreSQL                 │
 │  Endpoints, tokens, configs, logs   │
 └─────────────────────────────────────┘
                 ↑
@@ -115,8 +115,8 @@ bash <(curl -s https://kuaminisystems.com/tray/install-kuamini-linux.sh) YOUR_TO
 
 **Key Components:**
 - **Frontend**: Next.js + React + TypeScript (modern UI, responsive)
-- **Backend**: Next.js API routes (serverless, Vercel)
-- **Database**: Supabase PostgreSQL (auto-backup, RLS security)
+- **Backend**: Next.js API routes (AWS EC2 with PM2)
+- **Database**: AWS RDS PostgreSQL (auto-backup, SSL, snapshots)
 - **Agents**: Python + PyInstaller (cross-platform, lightweight)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
@@ -298,8 +298,8 @@ git push origin feature/my-feature
 ### Production Deployment
 
 ```bash
-# In Vercel dashboard or via CLI:
-vercel deploy --prod
+# Deploy to AWS EC2 via GitHub Actions:
+# Push to main branch and GitHub Actions will deploy automatically
 
 # Verify deployment:
 curl https://kuaminisystems.com/api/health
@@ -372,9 +372,9 @@ cp .env.example .env.local
 nano .env.local
 
 # Required variables:
-NEXT_PUBLIC_SUPABASE_URL=https://...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
+DATABASE_URL=postgresql://...
+DATABASE_SSL=true
+SESSION_SECRET=...
 NEXT_PUBLIC_API_BASE_URL=https://...
 INSTALLER_TOKEN_SECRET=...
 ```
@@ -487,6 +487,6 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed contribution guidelines.
 
 ---
 
-**✨ Built with Next.js, React, TypeScript, Supabase, and Python**
+**✨ Built with Next.js, React, TypeScript, PostgreSQL, AWS, and Python**
 
 **Get Started**: [INSTALLATION.md](INSTALLATION.md) | **Develop**: [DEVELOPMENT.md](DEVELOPMENT.md) | **Deploy**: [DEPLOYMENT.md](DEPLOYMENT.md)

@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { Shield } from "lucide-react"
+import { Shield, Mail, CheckCircle } from "lucide-react"
+
+type PageState = "form" | "success" | "error"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -21,6 +23,7 @@ export default function RegisterPage() {
   const [licenseTier, setLicenseTier] = useState("free")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [pageState, setPageState] = useState<PageState>("form")
   const router = useRouter()
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -64,14 +67,90 @@ export default function RegisterPage() {
         throw new Error(msg)
       }
 
-      router.push("/securityAgent/dashboard")
+      // Show success page
+      setPageState("success")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
+      setPageState("error")
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Success state - show email verification message
+  if (pageState === "success") {
+    return (
+      <div className="flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10">
+        <div className="w-full max-w-md">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="flex items-center gap-2">
+                <Shield className="h-10 w-10 text-primary" />
+                <span className="text-2xl font-bold text-foreground">KuaminiThreatProtect</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Account Registration</p>
+            </div>
+            <Card>
+              <CardHeader>
+                <div className="flex justify-center mb-4">
+                  <CheckCircle className="h-12 w-12 text-green-600" />
+                </div>
+                <CardTitle className="text-2xl text-center">Account Created!</CardTitle>
+                <CardDescription className="text-center">Verify your email to get started</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex gap-3">
+                      <Mail className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <p className="font-semibold text-blue-900">Verify your email address</p>
+                        <p className="text-blue-800 mt-1">
+                          We've sent a verification link to <strong>{email}</strong>
+                        </p>
+                        <p className="text-blue-700 text-xs mt-2">
+                          Click the link in the email to verify your account and access the console.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <p className="text-sm text-amber-800">
+                      <strong>💡 Tip:</strong> Check your spam/junk folder if you don't see the email within a few minutes.
+                    </p>
+                  </div>
+
+                  <div className="text-center text-sm text-muted-foreground">
+                    <p>The verification link will expire in 24 hours.</p>
+                  </div>
+
+                  <div className="flex gap-2 pt-4">
+                    <Button
+                      onClick={() => {
+                        // Redirect to login after they click the email link
+                        router.push("/securityAgent/auth/login")
+                      }}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      Go to Login
+                    </Button>
+                  </div>
+
+                  <div className="text-center text-xs text-muted-foreground">
+                    <p>After clicking the verification link, you'll be automatically logged in.</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Form state - registration form
   return (
     <div className="flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10">
       <div className="w-full max-w-md">

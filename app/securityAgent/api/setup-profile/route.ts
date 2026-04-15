@@ -1,13 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { getPool, query } from "@/lib/db"
+import { getSessionUser } from "@/lib/auth/session"
+import { getConsoleProfile } from "@/lib/auth/console"
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getSessionUser()
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -15,24 +13,19 @@ export async function POST(request: Request) {
 
     const { fullName, organizationName, licenseTier } = await request.json()
 
-    // Use admin client to bypass RLS
-    const adminClient = createAdminClient()
-
-    // Check if profile already exists
-    const { data: existingProfile } = await adminClient.from("profiles").select("id").eq("id", user.id).maybeSingle()
+    const existingProfile = await getConsoleProfile(user.id)
 
     if (existingProfile) {
       return NextResponse.json({ message: "Profile already exists" })
     }
 
-    // Get the license tier ID
-    const { data: tierData, error: tierError } = await adminClient
-      .from("license_tiers")
-      .select("id, max_endpoints, trial_days")
-      .eq("name", licenseTier || "free")
-      .single()
+    const tierResult = await query<{ id: string; max_endpoints: number; trial_days: number | null }>(
+      `SELECT id::text, max_endpoints, trial_days FROM license_tiers WHERE name = $1 LIMIT 1`,
+      [licenseTier || "free"],
+    )
+    const tierData = tierResult.rows[0]
 
-    if (tierError || !tierData) {
+    if (!tierData) {
       return NextResponse.json({ error: "License tier not found. Please run the seed script." }, { status: 400 })
     }
 
@@ -40,38 +33,33 @@ export async function POST(request: Request) {
     const expiresAt =
       tierData.trial_days > 0 ? new Date(Date.now() + tierData.trial_days * 24 * 60 * 60 * 1000).toISOString() : null
 
-    // Create the account
-    const { data: accountData, error: accountError } = await adminClient
-      .from("accounts")
-      .insert({
-        name: organizationName || "My Organization",
-        level: 1,
-        license_tier_id: tierData.id,
-        total_licenses: tierData.max_endpoints,
-        license_expires_at: expiresAt,
-      })
-      .select()
-      .single()
+    const pool = getPool()
+    const client = await pool.connect()
+    try {
+      await client.query("BEGIN")
+      const accountResult = await client.query<{ id: string }>(
+        `
+          INSERT INTO accounts (name, level, license_tier_id, total_licenses, license_expires_at)
+          VALUES ($1, 1, $2, $3, $4)
+          RETURNING id::text
+        `,
+        [organizationName || "My Organization", tierData.id, tierData.max_endpoints, expiresAt],
+      )
 
-    if (accountError) {
-      console.error("Account creation error:", accountError)
-      return NextResponse.json({ error: "Failed to create account" }, { status: 500 })
-    }
+      await client.query(
+        `
+          INSERT INTO profiles (id, account_id, email, full_name, role, is_active)
+          VALUES ($1, $2, $3, $4, 'super_admin', TRUE)
+        `,
+        [user.id, accountResult.rows[0].id, user.email, fullName || null],
+      )
 
-    // Create the user profile as super_admin
-    const { error: profileError } = await adminClient.from("profiles").insert({
-      id: user.id,
-      account_id: accountData.id,
-      email: user.email!,
-      full_name: fullName || null,
-      role: "super_admin",
-    })
-
-    if (profileError) {
-      console.error("Profile creation error:", profileError)
-      // Rollback account creation
-      await adminClient.from("accounts").delete().eq("id", accountData.id)
-      return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
+      await client.query("COMMIT")
+    } catch (error) {
+      await client.query("ROLLBACK")
+      throw error
+    } finally {
+      client.release()
     }
 
     return NextResponse.json({ success: true })

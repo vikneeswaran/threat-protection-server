@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { query } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,89 +21,63 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+    const endpointResult = await query<{ id: string }>(
+      `SELECT id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
+      [agent_id, account_id],
     )
-
-    // Get endpoint ID
-    const { data: endpoint } = await supabaseAdmin
-      .from("endpoints")
-      .select("id")
-      .eq("agent_id", agent_id)
-      .eq("account_id", account_id)
-      .maybeSingle()
+    const endpoint = endpointResult.rows[0]
 
     if (!endpoint) {
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     // Record the threat
-    const { data: threat, error: insertError } = await supabaseAdmin
-      .from("threats")
-      .insert({
-        account_id,
-        endpoint_id: endpoint.id,
-        name: threat_name,
-        type: threat_type || "unknown",
-        description: details?.description || threat_name,
-        severity,
-        status: "detected",
-        file_path,
-        file_hash: file_hash || null,
-        process_name: process_name || null,
-        process_id: process_id ? parseInt(process_id) : null,
-        detection_engine: details?.detection_engine || "signature",
-        detection_source: "scan",
-        detected_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single()
-
-    if (insertError) {
-      console.error("Failed to record threat:", insertError)
-      return NextResponse.json({ error: "Failed to record threat" }, { status: 500 })
-    }
+    const threatResult = await query<{ id: string }>(
+      `
+        INSERT INTO threats (
+          account_id, endpoint_id, name, description, severity, status, file_path, file_hash, process_name,
+          detection_engine, detected_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'detected', $6, $7, $8, $9, NOW())
+        RETURNING id::text
+      `,
+      [account_id, endpoint.id, threat_name, details?.description || threat_name, severity, file_path || null, file_hash || null, process_name || null, details?.detection_engine || "signature"],
+    )
+    const threat = threatResult.rows[0]
 
     console.info(`[THREAT REPORTED] ${threat_name} (Severity: ${severity}) - Endpoint: ${endpoint.id}`)
 
     // Get recommended action from policies
-    const { data: policies } = await supabaseAdmin
-      .from("endpoint_policies")
-      .select("policy:policies(*)")
-      .eq("endpoint_id", endpoint.id)
+    const policyResult = await query<{ type: string; config: Record<string, unknown> | null }>(
+      `
+        SELECT p.type::text AS type, p.config
+        FROM endpoint_policies ep
+        JOIN policies p ON p.id = ep.policy_id
+        WHERE ep.endpoint_id = $1
+      `,
+      [endpoint.id],
+    )
 
     let recommendedAction = "alert"
 
     // Check threat action policies
-    const threatActionPolicy = Array.isArray(policies) 
-      ? (policies as Array<{ policy?: { type?: string; settings?: Record<string, { action?: string }> } }>).find(
-          (p) => p.policy?.type === "threat_actions"
-        )
-      : null
+    const threatActionPolicy = policyResult.rows.find((policy) => policy.type === "threat_actions")
 
-    if (threatActionPolicy?.policy?.settings) {
-      const settings = threatActionPolicy.policy.settings
-      const severityActions = settings[severity.toLowerCase()]
+    if (threatActionPolicy?.config) {
+      const severityActions = threatActionPolicy.config[severity.toLowerCase()] as { action?: string } | undefined
       if (severityActions?.action) {
         recommendedAction = severityActions.action
       }
     }
 
     // Log the threat detection
-    await supabaseAdmin.from("audit_logs").insert({
-      account_id,
-      action: "threat_detected",
-      entity_type: "threat",
-      entity_id: threat.id,
-      details: {
-        threat_name,
-        severity,
-        endpoint_id: endpoint.id,
-        recommended_action: recommendedAction,
-      },
-    })
+    await query(
+      `
+        INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details)
+        VALUES ($1, 'threat_detected', 'threat', $2, $3::jsonb)
+      `,
+      [account_id, threat.id, JSON.stringify({ threat_name, severity, endpoint_id: endpoint.id, recommended_action: recommendedAction })],
+    )
 
     return NextResponse.json({
       success: true,

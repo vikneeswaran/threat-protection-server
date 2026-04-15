@@ -25,17 +25,18 @@ Complete guide for deploying to production and managing operations.
 
 ### Production Environment Variables
 
-Set these in your Vercel/hosting platform's secret settings:
+Set these in your AWS EC2 instance environment or GitHub Actions secrets:
 
 ```bash
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-supabase-instance.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_SUPABASE_REDIRECT_URL=https://kuaminisystems.com/securityAgent/auth/callback
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-KEEP-SECRET
+# AWS & Database Configuration
+DATABASE_URL=postgres://user:password@threat-db.rds.amazonaws.com:5432/threat_db
+DATABASE_SSL=true
+AWS_REGION=us-east-1
 
-# API Configuration
-NEXT_PUBLIC_API_BASE_URL=https://kuaminisystems.com/api/agent
+# Session & Security
+SESSION_SECRET=your-long-random-secret-key-32-chars
+COOKIE_SECURE=true
+COOKIE_HTTPONLY=true
 
 # Installer Security
 INSTALLER_TOKEN_SECRET=your-long-random-secret-key-32-chars
@@ -43,8 +44,8 @@ INSTALLER_TOKEN_TTL_SECONDS=604800  # 7 days
 INSTALLER_RATE_LIMIT_WINDOW_MS=600000  # 10 minutes
 INSTALLER_RATE_LIMIT_MAX=60
 
-# Database
-DATABASE_URL=postgresql://user:password@host:5432/db
+# API Configuration
+NEXT_PUBLIC_API_BASE_URL=https://kuaminisystems.com/api/agent
 
 # Environment
 NODE_ENV=production
@@ -55,13 +56,13 @@ DEBUG=false
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase public client URL | ✅ Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key (public) | ✅ Yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role (KEEP SECRET) | ✅ Yes |
-| `NEXT_PUBLIC_SUPABASE_REDIRECT_URL` | OAuth callback URL | ✅ Yes |
+| `DATABASE_URL` | AWS RDS PostgreSQL connection string | ✅ Yes |
+| `DATABASE_SSL` | Enable SSL for database connection | ✅ Yes |
+| `AWS_REGION` | AWS region for services | ✅ Yes |
+| `SESSION_SECRET` | Session encryption secret | ✅ Yes |
+| `COOKIE_SECURE` | Set secure flag on cookies | ✅ Yes |
 | `NEXT_PUBLIC_API_BASE_URL` | API base URL for agents | ✅ Yes |
 | `INSTALLER_TOKEN_SECRET` | Secret for token generation | ✅ Yes |
-| `DATABASE_URL` | Direct PostgreSQL connection | ✅ Yes |
 | `NODE_ENV` | Set to `production` | ✅ Yes |
 
 ### Generating Secure Secrets
@@ -78,33 +79,28 @@ openssl rand -base64 32
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-### Vercel Configuration
+### AWS EC2 & GitHub Actions Setup
 
-**File**: `vercel.json`
+**Deploy via GitHub Actions:**
+1. Set environment variables in GitHub repository secrets
+2. Push to `main` branch to trigger automatic deployment
+3. Monitor GitHub Actions workflows tab
 
-```json
-{
-  "buildCommand": "pnpm run build",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "headers": [
-    {
-      "source": "/api/:path*",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/json"
-        },
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        }
-      ]
-    }
-  ]
-}
+**EC2 Instance Setup:**
+```bash
+# Install Node.js, PM2, nginx
+sudo apt update && sudo apt install -y nodejs npm
+npm install -g pm2 pnpm
+
+# Clone repository and install dependencies
+git clone https://github.com/kuamini/threat-protection-agent.git
+cd threat-protection-agent
+pnpm install --frozen-lockfile
+
+# Build and start with PM2
+pnpm run build
+pm2 start "pnpm start" --name "threat-agent"
+pm2 save && pm2 startup
 ```
 
 ---
@@ -135,10 +131,10 @@ Use this checklist before every production deployment:
 
 ### Database
 - [ ] Database schema migrations tested locally
-- [ ] Database triggers working correctly
-- [ ] License counting triggers verified
-- [ ] RLS (Row Level Security) policies enabled
-- [ ] Database backup taken before deployment
+- [ ] Session table and indexes created
+- [ ] Database backups configured and tested
+- [ ] SSL/TLS connection verified
+- [ ] Database credentials in secrets manager
 
 ### Agents & Installers
 - [ ] Windows MSI built and code-signed
@@ -148,12 +144,13 @@ Use this checklist before every production deployment:
 - [ ] Installer scripts updated with new URLs
 
 ### Security
-- [ ] Supabase auth settings configured
-- [ ] OAuth redirect URLs whitelisted
+- [ ] Session management configured correctly
+- [ ] OAuth/token validation working
 - [ ] CORS policies correctly configured
 - [ ] Rate limiting enabled on API routes
 - [ ] Secrets not committed to repository
 - [ ] Code signing certificates valid
+- [ ] Database credentials in AWS Secrets Manager or encrypted .env
 
 ### Monitoring
 - [ ] Alerts configured for API errors
@@ -237,34 +234,44 @@ curl http://localhost:3000/api/health
 kill %1
 ```
 
-### Step 4: Deploy to Vercel
+### Step 4: Deploy to AWS EC2
 
-**Option A: Using Vercel CLI**
+**Automatic Deployment via GitHub Actions:**
 ```bash
-# Login to Vercel
-vercel login
-
-# Deploy to production
-vercel deploy --prod
-
-# Verify deployment
-curl https://kuaminisystems.com/api/health
-```
-
-**Option B: GitHub Integration**
-```bash
-# Push to main branch (if using GitHub)
+# Push to main branch
 git push origin main
 
-# Vercel automatically deploys on push to main
-# Monitor deployment in https://vercel.com/dashboard
+# GitHub Actions workflow automatically:
+# 1. Builds the application
+# 2. Runs tests
+# 3. Deploys to AWS EC2 via SSH
+# 4. Restarts PM2 process
+# 5. Verifies health
+
+# Monitor deployment in GitHub Actions tab
+# Repository → Actions → Latest workflow run
 ```
 
-**Option C: Manual via Vercel Dashboard**
-1. Go to https://vercel.com/dashboard
-2. Select your project
-3. Go to **Deployments** tab
-4. Click **Deploy** button or push to main
+**Manual Deployment to AWS EC2:**
+```bash
+# SSH into EC2 instance
+ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# Pull latest code
+cd /home/ubuntu/threat-protection-agent
+git pull origin main
+pnpm install --frozen-lockfile
+
+# Build
+pnpm run build
+
+# Restart service with PM2
+pm2 restart threat-agent
+pm2 save
+
+# Verify logs
+pm2 logs threat-agent
+```
 
 ### Step 5: Verify Deployment
 
@@ -298,11 +305,16 @@ curl -X POST https://kuaminisystems.com/api/agent/register \
 curl https://kuaminisystems.com/api/health
 
 # Database Connection
-# Check in Supabase dashboard - verify recent queries
+# SSH into EC2 and check:
+psql $DATABASE_URL -c "SELECT version();"
+
+# PM2 Process Status
+pm2 status
+pm2 logs threat-agent
 
 # Authentication
 # Log in to console: https://kuaminisystems.com/securityAgent
-# Verify Login works correctly
+# Verify session management and login works
 ```
 
 ### Step 2: Functionality Tests
@@ -344,19 +356,34 @@ curl -X POST https://kuaminisystems.com/api/agent/heartbeat \
 
 ### Step 4: Monitoring Dashboard
 
-1. Go to https://vercel.com/dashboard
-2. Click on project
-3. Check **Analytics** tab
-4. Verify response times normal
-5. Check for error rate spikes
+1. SSH into EC2 and check system status:
+   ```bash
+   top
+   free -h
+   df -h
+   pm2 status
+   ```
+2. Check nginx status:
+   ```bash
+   sudo systemctl status nginx
+   sudo tail -f /var/log/nginx/access.log
+   ```
+3. Check PM2 logs:
+   ```bash
+   pm2 logs threat-agent
+   ```
 
 ### Step 5: Database Verification
 
-1. Log into Supabase dashboard
-2. Check **Statistics** tab
-3. Verify query performance
-4. Review logs for errors
-5. Check storage usage
+1. Verify database connectivity:
+   ```bash
+   psql $DATABASE_URL -c "SELECT COUNT(*) FROM endpoints;"
+   ```
+2. Check session table:
+   ```bash
+   psql $DATABASE_URL -c "SELECT COUNT(*) FROM app_sessions;"
+   ```
+3. Review database logs for errors
 
 ---
 
@@ -370,7 +397,7 @@ curl -X POST https://kuaminisystems.com/api/agent/heartbeat \
 curl https://kuaminisystems.com/api/health
 
 # Check for errors in logs
-# (View in Vercel dashboard → Logs)
+pm2 logs threat-agent --lines 50
 
 # Check endpoint status
 # (View in https://kuaminisystems.com/securityAgent → Endpoints)
@@ -386,33 +413,62 @@ curl https://kuaminisystems.com/api/health
 ```
 
 #### Monitor Deployment Status
-
 ```bash
-# Via Vercel CLI
-vercel logs
+# Check GitHub Actions status
+# Repository → Actions → Latest workflow
 
-# Via dashboard
-# https://vercel.com/dashboard → Logs tab
+# Check PM2 status
+pm2 status
+
+# Check nginx reverse proxy
+curl -i https://kuaminisystems.com/api/health
 ```
 
 ### Routine Maintenance
 
 #### Database Maintenance (Weekly)
-```sql
--- Run ANALYZE on tables (Supabase does this automatically)
--- Check for dead tuples
--- Review slow queries in logs
+```bash
+# Connect to AWS RDS and run:
+psql $DATABASE_URL -c "ANALYZE;"
+
+# Check for dead tuples
+psql $DATABASE_URL -c "SELECT schemaname, tablename, n_dead_tup FROM pg_stat_user_tables WHERE n_dead_tup > 1000;"
+
+# Vacuum if needed
+psql $DATABASE_URL -c "VACUUM ANALYZE endpoints;"
 ```
 
-#### Cache Cleanup (Weekly)
+#### EC2 System Maintenance
 ```bash
-# Clear Vercel cache if needed
-vercel env pull production
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Check disk space
+df -h /
+
+# Rotate logs
+sudo logrotate -f /etc/logrotate.d/nginx
+pm2 flush
+```
+
+#### SSL Certificate Renewal
+```bash
+# If using Let's Encrypt with nginx
+sudo certbot renew --dry-run
+
+# Verify certificate
+sudo openssl x509 -in /etc/letsencrypt/live/kuaminisystems.com/fullchain.pem -text -noout
 ```
 
 #### Log Rotation (Monthly)
-- Supabase automatically rotates logs
-- Archive old logs for compliance
+```bash
+# EC2 logs rotate automatically
+# Check PM2 log retention:
+pm2 show threat-agent | grep "log size"
+
+# Archive old logs manually if needed
+tar czf /backup/logs-$(date +%Y%m%d).tar.gz /var/log/nginx/
+```
 
 ---
 
@@ -420,7 +476,7 @@ vercel env pull production
 
 ### Uptime Monitoring
 
-Use a service like Uptime Robot, Pingdom, or New Relic:
+Use AWS CloudWatch or third-party service:
 
 ```bash
 # Monitor endpoint
@@ -428,6 +484,9 @@ https://kuaminisystems.com/api/health
 
 # Expected: HTTP 200 OK response
 # Check interval: Every 5 minutes
+
+# Or use AWS CloudWatch:
+# AWS Console → CloudWatch → Alarms → Create Alarm
 ```
 
 ### Error Tracking
@@ -465,7 +524,7 @@ Sentry.init({
 ### Response Process
 
 1. **Detect**: Monitoring alerts fire or user reports issue
-2. **Assess**: Check API health, database, logs
+2. **Assess**: Check API health, database, logs, PM2 status
 3. **Communicate**: Notify status page, users
 4. **Resolve**: Fix issue or roll back deployment
 5. **Verify**: Confirm resolution
@@ -476,19 +535,26 @@ Sentry.init({
 #### API Responding Slowly
 
 ```bash
-# 1. Check database connection
-# Supabase dashboard → SQL Editor
+# 1. SSH into EC2 and check system status
+top  # Check CPU/memory usage
+free -h  # Check available memory
+df -h /  # Check disk space
 
-# 2. Check recent deployments
-# Vercel dashboard → Deployments
+# 2. Check database connection
+psql $DATABASE_URL -c "SELECT version();"
 
-# 3. Check error logs
-# Vercel dashboard → Logs
+# 3. Check recent deployments
+# GitHub Actions → Workflows → Latest run
 
-# 4. Possible causes:
+# 4. Check error logs
+pm2 logs threat-agent --lines 100
+sudo tail -f /var/log/nginx/error.log
+
+# 5. Possible causes:
 # - Database query inefficiency
-# - Stuck process
+# - Stuck PM2 process
 # - High traffic spike
+# - SSL certificate issue
 ```
 
 #### Registration Failures
@@ -498,23 +564,30 @@ Sentry.init({
 curl https://kuaminisystems.com/api/agent/register
 
 # 2. Check database for errors
-# Review logs in Supabase
+psql $DATABASE_URL -c "SELECT * FROM endpoints LIMIT 5;"
 
-# 3. Verify token generation working
+# 3. Check PM2 logs
+pm2 logs threat-agent
+
+# 4. Verify token generation working
 # Test with known-good token
 ```
 
 #### Database Connection Issues
 
 ```bash
-# 1. Check Supabase dashboard status
-# https://status.supabase.com
+# 1. Check AWS RDS status
+# AWS Console → RDS → Instances → Check status
 
 # 2. Verify environment variables
-# Check SUPABASE_SERVICE_ROLE_KEY is correct
+echo $DATABASE_URL
+echo $DATABASE_SSL
 
 # 3. Test connection
-# Supabase dashboard → SQL Editor → Run query
+psql $DATABASE_URL -c "SELECT 1;" 
+
+# 4. Check security groups
+# AWS Console → EC2 → Security Groups → Allow 5432 inbound
 ```
 
 ### Rollback Procedure
@@ -522,16 +595,22 @@ curl https://kuaminisystems.com/api/agent/register
 If deployment causes critical issues:
 
 ```bash
-# Option 1: Vercel auto-rollback
-# Vercel dashboard → Deployments → Click previous version → Rollback
-
-# Option 2: Manual rollback
+# Option 1: GitHub Actions auto-rollback
+# GitHub → Actions → Latest failed run → click "Re-run jobs"
+# Or revert to previous commit:
 git revert <commit-hash>
 git push origin main
-# Vercel redeploys automatically
+# GitHub Actions automatically deploys
 
-# Option 3: Instant rollback
-vercel rollback
+# Option 2: Manual SSH rollback
+ssh -i your-key.pem ubuntu@your-ec2-ip
+cd /home/ubuntu/threat-protection-agent
+git log --oneline | head -5  # See recent commits
+git checkout <previous-commit>
+pnpm install
+pnpm run build
+pm2 restart threat-agent
+pm2 save
 ```
 
 ---
@@ -540,18 +619,25 @@ vercel rollback
 
 ### Database Backups
 
-**Supabase Automated Backups:**
-- ✅ Daily backups (retained 30 days)
+**AWS RDS Automated Backups:**
+- ✅ Daily automated backups (retained 35 days default)
 - ✅ Point-in-time recovery available
-- ✅ Automatic replication
+- ✅ Multi-AZ automatic failover
+- ✅ Snapshots for long-term retention
 
 **Manual Backup:**
 ```bash
-# Export database
-pg_dump postgresql://user:password@host:5432/db > backup.sql
+# Export database (SSH into EC2)
+pg_dump $DATABASE_URL > backup-$(date +%Y%m%d).sql
+
+# Compress backup
+gzip backup-*.sql
+
+# Upload to S3
+aws s3 cp backup-*.sql.gz s3://your-backup-bucket/
 
 # Verify backup
-wc -l backup.sql  # Should have tens of thousands of lines
+gunzip -t backup-*.sql.gz  # Test compression integrity
 ```
 
 ### Backup Verification
@@ -559,67 +645,82 @@ wc -l backup.sql  # Should have tens of thousands of lines
 Test your backup restores:
 
 ```bash
-# 1. Monthly backup restore test
-# Restore to staging database
-# Verify schema and data match production
+# 1. Monthly backup restore test (on staging)
+# AWS Console → RDS → Snapshots → Create snapshot
+# Then restore snapshot to test instance
 
-# 2. Document restore time
-# Helps estimate RTO (Recovery Time Objective)
+# 2. Verify schema and data match production
+psql <staging-db-url> -c "SELECT COUNT(*) FROM endpoints;"
 
 # 3. Test critical operations
 # User login, agent registration, etc.
+
+# 4. Document restore time
+# Helps estimate RTO (Recovery Time Objective)
 ```
 
 ### Disaster Recovery Plan
 
-**RTO (Recovery Time Objective)**: 1 hour  
+**RTO (Recovery Time Objective)**: 30-60 minutes  
 **RPO (Recovery Point Objective)**: 15 minutes
 
 **Recovery Steps:**
 
-1. **Detect failure** (1 min)
-   - Monitoring alerts
+1. **Detect failure** (1-2 min)
+   - CloudWatch alarms
    - Manual verification
+   - Check EC2/RDS status
 
-2. **Assess damage** (5 min)
-   - Check deployment status
-   - Check database connectivity
+2. **Assess damage** (5-10 min)
+   - Check GitHub Actions status
+   - Check EC2 instance logs
+   - Check RDS database status
    - Review recent changes
 
-3. **Initiate recovery** (10 min)
-   - Trigger rollback (if deployment issue)
-   - Restore from backup (if data issue)
-   - Update DNS (if infrastructure issue)
+3. **Initiate recovery** (15-30 min)
+   - Trigger rollback if deployment issue: `git revert && git push`
+   - Restore RDS from snapshot if data corruption
+   - Launch new EC2 instance if infrastructure failure
+   - Update DNS/route53 if needed
 
 4. **Verify recovery** (10 min)
-   - Run health checks
+   - Run health checks: `curl https://kuaminisystems.com/api/health`
    - Test critical functionality
-   - Monitor for issues
+   - Monitor EC2 and RDS metrics
 
 5. **Notify stakeholders** (5 min)
    - Update status page
    - Email users
    - Slack notifications
 
-6. **Post-incident review** (1 hour)
+6. **Post-incident review** (1-2 hours)
    - Document what happened
    - Identify root cause
    - Plan improvements
+   - Update runbooks
 
 ### Critical Data Locations
 
-**Supabase PostgreSQL:**
+**AWS RDS PostgreSQL:**
 ```
-- Master: Automatic daily backups
-- Replicas: High availability
-- Retention: 30 days
+- Primary: Automatic daily backups
+- Standby: Multi-AZ failover
+- Snapshots: Long-term retention (S3)
+- Retention: 35 days default
 ```
 
 **Application Code:**
 ```
 - GitHub: Version control (always available)
-- Vercel: Build artifacts (14 days)
+- EC2: Current deployed code and config
 - Local: Developer machines
+```
+
+**Configuration:**
+```
+- GitHub Secrets: Environment variables
+- AWS EC2: .env file (encrypted)
+- AWS Secrets Manager: Optional long-term secrets
 ```
 
 ---
@@ -628,12 +729,12 @@ Test your backup restores:
 
 ### Build Failures
 
-**Problem:** Deployment build fails
+**Problem:** GitHub Actions deployment build fails
 
 **Solutions:**
 ```bash
-# 1. Check build logs
-# Vercel dashboard → Deployments → Failed build → Logs
+# 1. Check GitHub Actions logs
+# GitHub → Actions → Latest workflow → View logs
 
 # 2. Verify locally
 pnpm run build
@@ -653,39 +754,48 @@ pnpm run build
 
 **Solution:**
 ```bash
-# 1. Verify in Vercel
-# Vercel dashboard → Settings → Environment Variables
+# 1. Verify on EC2
+ssh -i your-key.pem ubuntu@your-ec2-ip
+cat /home/ubuntu/threat-protection-agent/.env
 
-# 2. Required variables:
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-NEXT_PUBLIC_API_BASE_URL
-INSTALLER_TOKEN_SECRET
+# 2. Verify in GitHub Secrets
+# GitHub → Settings → Secrets and variables → Actions → Repository secrets
+
+# 3. Required variables:
 DATABASE_URL
+DATABASE_SSL=true
+INSTALLER_TOKEN_SECRET
+SESSION_SECRET
 NODE_ENV=production
+AWS_REGION
 
-# 3. Redeploy
-vercel deploy --prod
+# 4. Redeploy
+git push origin main
+# Or SSH redeploy:
+cd /home/ubuntu/threat-protection-agent
+pnpm run build
+pm2 restart threat-agent
 ```
 
 ### Deployment Stuck
 
-**Problem:** Deployment takes >15 minutes or hangs
+**Problem:** GitHub Actions deployment takes >15 minutes or hangs
 
 **Solution:**
 ```bash
-# 1. Cancel current deployment
-vercel cancel
+# 1. Cancel current workflow
+# GitHub → Actions → Latest run → Cancel workflow
 
-# 2. Check for resource issues
-# Database connection, API timeouts
+# 2. Check for resource issues on EC2
+df -h /
+free -h
+pm2 status
 
 # 3. Simplify changes if needed
 # Commit smaller changes
 
 # 4. Redeploy
-vercel deploy --prod
+git push origin main
 ```
 
 For comprehensive operational guides, see other markdown files in the project root.

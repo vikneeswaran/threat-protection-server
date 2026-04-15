@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { query } from "@/lib/db"
 
 /**
  * POST /api/agent/deregister
@@ -31,32 +31,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const admin = createAdminClient()
-
-    // Find the endpoint by endpoint_id or agent_id
-    const query = admin
-      .from("endpoints")
-      .select("id, account_id, hostname, agent_id")
-      .limit(1)
-
-    if (endpoint_id) {
-      query.eq("id", endpoint_id)
-    } else if (agent_id) {
-      query.eq("agent_id", agent_id)
-    }
-
-    const { data: endpoint, error: findError } = await query.maybeSingle()
-
-    if (findError) {
-      console.error("Error finding endpoint:", findError)
-      return NextResponse.json(
-        { 
-          success: false,
-          message: "Could not find endpoint"
-        },
-        { status: 404 }
-      )
-    }
+    const endpointResult = endpoint_id
+      ? await query<{ id: string; account_id: string; hostname: string | null; agent_id: string | null }>(
+          `SELECT id::text, account_id::text, hostname, agent_id FROM endpoints WHERE id = $1 LIMIT 1`,
+          [endpoint_id],
+        )
+      : await query<{ id: string; account_id: string; hostname: string | null; agent_id: string | null }>(
+          `SELECT id::text, account_id::text, hostname, agent_id FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+          [agent_id],
+        )
+    const endpoint = endpointResult.rows[0]
 
     if (!endpoint) {
       // Endpoint already deleted or doesn't exist - this is fine, return success
@@ -71,12 +55,9 @@ export async function POST(request: Request) {
     }
 
     // Delete the endpoint (triggers will decrement used_licenses)
-    const { error: deleteError } = await admin
-      .from("endpoints")
-      .delete()
-      .eq("id", endpoint.id)
-
-    if (deleteError) {
+    try {
+      await query(`DELETE FROM endpoints WHERE id = $1`, [endpoint.id])
+    } catch (deleteError) {
       console.error("Failed to delete endpoint:", deleteError)
       // Even if deletion fails, return success to allow uninstallation to continue
       return NextResponse.json(

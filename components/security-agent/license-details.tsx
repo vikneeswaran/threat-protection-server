@@ -19,7 +19,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Account, LicenseTier } from "@/lib/types/database"
 import { formatDistanceToNow, format } from "date-fns"
 import { Key, AlertTriangle, Plus, ArrowRight } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -58,45 +57,21 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
     if (!selectedAccount || !quantity) {return}
     setIsLoading(true)
 
-    const supabase = createClient()
     const qty = Number.parseInt(quantity, 10)
 
     try {
-      // Update sub-account licenses
+      const response = await fetch("/api/console/licenses/allocate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: account.id, userId, toAccountId: selectedAccount, quantity: qty }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to allocate licenses" }))
+        throw new Error(payload.error || "Failed to allocate licenses")
+      }
+
       const targetAccount = subAccounts.find((a) => a.id === selectedAccount)
-      if (!targetAccount) {throw new Error("Account not found")}
-
-      const { error: subError } = await supabase
-        .from("accounts")
-        .update({ total_licenses: targetAccount.total_licenses + qty })
-        .eq("id", selectedAccount)
-
-      if (subError) {throw subError}
-
-      // Update parent account's allocated licenses
-      const { error: parentError } = await supabase
-        .from("accounts")
-        .update({ allocated_licenses: account.allocated_licenses + qty })
-        .eq("id", account.id)
-
-      if (parentError) {throw parentError}
-
-      // Create allocation record
-      await supabase.from("license_allocations").insert({
-        from_account_id: account.id,
-        to_account_id: selectedAccount,
-        quantity: qty,
-        allocated_by: userId,
-      })
-
-      // Audit log
-      await supabase.from("audit_logs").insert({
-        account_id: account.id,
-        user_id: userId,
-        action: "license_allocate",
-        entity_type: "license",
-        details: { to_account: targetAccount.name, quantity: qty },
-      })
 
       toast.success(`${qty} licenses allocated to ${targetAccount.name}`)
       setAllocateOpen(false)

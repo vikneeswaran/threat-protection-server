@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { query } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,27 +10,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing agent_id" }, { status: 400 })
     }
 
-    // Use admin client since this is called during uninstall (no user auth)
-    const supabase = createAdminClient()
+    const endpointResult = await query<{ id: string; account_id: string }>(
+      `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+      [agent_id],
+    )
+    const endpoint = endpointResult.rows[0]
 
-    // Find the endpoint by agent_id
-    const { data: endpoint, error: findError } = await supabase
-      .from("endpoints")
-      .select("id, account_id")
-      .eq("agent_id", agent_id)
-      .single()
-
-    if (findError || !endpoint) {
+    if (!endpoint) {
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     // Delete the endpoint (will trigger auto-decrement of used_licenses via trigger)
-    const { error: deleteError } = await supabase
-      .from("endpoints")
-      .delete()
-      .eq("id", endpoint.id)
-
-    if (deleteError) {
+    try {
+      await query(`DELETE FROM endpoints WHERE id = $1`, [endpoint.id])
+    } catch (deleteError) {
       console.error("Error deleting endpoint:", deleteError)
       return NextResponse.json({ error: "Failed to delete endpoint" }, { status: 500 })
     }

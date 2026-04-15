@@ -1,14 +1,13 @@
 "use client"
 
 import type React from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Shield, Loader2 } from "lucide-react"
 
 export default function SetupPage() {
@@ -19,55 +18,13 @@ export default function SetupPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isCheckingProfile, setIsCheckingProfile] = useState(true)
   const router = useRouter()
-  const supabase = createClient()
-  const hasRedirected = useRef(false)
 
   useEffect(() => {
-    const checkUserAndProfile = async () => {
-      if (hasRedirected.current) {return}
-
+    const checkUser = async () => {
       try {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser()
-
-        if (authError) {
-          console.info("[app] Auth error:", authError.message)
-          setIsCheckingProfile(false)
-          setError("Authentication error. Please try logging in again.")
-          return
-        }
-
-        if (!user) {
-          hasRedirected.current = true
+        const response = await fetch("/api/auth/local/me", { credentials: "include" })
+        if (!response.ok) {
           router.push("/securityAgent/auth/login")
-          return
-        }
-
-        // Pre-fill from user metadata if available
-        if (user.user_metadata) {
-          setFullName(user.user_metadata.full_name || "")
-          setOrganizationName(user.user_metadata.organization_name || "")
-          setLicenseTier(user.user_metadata.license_tier || "free")
-        }
-
-        // Check if profile already exists
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", user.id)
-          .maybeSingle()
-
-        if (profileError) {
-          console.info("[app] Profile check error:", profileError.message)
-          setIsCheckingProfile(false)
-          return
-        }
-
-        if (profile) {
-          hasRedirected.current = true
-          router.push("/securityAgent/dashboard")
           return
         }
 
@@ -79,8 +36,8 @@ export default function SetupPage() {
       }
     }
 
-    checkUserAndProfile()
-  }, [router, supabase])
+    checkUser()
+  }, [router])
 
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault()

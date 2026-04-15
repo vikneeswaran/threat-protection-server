@@ -1,6 +1,6 @@
 # AWS Cloud Migration Runbook
 
-This runbook defines the deployment path from Vercel to AWS for Production.
+This runbook defines the AWS production deployment path for the application.
 
 ## Scope
 
@@ -302,9 +302,9 @@ nano .env.production
 ```env
 NODE_ENV=production
 NEXT_PUBLIC_API_BASE_URL=https://www.kuaminisystems.com/api/agent
-NEXT_PUBLIC_SUPABASE_REDIRECT_URL=https://www.kuaminisystems.com/securityAgent/auth/callback
 DATABASE_URL=postgresql://<user>:<password>@<rds-endpoint>:5432/kuamini_prod
 INSTALLER_TOKEN_SECRET=<strong-secret>
+SESSION_SECRET=<strong-session-secret>
 ```
 
 4. Install, build, start
@@ -346,9 +346,9 @@ nano .env.production
 ```env
 NODE_ENV=production
 NEXT_PUBLIC_API_BASE_URL=https://qa.kuaminisystems.com/api/agent
-NEXT_PUBLIC_SUPABASE_REDIRECT_URL=https://qa.kuaminisystems.com/securityAgent/auth/callback
 DATABASE_URL=postgresql://<user>:<password>@<rds-endpoint>:5432/kuamini_qa
 INSTALLER_TOKEN_SECRET=<qa-secret>
+SESSION_SECRET=<qa-session-secret>
 ```
 
 4. Install, build, start
@@ -804,20 +804,18 @@ Expected tables:
 
 ---
 
-### Path B — Migrate existing Supabase data
+### Path B — Migrate existing legacy PostgreSQL data
 
-### Path B — Migrate existing Supabase data
-
-1. Export from Supabase
+1. Export from the legacy PostgreSQL source
 
 ```bash
-pg_dump "postgresql://<user>:<pass>@<supabase-host>:5432/postgres" -Fc -f supabase.dump
+pg_dump "postgresql://<user>:<pass>@<legacy-host>:5432/postgres" -Fc -f legacy.dump
 ```
 
 2. Restore to prod DB
 
 ```bash
-pg_restore -d "postgresql://<user>:<pass>@<rds-endpoint>:5432/kuamini_prod" --no-owner --no-acl supabase.dump
+pg_restore -d "postgresql://<user>:<pass>@<rds-endpoint>:5432/kuamini_prod" --no-owner --no-acl legacy.dump
 ```
 
 3. Copy prod to QA DB (initial seed)

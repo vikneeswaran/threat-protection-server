@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
 import crypto from "crypto"
+import { getPool, query } from "@/lib/db"
 
 const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
 
@@ -57,9 +57,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: hostname and os" }, { status: 400 })
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
     // Determine account_id
     let accountId: string | null = null
 
@@ -78,13 +75,11 @@ export async function POST(request: NextRequest) {
       console.warn("Registration without token - attempting to find default account")
       
       // Get the first active account (for single-account or dev deployments)
-      const { data: defaultAccount } = await supabaseAdmin
-        .from("accounts")
-        .select("id")
-        .eq("is_active", true)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .single()
+      const defaultAccountResult = await query<{ id: string }>(
+        `SELECT id::text FROM accounts WHERE is_active = TRUE ORDER BY created_at ASC LIMIT 1`,
+        [],
+      )
+      const defaultAccount = defaultAccountResult.rows[0]
       
       if (!defaultAccount?.id) {
         return NextResponse.json({ 
@@ -96,95 +91,69 @@ export async function POST(request: NextRequest) {
       console.info("Assigned default account for token-less registration:", accountId)
     }
 
-    // Check if endpoint already exists — prefer `agent_id` when provided, otherwise fall back to mac+hostname
-    let existingEndpoint: any = null
-    if (agent_id) {
-      const { data } = await supabaseAdmin.from("endpoints").select("id").eq("agent_id", agent_id).maybeSingle()
-      existingEndpoint = data
-    } else {
-      const { data } = await supabaseAdmin
-        .from("endpoints")
-        .select("id")
-        .eq("account_id", accountId)
-        .eq("hostname", hostname)
-        .eq("mac_address", body.mac_address || null)
-        .maybeSingle()
-      existingEndpoint = data
-    }
+    const pool = getPool()
+    const client = await pool.connect()
+    try {
+      await client.query("BEGIN")
 
-    if (existingEndpoint) {
-      // Update existing endpoint using primary lookup
-      const updateQuery = supabaseAdmin.from("endpoints").update({
-        hostname,
-        os,
-        os_version,
-        agent_version,
-        agent_id: agent_id || null,
-        ip_address: body.ip_address || null,
-        mac_address: body.mac_address || null,
-        status: "online",
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      const existingResult = agent_id
+        ? await client.query<{ id: string }>(`SELECT id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`, [agent_id])
+        : await client.query<{ id: string }>(
+            `SELECT id::text FROM endpoints WHERE account_id = $1 AND hostname = $2 AND mac_address IS NOT DISTINCT FROM $3 LIMIT 1`,
+            [accountId, hostname, body.mac_address || null],
+          )
+      const existingEndpoint = existingResult.rows[0]
 
-      if (agent_id) {
-        updateQuery.eq("agent_id", agent_id)
-      } else {
-        updateQuery.eq("id", existingEndpoint.id)
+      if (existingEndpoint) {
+        const updatedResult = await client.query<{ id: string }>(
+          `
+            UPDATE endpoints
+            SET hostname = $1,
+                os = $2,
+                os_version = $3,
+                agent_version = $4,
+                agent_id = $5,
+                ip_address = $6,
+                mac_address = $7,
+                status = 'online',
+                last_seen_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $8
+            RETURNING id::text
+          `,
+          [hostname, os, os_version || null, agent_version || null, agent_id || null, body.ip_address || null, body.mac_address || null, existingEndpoint.id],
+        )
+
+        await client.query("COMMIT")
+        return NextResponse.json({ success: true, message: "Endpoint updated", endpoint_id: updatedResult.rows[0].id })
       }
 
-      const { data: updatedEndpoint, error: updateError } = await updateQuery.select().single()
+      const insertedResult = await client.query<{ id: string }>(
+        `
+          INSERT INTO endpoints (
+            account_id, agent_id, hostname, os, os_version, agent_version, ip_address, mac_address,
+            status, last_seen_at, registered_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'online', NOW(), NOW())
+          RETURNING id::text
+        `,
+        [accountId, agent_id || null, hostname, os, os_version || null, agent_version || null, body.ip_address || null, body.mac_address || null],
+      )
 
-      if (updateError) {
-        console.error("Failed to update endpoint:", updateError)
-        return NextResponse.json({ error: "Failed to update endpoint" }, { status: 500 })
-      }
+      await client.query(
+        `INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details)
+         VALUES ($1, 'endpoint_registered', 'endpoint', $2, $3::jsonb)`,
+        [accountId, insertedResult.rows[0].id, JSON.stringify({ hostname, os, os_version, agent_version, agent_id })],
+      )
 
-      return NextResponse.json({
-        success: true,
-        message: "Endpoint updated",
-        endpoint_id: updatedEndpoint.id,
-      })
+      await client.query("COMMIT")
+      return NextResponse.json({ success: true, message: "Endpoint registered", endpoint_id: insertedResult.rows[0].id })
+    } catch (error) {
+      await client.query("ROLLBACK")
+      throw error
+    } finally {
+      client.release()
     }
-
-    // Register new endpoint
-    const { data: newEndpoint, error: insertError } = await supabaseAdmin
-      .from("endpoints")
-      .insert({
-        account_id: accountId,
-        agent_id: agent_id || null,
-        hostname,
-        os,
-        os_version,
-        agent_version,
-        ip_address: body.ip_address || null,
-        mac_address: body.mac_address || null,
-        status: "online",
-        last_seen_at: new Date().toISOString(),
-        registered_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single()
-
-    if (insertError) {
-      console.error("Failed to register endpoint:", insertError)
-      return NextResponse.json({ error: "Failed to register endpoint" }, { status: 500 })
-    }
-
-    // Log the registration
-    await supabaseAdmin.from("audit_logs").insert({
-      account_id: accountId,
-      action: "endpoint_registered",
-      entity_type: "endpoint",
-      entity_id: newEndpoint.id,
-      details: { hostname, os, os_version, agent_version, agent_id },
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: "Endpoint registered",
-      endpoint_id: newEndpoint.id,
-    })
   } catch (error) {
     console.error("Registration error:", error)
     const isDebug = process.env.DEBUG_REGISTRATION === "true" || process.env.NODE_ENV !== "production"

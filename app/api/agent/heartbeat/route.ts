@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { query } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,59 +10,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: agent_id" }, { status: 400 })
     }
 
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
-    // First, try to find endpoint by agent_id
-    let endpoint: any = null
-    const _findError: any = null
-
-    // Build query to find endpoint
-    let query = supabaseAdmin
-      .from("endpoints")
-      .select("id, account_id")
-      .eq("agent_id", agent_id)
-
-    // If account_id is provided, add it to the query for additional safety
-    if (account_id) {
-      query = query.eq("account_id", account_id)
-    }
-
-    const { data: foundByAgentId, error: findByAgentError } = await query.maybeSingle()
-
-    if (findByAgentError) {
-      console.error("Error finding endpoint by agent_id:", findByAgentError)
-      return NextResponse.json({ error: "Failed to find endpoint" }, { status: 500 })
-    }
+    const foundByAgentResult = account_id
+      ? await query<{ id: string; account_id: string }>(
+          `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
+          [agent_id, account_id],
+        )
+      : await query<{ id: string; account_id: string }>(
+          `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+          [agent_id],
+        )
+    const foundByAgentId = foundByAgentResult.rows[0]
 
     if (!foundByAgentId) {
       // Endpoint not found by agent_id
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
-    // Now we have the account_id from the database
-    const _dbAccountId = foundByAgentId.account_id
+    await query(
+      `UPDATE endpoints SET status = $1, last_seen_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      [status || "online", foundByAgentId.id],
+    )
 
-    // Update endpoint with heartbeat info
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from("endpoints")
-      .update({
-        status: status || "online",
-        last_seen_at: new Date().toISOString(),
-      })
-      .eq("id", foundByAgentId.id)
-      .select("id, policies:endpoint_policies(policy:policies(*))")
-      .single()
+    const policyResult = await query<{ policy: Record<string, unknown> }>(
+      `
+        SELECT row_to_json(p.*) AS policy
+        FROM endpoint_policies ep
+        JOIN policies p ON p.id = ep.policy_id
+        WHERE ep.endpoint_id = $1
+      `,
+      [foundByAgentId.id],
+    )
 
-    if (updateError) {
-      console.error("Failed to update endpoint:", updateError)
-      return NextResponse.json({ error: "Failed to update endpoint" }, { status: 500 })
-    }
-
-    endpoint = updated
-
-    // Return assigned policies
-    const policies = endpoint.policies?.map((p: any) => p.policy) || []
+    const policies = policyResult.rows.map((row) => row.policy)
 
     return NextResponse.json({
       success: true,

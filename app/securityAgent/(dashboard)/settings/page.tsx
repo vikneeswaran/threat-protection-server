@@ -1,44 +1,23 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 import { SettingsForm } from "@/components/security-agent/settings-form"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Building2, Bell } from "lucide-react"
+import { requireConsoleContext } from "@/lib/auth/console"
+import { query } from "@/lib/db"
+
+type AccountSettingsRow = {
+  settings: Record<string, unknown>
+  locked_settings: string[] | null
+}
 
 export default async function SettingsPage() {
-  const supabase = await createClient()
+  const { user, profile } = await requireConsoleContext({ redirectTo: "/securityAgent/auth/login" })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/securityAgent/auth/login")
-  }
-
-  // Get user profile with account and settings
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(`
-      *,
-      account:accounts(
-        *,
-        license_tier:license_tiers(*)
-      )
-    `)
-    .eq("id", user.id)
-    .single()
-
-  if (!profile) {
-    redirect("/securityAgent/auth/login")
-  }
-
-  // Get account settings
-  const { data: accountSettings } = await supabase
-    .from("account_settings")
-    .select("*")
-    .eq("account_id", profile.account.id)
-    .single()
+  const accountSettingsResult = await query<AccountSettingsRow>(
+    `SELECT settings, locked_settings FROM account_settings WHERE account_id = $1 LIMIT 1`,
+    [profile.account.id],
+  )
+  const accountSettings = accountSettingsResult.rows[0]
 
   return (
     <>

@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TYPE user_role AS ENUM ('super_admin', 'admin', 'operator', 'viewer');
 
 -- ============================================
--- 4. LOCAL USERS (replaces Supabase auth.users)
+-- 4. LOCAL USERS (replaces legacy external auth users)
 -- ============================================
 CREATE TABLE IF NOT EXISTS app_users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

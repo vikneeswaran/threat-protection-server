@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+import { query } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,65 +11,66 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the endpoint to find the account
-    const { data: endpoint, error: endpointError } = await supabaseAdmin
-      .from("endpoints")
-      .select("account_id")
-      .eq("id", endpoint_id)
-      .single()
+    const endpointResult = await query<{ account_id: string }>(
+      `SELECT account_id::text FROM endpoints WHERE id = $1 LIMIT 1`,
+      [endpoint_id],
+    )
+    const endpoint = endpointResult.rows[0]
 
-    if (endpointError || !endpoint) {
+    if (!endpoint) {
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     // Create the threat record
-    const { data: threat, error: threatError } = await supabaseAdmin
-      .from("threats")
-      .insert({
-        account_id: endpoint.account_id,
-        endpoint_id,
-        name,
-        description,
-        severity,
-        status: "detected",
-        file_path,
-        file_hash,
-        process_name,
-        detection_engine,
-        detected_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (threatError) {
-      return NextResponse.json({ error: "Failed to create threat record" }, { status: 500 })
-    }
+    const threatResult = await query<{ id: string }>(
+      `
+        INSERT INTO threats (
+          account_id,
+          endpoint_id,
+          name,
+          description,
+          severity,
+          status,
+          file_path,
+          file_hash,
+          process_name,
+          detection_engine,
+          detected_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'detected', $6, $7, $8, $9, NOW())
+        RETURNING id::text
+      `,
+      [endpoint.account_id, endpoint_id, name, description || null, severity, file_path || null, file_hash || null, process_name || null, detection_engine || null],
+    )
+    const threat = threatResult.rows[0]
 
     // Create audit log
-    await supabaseAdmin.from("audit_logs").insert({
-      account_id: endpoint.account_id,
-      action: "create",
-      entity_type: "threat",
-      entity_id: threat.id,
-      details: {
-        name,
-        severity,
-        endpoint_id,
-        detection_engine,
-      },
-      ip_address: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip"),
-      user_agent: request.headers.get("user-agent"),
-    })
+    await query(
+      `
+        INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details, ip_address, user_agent)
+        VALUES ($1, 'create', 'threat', $2, $3::jsonb, $4, $5)
+      `,
+      [
+        endpoint.account_id,
+        threat.id,
+        JSON.stringify({ name, severity, endpoint_id, detection_engine }),
+        request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip"),
+        request.headers.get("user-agent"),
+      ],
+    )
 
     // Check if there's an auto-action policy for this severity
-    const { data: threatActionPolicies } = await supabaseAdmin
-      .from("policies")
-      .select("config")
-      .eq("account_id", endpoint.account_id)
-      .eq("type", "threat_actions")
-      .eq("is_active", true)
+    const threatActionPoliciesResult = await query<{ config: Record<string, unknown> }>(
+      `
+        SELECT config
+        FROM policies
+        WHERE account_id = $1 AND type = 'threat_actions' AND is_active = TRUE
+      `,
+      [endpoint.account_id],
+    )
 
     let autoAction = null
-    for (const policy of threatActionPolicies || []) {
+    for (const policy of threatActionPoliciesResult.rows) {
       const config = policy.config as Record<string, unknown>
       const severityActions = config[severity] as { auto_action?: string } | undefined
       if (severityActions?.auto_action) {

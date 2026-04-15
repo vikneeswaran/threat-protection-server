@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ os: 
       return NextResponse.json({ error: "Unsupported OS" }, { status: 400 })
   }
 
-  // Redirect to the static asset under /tray so Vercel can serve it directly.
+  // Redirect to the static asset under /tray so nginx can serve it directly.
   const target = new URL(`/tray/${filename}`, request.url)
   return NextResponse.redirect(target)
 }

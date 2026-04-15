@@ -1,8 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-// Use service role to bypass RLS for agent registration
-const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+import { getPool } from "@/lib/db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,125 +24,134 @@ export async function POST(request: NextRequest) {
 
     
 
-    // Verify the account exists and is active
-    const { data: account, error: accountError } = await supabaseAdmin
-      .from("accounts")
-      .select("*, license_tier:license_tiers(*)")
-      .eq("id", accountId)
-      .eq("is_active", true)
-      .single()
+    const pool = getPool()
+    const client = await pool.connect()
+    try {
+      await client.query("BEGIN")
 
-    if (accountError || !account) {
-      return NextResponse.json({ error: "Invalid or inactive account" }, { status: 400 })
-    }
-
-    // Check if there are available licenses
-    const availableLicenses = account.total_licenses - account.used_licenses
-    if (availableLicenses <= 0) {
-      return NextResponse.json(
-        { error: "No available licenses. Please upgrade your plan or allocate more licenses." },
-        { status: 403 },
+      const accountResult = await client.query<{
+        id: string
+        total_licenses: number
+        used_licenses: number
+      }>(
+        `
+          SELECT id::text, total_licenses, used_licenses
+          FROM accounts
+          WHERE id = $1 AND is_active = TRUE
+          LIMIT 1
+        `,
+        [accountId],
       )
-    }
+      const account = accountResult.rows[0]
 
-    // Check if endpoint already exists — prefer `agent_id` when provided, otherwise fall back to mac+hostname
-    let existingEndpoint: any = null
-    if (agent_id) {
-      const { data } = await supabaseAdmin.from("endpoints").select("id").eq("agent_id", agent_id).maybeSingle()
-      existingEndpoint = data
-    } else {
-      const { data } = await supabaseAdmin
-        .from("endpoints")
-        .select("id")
-        .eq("account_id", accountId)
-        .eq("hostname", hostname)
-        .eq("mac_address", mac_address)
-        .maybeSingle()
-      existingEndpoint = data
-    }
+      if (!account) {
+        await client.query("ROLLBACK")
+        return NextResponse.json({ error: "Invalid or inactive account" }, { status: 400 })
+      }
 
-    if (existingEndpoint) {
-      const updateQuery = supabaseAdmin.from("endpoints").update({
-        os,
-        os_version,
-        agent_version,
-        ip_address,
-        mac_address,
-        agent_id: agent_id || null,
-        status: "online",
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      // Check if there are available licenses
+      const availableLicenses = account.total_licenses - account.used_licenses
+      if (availableLicenses <= 0) {
+        await client.query("ROLLBACK")
+        return NextResponse.json(
+          { error: "No available licenses. Please upgrade your plan or allocate more licenses." },
+          { status: 403 },
+        )
+      }
 
+      // Check if endpoint already exists — prefer `agent_id` when provided, otherwise fall back to mac+hostname
+      let existingEndpoint: { id: string } | undefined
       if (agent_id) {
-        updateQuery.eq("agent_id", agent_id)
+        const existingResult = await client.query<{ id: string }>(
+          `SELECT id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+          [agent_id],
+        )
+        existingEndpoint = existingResult.rows[0]
       } else {
-        updateQuery.eq("id", existingEndpoint.id)
+        const existingResult = await client.query<{ id: string }>(
+          `
+            SELECT id::text
+            FROM endpoints
+            WHERE account_id = $1 AND hostname = $2 AND mac_address = $3
+            LIMIT 1
+          `,
+          [accountId, hostname, mac_address],
+        )
+        existingEndpoint = existingResult.rows[0]
       }
 
-      const { data: updatedEndpoint, error: updateError } = await updateQuery.select().single()
+      if (existingEndpoint) {
+        const updatedResult = await client.query<{ id: string }>(
+          `
+            UPDATE endpoints
+            SET os = $1,
+                os_version = $2,
+                agent_version = $3,
+                ip_address = $4,
+                mac_address = $5,
+                agent_id = $6,
+                status = 'online',
+                last_seen_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $7
+            RETURNING id::text
+          `,
+          [os, os_version, agent_version, ip_address, mac_address, agent_id || null, existingEndpoint.id],
+        )
 
-      if (updateError) {
-        return NextResponse.json({ error: "Failed to update endpoint" }, { status: 500 })
+        await client.query("COMMIT")
+        return NextResponse.json({
+          success: true,
+          endpoint_id: updatedResult.rows[0].id,
+          message: "Endpoint re-registered successfully",
+        })
       }
 
+      const endpointResult = await client.query<{ id: string }>(
+        `
+          INSERT INTO endpoints (
+            account_id,
+            agent_id,
+            hostname,
+            os,
+            os_version,
+            agent_version,
+            ip_address,
+            mac_address,
+            status,
+            last_seen_at,
+            registered_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'online', NOW(), NOW())
+          RETURNING id::text
+        `,
+        [accountId, agent_id || null, hostname, os, os_version, agent_version, ip_address, mac_address],
+      )
+
+      await client.query(
+        `INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details, ip_address, user_agent)
+         VALUES ($1, 'create', 'endpoint', $2, $3::jsonb, $4, $5)`,
+        [
+          accountId,
+          endpointResult.rows[0].id,
+          JSON.stringify({ hostname, os, agent_version, ip_address }),
+          request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip"),
+          request.headers.get("user-agent"),
+        ],
+      )
+
+      await client.query("COMMIT")
       return NextResponse.json({
         success: true,
-        endpoint_id: updatedEndpoint.id,
-        message: "Endpoint re-registered successfully",
+        endpoint_id: endpointResult.rows[0].id,
+        message: "Endpoint registered successfully",
       })
+    } catch (error) {
+      await client.query("ROLLBACK")
+      throw error
+    } finally {
+      client.release()
     }
-
-    // Create new endpoint
-    const { data: endpoint, error: endpointError } = await supabaseAdmin
-      .from("endpoints")
-      .insert({
-        account_id: accountId,
-        agent_id: agent_id || null,
-        hostname,
-        os,
-        os_version,
-        agent_version,
-        ip_address,
-        mac_address,
-        status: "online",
-        last_seen_at: new Date().toISOString(),
-        registered_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (endpointError) {
-      return NextResponse.json({ error: "Failed to register endpoint" }, { status: 500 })
-    }
-
-    // Increment used_licenses on the account
-    await supabaseAdmin
-      .from("accounts")
-      .update({ used_licenses: account.used_licenses + 1 })
-      .eq("id", accountId)
-
-    // Create audit log
-    await supabaseAdmin.from("audit_logs").insert({
-      account_id: accountId,
-      action: "create",
-      entity_type: "endpoint",
-      entity_id: endpoint.id,
-      details: {
-        hostname,
-        os,
-        agent_version,
-        ip_address,
-      },
-      ip_address: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip"),
-      user_agent: request.headers.get("user-agent"),
-    })
-
-    return NextResponse.json({
-      success: true,
-      endpoint_id: endpoint.id,
-      message: "Endpoint registered successfully",
-    })
   } catch (error) {
     console.error("Agent registration error:", error)
     const isDebug = process.env.DEBUG_REGISTRATION === "true" || process.env.NODE_ENV !== "production"

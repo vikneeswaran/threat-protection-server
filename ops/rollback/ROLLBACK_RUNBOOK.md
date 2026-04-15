@@ -27,7 +27,7 @@ Trigger rollback when any of the following occur for at least 10 minutes:
 
 ## Application Rollback Steps
 
-1. Roll back Vercel deployment to previous known stable build.
+1. Roll back the AWS EC2 deployment to the previous known stable build.
 2. Validate health endpoint and top 3 critical API routes.
 3. Re-run baseline benchmark and compare drift.
 4. Confirm error rates return to normal.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
 import crypto from "crypto"
+import { query } from "@/lib/db"
 
 const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
 const TOKEN_TTL_SECONDS = Number(process.env.INSTALLER_TOKEN_TTL_SECONDS ?? 7 * 24 * 60 * 60)
@@ -94,17 +94,21 @@ async function safeAuditLog(params: {
   details?: Record<string, unknown>
 }) {
   try {
-    const admin = createAdminClient()
-    await admin.from("audit_logs").insert({
-      account_id: params.accountId,
-      user_id: null,
-      action: params.action,
-      entity_type: params.entityType,
-      entity_id: params.entityId,
-      details: params.details ?? null,
-      ip_address: params.ip ?? null,
-      user_agent: params.userAgent ?? null,
-    })
+    await query(
+      `
+        INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details, ip_address, user_agent)
+        VALUES ($1, NULL, $2, $3, $4, $5::jsonb, $6, $7)
+      `,
+      [
+        params.accountId,
+        params.action,
+        params.entityType,
+        params.entityId,
+        JSON.stringify(params.details ?? null),
+        params.ip ?? null,
+        params.userAgent ?? null,
+      ],
+    )
   } catch (error) {
     console.warn("Failed to write audit log", error)
   }
@@ -145,14 +149,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Use admin client since this is an unauthenticated endpoint (called during install)
-    const admin = createAdminClient()
-    const { data: account, error: accountError } = await admin
-      .from("accounts")
-      .select("*")
-      .eq("id", accountId)
-      .single()
+    const accountResult = await query<{ id: string }>(`SELECT id::text FROM accounts WHERE id = $1 LIMIT 1`, [accountId])
+    const account = accountResult.rows[0]
 
-    if (accountError || !account) {
+    if (!account) {
       return NextResponse.json({ error: "Invalid account" }, { status: 404 })
     }
 
