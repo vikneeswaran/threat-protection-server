@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +9,7 @@ import { Shield, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 
 type VerificationState = "loading" | "success" | "error"
 
-export default function VerifyEmailPage() {
+function VerifyEmailPageContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get("token")
   const email = searchParams.get("email")
@@ -159,5 +159,46 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function VerificationLoadingFallback() {
+  return (
+    <div className="flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10">
+      <div className="w-full max-w-md">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <div className="flex items-center gap-2">
+              <Shield className="h-10 w-10 text-primary" />
+              <span className="text-2xl font-bold text-foreground">KuaminiThreatProtect</span>
+            </div>
+            <p className="text-sm text-muted-foreground">Email Verification</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-2xl text-center">Loading</CardTitle>
+              <CardDescription className="text-center">Preparing email verification</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-12 w-12 text-primary animate-spin" />
+                <p className="text-sm text-muted-foreground text-center">
+                  Please wait while we load your verification request...
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<VerificationLoadingFallback />}>
+      <VerifyEmailPageContent />
+    </Suspense>
   )
 }

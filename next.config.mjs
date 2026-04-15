@@ -10,10 +10,6 @@ const nextConfig = {
     // Type-checking is run separately in CI; skip it during build to save memory on t2.micro
     ignoreBuildErrors: true,
   },
-  eslint: {
-    // Linting is run separately in CI; skip it during build to save memory on t2.micro
-    ignoreDuringBuilds: true,
-  },
   // Fix workspace root detection due to multiple lockfiles
   turbopack: {
     root: __dirnameESM,
