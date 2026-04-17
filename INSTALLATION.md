@@ -1,7 +1,7 @@
 # Installation Guide - All Platforms
 
 **Status**: ✅ Production Ready  
-**Last Updated**: February 8, 2026  
+**Last Updated**: April 16, 2026  
 **Version**: 2.1
 
 Complete installation instructions for Windows, macOS, and Linux endpoints.
@@ -506,4 +506,4 @@ DEBUG=kuamini:* /path/to/agent
 3. Reduce heartbeat frequency if unnecessary
 4. Check logs for stuck processes
 
-For additional help, see [TROUBLESHOOTING_GUIDE.md](TROUBLESHOOTING_GUIDE.md).
+For additional help, see [DEVELOPMENT.md](DEVELOPMENT.md#troubleshooting--common-issues).

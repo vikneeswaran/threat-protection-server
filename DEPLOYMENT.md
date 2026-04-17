@@ -1,7 +1,7 @@
 # Production Deployment & Operations Guide
 
 **Status**: ✅ Production Ready  
-**Last Updated**: February 8, 2026  
+**Last Updated**: April 16, 2026  
 **Version**: 2.1
 
 Complete guide for deploying to production and managing operations.
@@ -178,16 +178,26 @@ git checkout main
 git pull origin main
 
 # 2. Update version number
-npm version patch  # or minor/major
+pnpm version patch  # or minor/major
 # This updates package.json and creates git tag
 
 # 3. Update CHANGELOG
 # Edit CHANGELOG.md with new changes
 
 # 4. Build installers (if needed)
+# Windows installer from repo root:
+pnpm run build:installer
+
+# Optional Windows installer flow with registration token handling:
+pnpm run build:agent:token
+
+# Optional cross-platform binaries (run from agent-tray/):
 cd agent-tray
 pip install -r requirements.txt
-python build_installers.py
+pyinstaller KuaminiSecurityClient-win.spec
+pyinstaller KuaminiSecurityClient-mac.spec
+pyinstaller KuaminiSecurityClient-linux.spec
+cd ..
 
 # 5. Code sign installers
 # (See CODE_SIGNING_GUIDE.md for details)

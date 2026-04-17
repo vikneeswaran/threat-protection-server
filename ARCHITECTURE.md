@@ -1,7 +1,7 @@
 # Architecture & System Design
 
 **Status**: ✅ Production Ready  
-**Last Updated**: February 8, 2026  
+**Last Updated**: April 16, 2026  
 **Version**: 2.1
 
 Complete system architecture, component design, and threat detection integration guide.
@@ -76,14 +76,14 @@ The system follows a **client-server architecture** with a cloud-hosted manageme
 
 **Development Scripts:**
 ```bash
-npm run dev          # Start development server (localhost:3000)
-npm run build        # Production build
-npm run start        # Start production server
-npm run lint         # Code linting with ESLint
-npm run test         # Run tests with Vitest
-npm run test:ui      # Visual test runner
-npm run type-check   # TypeScript type checking
-npm run validate     # Full validation (lint + type check + tests)
+pnpm run dev          # Start development server (localhost:3000)
+pnpm run build        # Production build
+pnpm run start        # Start production server
+pnpm run lint         # Code linting with ESLint
+pnpm run test         # Run tests with Vitest
+pnpm run test:ui      # Visual test runner
+pnpm run type-check   # TypeScript type checking
+pnpm run validate     # Full validation (lint + type check + tests)
 ```
 
 ### 2.3 Frontend Folder Structure
@@ -512,10 +512,10 @@ Pillow>=10.0.0          # Image processing for tray icon
 **For Windows:**
 ```powershell
 # Build installer
-npm run build:installer
+pnpm run build:installer
 
 # Or with registration token
-npm run build:agent:token
+pnpm run build:agent:token
 
 # Creates: KuaminiSecurityClient-Installer.exe
 ```
@@ -739,9 +739,6 @@ Local Machine
    ↓
 2. GitHub/Git Hook
    ↓
-3. GitHub Actions Auto-Deploy to AWS
-   ├─ Install: pnpm install --frozen-lockfile
-   ├─ Build: pnpm run build
 3. GitHub Actions Auto-Deploy to AWS
    ├─ Install: pnpm install --frozen-lockfile
    ├─ Build: pnpm run build
@@ -1021,32 +1018,32 @@ Response: { success: boolean, threat_id: uuid }
 
 ```bash
 # Unit tests
-npm run test
+pnpm run test
 
 # Test coverage
-npm run test:coverage
+pnpm run test:coverage
 
 # Visual test UI
-npm run test:ui
+pnpm run test:ui
 
 # Watch mode
-npm run test:watch
+pnpm run test:watch
 ```
 
 ### 15.3 Code Quality
 
 ```bash
 # Type checking
-npm run type-check
+pnpm run type-check
 
 # Linting
-npm run lint
+pnpm run lint
 
 # Fix linting issues
-npm run lint:fix
+pnpm run lint:fix
 
 # Validation (all checks)
-npm run validate
+pnpm run validate
 ```
 
 ---

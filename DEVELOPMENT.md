@@ -1,7 +1,7 @@
 # Development Guide
 
 **Status**: ✅ Complete  
-**Last Updated**: February 8, 2026  
+**Last Updated**: April 16, 2026  
 **Version**: 2.0
 
 Complete local development setup, code signing, testing, and troubleshooting guide.
@@ -247,9 +247,6 @@ pnpm run dev
 
 # In another terminal, test endpoint
 curl http://localhost:3000/api/health
-
-# Or use test script
-pnpm run test:api
 ```
 
 ---
@@ -346,15 +343,18 @@ See [CODE_SIGNING_GUIDE.md](CODE_SIGNING_GUIDE.md) for detailed macOS code signi
 ### Building Installers
 
 ```bash
-# Build for all platforms (requires PyInstaller)
+# Windows installer from repo root
+pnpm run build:installer
+
+# Windows installer with embedded registration token flow
+pnpm run build:agent:token
+
+# Cross-platform PyInstaller builds (run from agent-tray/)
 cd agent-tray
 pip install -r requirements.txt
-python build_installers.py
-
-# Output:
-# - public/tray/KuaminiSecurityClient-1.0.5.msi (Windows)
-# - public/tray/KuaminiSecurityClient-1.0.5.pkg (macOS)
-# - public/tray/KuaminiSecurityClient-1.0.5.deb (Linux)
+pyinstaller KuaminiSecurityClient-win.spec
+pyinstaller KuaminiSecurityClient-mac.spec
+pyinstaller KuaminiSecurityClient-linux.spec
 ```
 
 ---
@@ -583,4 +583,4 @@ pnpm run build                # Production build
 pnpm run start                # Run production build locally
 ```
 
-For detailed troubleshooting, see [TROUBLESHOOTING_GUIDE.md](TROUBLESHOOTING_GUIDE.md).
+For detailed troubleshooting, use this guide's [Troubleshooting & Common Issues](#troubleshooting--common-issues) section.

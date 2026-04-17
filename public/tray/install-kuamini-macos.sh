@@ -1,11 +1,11 @@
 #!/bin/bash
 
 ##########################################################
-# Kuamini Security Client - Macintosh Installer
-# This script extracts and installs the Kuamini Security Client
+# Kuamini Security Client - macOS Installer
+# Supports token-aware install for one-line curl flow.
 ##########################################################
 
-set -e
+set -euo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -17,6 +17,25 @@ echo "🔐 Kuamini Security Client Installer"
 echo "===================================="
 echo ""
 
+TOKEN=""
+PKG_FILE=""
+
+# Parse arguments:
+#   install-kuamini-macos.sh <TOKEN>
+#   install-kuamini-macos.sh <PKG_PATH>
+#   install-kuamini-macos.sh <TOKEN> <PKG_PATH>
+if [ $# -ge 1 ]; then
+    if [[ "$1" == *.pkg ]] || [ -f "$1" ]; then
+        PKG_FILE="$1"
+    else
+        TOKEN="$1"
+    fi
+fi
+
+if [ $# -ge 2 ]; then
+    PKG_FILE="$2"
+fi
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
     echo "This installer requires root privileges."
@@ -25,7 +44,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # Get the console user (the user who initiated sudo, not root)
-if [ -n "$SUDO_USER" ]; then
+if [ -n "${SUDO_USER:-}" ]; then
     CONSOLE_USER="$SUDO_USER"
     ACTUAL_HOME=$(eval echo ~"$SUDO_USER")
 else
@@ -39,16 +58,21 @@ if [ -z "$CONSOLE_USER" ]; then
 fi
 
 echo "👤 Installing for user: $CONSOLE_USER"
+
+if [ -n "$TOKEN" ]; then
+    echo "🔑 Registration token provided"
+else
+    echo -e "${YELLOW}⚠️  No registration token provided.${NC}"
+    echo -e "${YELLOW}   Agent may fail to register unless default account auto-registration is available.${NC}"
+fi
+
 echo ""
 
 # The PKG file should be in the same directory as this script, or passed as argument
-if [ $# -eq 1 ]; then
-    PKG_FILE="$1"
-else
-    # Try to find the PKG in common locations
+if [ -z "$PKG_FILE" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     PKG_FILE="$SCRIPT_DIR/KuaminiSecurityClient-1.0.0.pkg"
-    
+
     if [ ! -f "$PKG_FILE" ]; then
         PKG_FILE="/tmp/KuaminiSecurityClient-1.0.0.pkg"
     fi
@@ -62,36 +86,12 @@ fi
 echo "📦 Installing from: $PKG_FILE"
 echo ""
 
-# Create a temporary directory for extraction
-TEMP_DIR=$(mktemp -d)
-trap "rm -rf $TEMP_DIR" EXIT
+# Install the PKG with Apple's installer
+/usr/sbin/installer -pkg "$PKG_FILE" -target /
 
-echo "🔧 Extracting package..."
-pkgutil --expand-full "$PKG_FILE" "$TEMP_DIR/pkg"
-
-# Check if extraction was successful
-if [ ! -d "$TEMP_DIR/pkg/Payload" ]; then
-    echo -e "${RED}❌ Error: Could not extract package payload${NC}"
-    exit 1
-fi
-
-# Check if app exists in payload
-if [ ! -d "$TEMP_DIR/pkg/Payload/Applications/KuaminiSecurityClient.app" ]; then
-    echo -e "${RED}❌ Error: App bundle not found in package${NC}"
-    exit 1
-fi
-
-echo "📁 Copying application bundle..."
-# Remove any existing installation first
-rm -rf /Applications/KuaminiSecurityClient.app
-
-# Extract the Payload to the root filesystem
-cd "$TEMP_DIR/pkg/Payload"
-tar -cf - . | tar -xf - -C / 2>/dev/null || true
-
-# Verify the copy was successful
+# Verify the app exists
 if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
-    echo -e "${RED}❌ Error: Failed to copy application bundle${NC}"
+    echo -e "${RED}❌ Error: Application bundle not found after install${NC}"
     exit 1
 fi
 
@@ -107,25 +107,41 @@ CONFIG_DIR="$ACTUAL_HOME/.kuamini"
 if [ ! -d "$CONFIG_DIR" ]; then
     echo "🔧 Creating configuration directory..."
     mkdir -p "$CONFIG_DIR"
-    chown "$CONSOLE_USER:staff" "$CONFIG_DIR"
-    chmod 755 "$CONFIG_DIR"
 fi
+chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
+chmod 755 "$CONFIG_DIR" || true
 
-# Create default config if it doesn't exist
 CONFIG_FILE="$CONFIG_DIR/config.json"
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "🔧 Creating default configuration..."
-    cat > "$CONFIG_FILE" << 'EOF'
+AGENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+# Always write a normalized config so token flow works reliably
+if [ -n "$TOKEN" ]; then
+    echo "🔧 Writing configuration with registration token..."
+    cat > "$CONFIG_FILE" << EOF
 {
   "api_base": "https://kuaminisystems.com/api/agent",
   "console_url": "https://kuaminisystems.com/securityAgent",
   "auto_register": true,
-  "heartbeat_interval": 60
+  "heartbeat_interval": 60,
+  "agent_id": "$AGENT_ID",
+  "registration_token": "$TOKEN"
 }
 EOF
-    chown "$CONSOLE_USER:staff" "$CONFIG_FILE"
-    chmod 644 "$CONFIG_FILE"
+else
+    echo "🔧 Writing configuration without token..."
+    cat > "$CONFIG_FILE" << EOF
+{
+  "api_base": "https://kuaminisystems.com/api/agent",
+  "console_url": "https://kuaminisystems.com/securityAgent",
+  "auto_register": true,
+  "heartbeat_interval": 60,
+  "agent_id": "$AGENT_ID"
+}
+EOF
 fi
+
+chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
+chmod 644 "$CONFIG_FILE" || true
 
 # Install LaunchAgent
 echo "🚀 Installing launch agent..."
@@ -162,15 +178,16 @@ cat > "$PLIST_FILE" << EOF
 </plist>
 EOF
 
-chown "$CONSOLE_USER:staff" "$PLIST_FILE"
-chmod 644 "$PLIST_FILE"
+chown "$CONSOLE_USER:staff" "$PLIST_FILE" || true
+chmod 644 "$PLIST_FILE" || true
 
-# Get the numeric UID for the user
+# Get numeric UID and reload agent cleanly
 USER_UID=$(id -u "$CONSOLE_USER")
 
-# Load the LaunchAgent
 echo "⚡ Starting security agent..."
-sudo -u "$CONSOLE_USER" launchctl bootstrap "gui/$USER_UID" "$PLIST_FILE" 2>/dev/null || true
+sudo -u "$CONSOLE_USER" launchctl bootout "gui/$USER_UID" "$PLIST_FILE" 2>/dev/null || true
+sudo -u "$CONSOLE_USER" launchctl bootstrap "gui/$USER_UID" "$PLIST_FILE"
+sudo -u "$CONSOLE_USER" launchctl kickstart -k "gui/$USER_UID/com.kuamini.securityclient" 2>/dev/null || true
 
 echo ""
 echo -e "${GREEN}✅ Installation complete!${NC}"
@@ -180,12 +197,7 @@ echo ""
 echo "Next steps:"
 echo "1. The security agent will start automatically"
 echo "2. Check the menu bar for the Kuamini icon (top right)"
-echo "3. Visit the console to manage your security settings"
-echo ""
-echo "The agent is running in the background and will:"
-echo "• Automatically register with the console"
-echo "• Send periodic status updates"
-echo "• Protect your system from threats"
+echo "3. Verify endpoint appears online in console"
 echo ""
 echo "For support, visit: https://kuaminisystems.com"
 

@@ -1,6 +1,6 @@
 # Kuamini Threat Protection Agent
 
-**Status**: ✅ Production Ready | **Version**: 2.1 | **Last Updated**: February 8, 2026
+**Status**: ✅ Production Ready | **Version**: 2.1 | **Last Updated**: April 16, 2026
 
 Complete endpoint security solution with centralized management console and distributed desktop agents for Windows, macOS, and Linux.
 
@@ -394,7 +394,7 @@ INSTALLER_TOKEN_SECRET=...
 | **TypeScript errors in dev** | Run `pnpm run type-check`, check imports |
 | **Tests failing** | Run `pnpm install`, clear cache: `rm -rf .next` |
 
-See [TROUBLESHOOTING_GUIDE.md](TROUBLESHOOTING_GUIDE.md) for complete troubleshooting.
+See [INSTALLATION.md](INSTALLATION.md#troubleshooting) for installation/runtime troubleshooting.
 
 Also check [DEVELOPMENT.md](DEVELOPMENT.md#troubleshooting--common-issues) for dev-specific issues.
 
@@ -441,7 +441,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete API documentation.
 - ✅ **Audit Logging**: All actions logged for compliance
 - ✅ **RLS Security**: Database row-level security enforced
 
-See [THREAT_DETECTION_SAFETY.md](THREAT_DETECTION_SAFETY.md) for security details.
+See [ARCHITECTURE.md](ARCHITECTURE.md#18-threat-detection-architecture) for threat-detection safety and isolation details.
 
 ---
 
@@ -460,7 +460,7 @@ See [THREAT_DETECTION_SAFETY.md](THREAT_DETECTION_SAFETY.md) for security detail
 - 💬 [Community Discussions](https://github.com/kuamini/threat-protection-agent/discussions)
 
 **Updates:**
-- Follow [DEPLOMENT.md](DEPLOYMENT.md) for release notes
+- Follow [DEPLOYMENT.md](DEPLOYMENT.md) for release notes
 - Check GitHub releases for version history
 
 ---
