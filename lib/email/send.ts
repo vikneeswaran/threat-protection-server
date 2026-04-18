@@ -26,10 +26,11 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
 
   // For now, log to console and simulate success
   if (process.env.NODE_ENV === "development") {
-    console.log("📧 [EMAIL] Development Mode - Not actually sending")
-    console.log(`   To: ${to}`)
-    console.log(`   Subject: ${subject}`)
-    console.log(`   HTML Length: ${htmlBody.length} chars`)
+    console.info("📧 [EMAIL] Development Mode - Not actually sending")
+    console.info(`   To: ${to}`)
+    console.info(`   Subject: ${subject}`)
+    console.info(`   HTML Length: ${htmlBody.length} chars`)
+    console.info(`   Text Length: ${textBody.length} chars`)
     return
   }
 

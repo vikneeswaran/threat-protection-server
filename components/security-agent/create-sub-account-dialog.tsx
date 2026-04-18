@@ -25,7 +25,7 @@ interface CreateSubAccountDialogProps {
   userId: string
 }
 
-export function CreateSubAccountDialog({ parentAccount, userId }: CreateSubAccountDialogProps) {
+export function CreateSubAccountDialog({ parentAccount, userId: _userId }: CreateSubAccountDialogProps) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [name, setName] = useState("")

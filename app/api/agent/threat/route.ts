@@ -8,12 +8,12 @@ export async function POST(request: NextRequest) {
       agent_id,
       account_id,
       threat_name,
-      threat_type,
+      threat_type: _threat_type,
       severity,
       file_path,
       file_hash,
       process_name,
-      process_id,
+      process_id: _process_id,
       details,
     } = body
 
