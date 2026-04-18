@@ -435,18 +435,20 @@ def load_config():
     # Fallback to env vars or token file
     logging.warning("Config file not found at %s, checking for token file or environment variables", config_path)
     
-    # Check for registration_token.txt file in the installation directory
+    # Check for token files in the installation directory
     token_from_file = None
     if getattr(sys, 'frozen', False):
         # Running as PyInstaller bundle
         install_dir = Path(sys.executable).parent
-        token_file = install_dir / "registration_token.txt"
-        if token_file.exists():
-            try:
-                token_from_file = token_file.read_text(encoding='utf-8').strip()
-                logging.info("Found registration token in token file: %s", token_file)
-            except Exception as e:
-                logging.warning("Failed to read token file: %s", e)
+        for token_name in ["registration.token", "registration_token.txt"]:
+            token_file = install_dir / token_name
+            if token_file.exists():
+                try:
+                    token_from_file = token_file.read_text(encoding='utf-8').strip()
+                    logging.info("Found registration token in token file: %s", token_file)
+                    break
+                except Exception as e:
+                    logging.warning("Failed to read token file %s: %s", token_name, e)
     
     cfg = {
         "api_base": os.environ.get("API_BASE") or "https://kuaminisystems.com/api/agent",

@@ -33,8 +33,8 @@ THREAT_SIGNATURES: Dict[str, ThreatSignature] = {
         type="ransomware",
         severity="critical",
         detection_method="pattern",
-        pattern=r".*\.lockbit|.*\.lock",
-        file_extensions=[".lockbit", ".lock"],
+        pattern=r".*\.lockbit",
+        file_extensions=[".lockbit"],
         description="LockBit ransomware file extension pattern"
     ),
     
@@ -58,7 +58,7 @@ THREAT_SIGNATURES: Dict[str, ThreatSignature] = {
         type="trojan",
         severity="critical",
         detection_method="pattern",
-        file_extensions=[".exe", ".dll"],
+        file_extensions=None,
         process_names=["svchost.exe", "explorer.exe"],  # Suspicious impersonation
         description="Emotet banking trojan patterns"
     ),
@@ -116,7 +116,7 @@ THREAT_SIGNATURES: Dict[str, ThreatSignature] = {
         type="worm",
         severity="critical",
         detection_method="pattern",
-        file_extensions=[".exe"],
+        file_extensions=None,
         process_names=["svchost.exe"],
         description="Conficker worm self-propagation patterns"
     ),

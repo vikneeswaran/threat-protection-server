@@ -34,6 +34,7 @@ class ProcessMonitor:
         self.log_callback = log_callback
         self.suspicious_processes: Dict[int, ProcessThreat] = {}
         self.monitored_processes: Dict[int, Dict] = {}
+        self._debug_error_counts: Dict[str, int] = {}
         
         # Suspicious process names
         self.suspicious_proc_names = [
@@ -41,17 +42,37 @@ class ProcessMonitor:
             "cscript.exe", "wscript.exe", "mshta.exe", "certutil.exe",
             "bitsadmin.exe", "curl.exe", "powershell.exe",
         ]
+
+        # Common legitimate Windows processes that should not be flagged by generic heuristics
+        self._known_system_processes = {
+            "system", "system idle process", "smss.exe", "csrss.exe", "wininit.exe", "services.exe",
+            "lsass.exe", "winlogon.exe", "fontdrvhost.exe", "wudfhost.exe", "sihost.exe", "audiodg.exe",
+            "dwm.exe", "ctfmon.exe", "conhost.exe", "wmiapsrv.exe", "svchost.exe", "explorer.exe",
+        }
     
     def _log(self, msg: str, level: str = "info"):
         """Log message with optional callback"""
         getattr(self.logger, level)(msg)
-        if self.log_callback:
+        # Avoid callback duplication for debug noise; callback is logged at INFO by caller
+        if self.log_callback and level in {"warning", "error", "critical"}:
             self.log_callback(f"[ProcessMonitor] {msg}")
+
+    def _debug_once(self, key: str, msg: str):
+        """Log repetitive debug conditions at most a few times."""
+        count = self._debug_error_counts.get(key, 0)
+        if count < 3:
+            self._log(msg, "debug")
+        self._debug_error_counts[key] = count + 1
     
     def check_cpu_abuse(self, process: psutil.Process, threshold: int = 80) -> ProcessThreat | None:
         """Check if process is using excessive CPU"""
         try:
-            cpu_percent = process.cpu_percent(interval=1)
+            proc_name = process.name().lower()
+            if process.pid in (0, 4) or proc_name in self._known_system_processes:
+                return None
+
+            # Non-blocking sample to avoid slow per-process scans and noisy spikes
+            cpu_percent = process.cpu_percent(interval=0.0)
             if cpu_percent > threshold:
                 self._log(f"HIGH CPU: {process.name()} using {cpu_percent}%")
                 return ProcessThreat(
@@ -67,7 +88,7 @@ class ProcessMonitor:
                     }
                 )
         except Exception as e:
-            self._log(f"CPU check error for {process.name()}: {e}", "debug")
+            self._debug_once("cpu_check", f"CPU check error for pid={process.pid}: {e}")
         
         return None
     
@@ -98,30 +119,44 @@ class ProcessMonitor:
         """Check if process name is suspicious"""
         try:
             proc_name = process.name().lower()
+            if proc_name in self._known_system_processes:
+                return None
+
             exe_path = process.exe() if hasattr(process, 'exe') else ""
+            if not exe_path:
+                return None
+            path_l = exe_path.lower().replace("/", "\\")
             
             # Check if running from suspicious location
             suspicious_locations = [
-                "temp", "appdata\\local\\temp", "downloads", "recycler", "system32",
+                "\\temp\\", "appdata\\local\\temp", "\\downloads\\", "\\recycler\\",
             ]
-            if any(loc in exe_path.lower() for loc in suspicious_locations):
-                # But exclude legitimate Windows system processes
-                if "system" not in proc_name.lower() and "svchost" not in proc_name:
-                    self._log(f"SUSPICIOUS LOCATION: {proc_name} from {exe_path}")
-                    return ProcessThreat(
-                        process_name=proc_name,
-                        process_id=process.pid,
-                        threat_type="trojan",
-                        severity="high",
-                        reason="Running from suspicious location",
-                        details={
-                            "exe_path": exe_path,
-                            "suspicious_locations": suspicious_locations,
-                            "description": "Process running from unusual directory"
-                        }
-                    )
+            trusted_prefixes = [
+                "c:\\windows\\system32\\",
+                "c:\\windows\\syswow64\\",
+                "c:\\program files\\",
+                "c:\\program files (x86)\\",
+            ]
+
+            if any(path_l.startswith(prefix) for prefix in trusted_prefixes):
+                return None
+
+            if any(loc in path_l for loc in suspicious_locations):
+                self._log(f"SUSPICIOUS LOCATION: {proc_name} from {exe_path}")
+                return ProcessThreat(
+                    process_name=proc_name,
+                    process_id=process.pid,
+                    threat_type="trojan",
+                    severity="medium",
+                    reason="Running from suspicious location",
+                    details={
+                        "exe_path": exe_path,
+                        "suspicious_locations": suspicious_locations,
+                        "description": "Process running from unusual directory"
+                    }
+                )
         except Exception as e:
-            self._log(f"Suspicious name check error: {e}", "debug")
+            self._debug_once("suspicious_name", f"Suspicious name check error (pid={process.pid}): {e}")
         
         return None
     
@@ -166,7 +201,13 @@ class ProcessMonitor:
         """Check for suspicious network connections"""
         threats = []
         try:
-            connections = process.net_connections(kind='inet')
+            # psutil API compatibility across versions/platforms
+            if hasattr(process, "net_connections"):
+                connections = process.net_connections(kind='inet')
+            elif hasattr(process, "connections"):
+                connections = process.connections(kind='inet')
+            else:
+                return None
             
             # Known malicious domains/IPs
             suspicious_ips = [
@@ -194,16 +235,21 @@ class ProcessMonitor:
                                 "description": "Process connecting to malicious TLD"
                             }
                         ))
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            return None
         except Exception as e:
-            self._log(f"Network check error: {e}", "debug")
+            self._debug_once("network_check", f"Network check error (pid={process.pid}): {e}")
         
         return threats if threats else None
     
     def check_child_processes(self, process: psutil.Process) -> Optional[ProcessThreat]:
         """Check if process spawning too many children (forking bomb)"""
         try:
+            proc_name = process.name().lower()
+            if proc_name in self._known_system_processes:
+                return None
             children = process.children(recursive=True)
-            if len(children) > 100:  # Excessive children
+            if len(children) > 250:  # Excessive children
                 self._log(f"FORKING BOMB: {process.name()} spawned {len(children)} children")
                 return ProcessThreat(
                     process_name=process.name(),
@@ -213,12 +259,12 @@ class ProcessMonitor:
                     reason="Excessive child processes (forking bomb)",
                     details={
                         "child_count": len(children),
-                        "threshold": 100,
+                        "threshold": 250,
                         "description": "Process spawning excessive child processes"
                     }
                 )
         except Exception as e:
-            self._log(f"Child process check error: {e}", "debug")
+            self._debug_once("child_check", f"Child process check error (pid={process.pid}): {e}")
         
         return None
     

@@ -62,7 +62,7 @@ class ThreatDetectionEngine:
     def _log(self, msg: str, level: str = "info"):
         """Log message with optional callback"""
         getattr(self.logger, level)(msg)
-        if self.log_callback:
+        if self.log_callback and level in {"warning", "error", "critical"}:
             self.log_callback(f"[ThreatEngine] {msg}")
     
     def _normalize_threat(self, threat: FileThreat | ProcessThreat | Dict) -> Dict:

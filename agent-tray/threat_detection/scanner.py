@@ -42,6 +42,10 @@ class FileScanner:
         self.scanned_files = 0
         self.threats_found = []
         self.scan_interrupted = False
+
+        self._suspicious_execution_extensions = {
+            ".ps1", ".bat", ".cmd", ".vbs", ".js", ".jse", ".wsf", ".hta", ".scr",
+        }
         
         # High-risk directories to scan
         self.critical_paths = [
@@ -56,8 +60,30 @@ class FileScanner:
     def _log(self, msg: str, level: str = "info"):
         """Log message with optional callback"""
         getattr(self.logger, level)(msg)
-        if self.log_callback:
+        # Avoid callback duplication for informational messages; callback is logged at INFO by caller
+        if self.log_callback and level in {"warning", "error", "critical"}:
             self.log_callback(f"[Scanner] {msg}")
+
+    def _is_suspicious_execution_path(self, file_path: Path) -> bool:
+        """Return True when file is in a commonly abused writable location."""
+        path_l = str(file_path).lower().replace("/", "\\")
+        suspicious_markers = [
+            "\\downloads\\",
+            "\\temp\\",
+            "appdata\\local\\temp",
+            "\\desktop\\",
+            "\\recycler\\",
+            "\\users\\public\\",
+        ]
+        trusted_markers = [
+            "\\windows\\system32\\",
+            "\\windows\\syswow64\\",
+            "\\program files\\",
+            "\\program files (x86)\\",
+        ]
+        if any(marker in path_l for marker in trusted_markers):
+            return False
+        return any(marker in path_l for marker in suspicious_markers)
     
     def _calculate_hash(self, file_path: Path, algorithm: str = "sha256") -> str | None:
         """Calculate file hash"""
@@ -117,16 +143,18 @@ class FileScanner:
             if sig.file_extensions:
                 ext = file_path.suffix.lower()
                 if ext in [e.lower() for e in sig.file_extensions]:
-                    self._log(f"SUSPICIOUS EXTENSION: {sig.name} - {ext}")
-                    return ThreatDetection(
-                        threat_id=sig.id,
-                        threat_name=sig.name,
-                        threat_type=sig.type,
-                        severity=sig.severity,
-                        file_path=str(file_path),
-                        detection_engine="heuristic",
-                        details={"extension": ext, "description": sig.description}
-                    )
+                    # Avoid noisy false positives from generic extensions (e.g., .exe) unless path is suspicious
+                    if ext in self._suspicious_execution_extensions and self._is_suspicious_execution_path(file_path):
+                        self._log(f"SUSPICIOUS EXTENSION: {sig.name} - {ext}")
+                        return ThreatDetection(
+                            threat_id=sig.id,
+                            threat_name=sig.name,
+                            threat_type=sig.type,
+                            severity=sig.severity,
+                            file_path=str(file_path),
+                            detection_engine="heuristic",
+                            details={"extension": ext, "description": sig.description}
+                        )
         
         return None
     

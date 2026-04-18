@@ -35,6 +35,10 @@ function verifyAndDecodeToken(token: string) {
   }
 }
 
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 export async function POST(request: NextRequest) {
   try {
     let body: any
@@ -69,16 +73,22 @@ export async function POST(request: NextRequest) {
         console.error("Invalid registration token decode error:", e)
         return NextResponse.json({ error: "Invalid token" }, { status: 400 })
       }
+
+      if (!accountId || !isUuid(accountId)) {
+        return NextResponse.json({ error: "Invalid token payload: missing or invalid accountId" }, { status: 400 })
+      }
+
+      const accountCheck = await query<{ id: string }>(`SELECT id::text FROM accounts WHERE id = $1 LIMIT 1`, [accountId])
+      if (!accountCheck.rows[0]?.id) {
+        return NextResponse.json({ error: "Account not found for token" }, { status: 403 })
+      }
     } else {
       // Auto-registration without token
       // For agents that register without a token, try to find a default account
       console.warn("Registration without token - attempting to find default account")
       
-      // Get the first active account (for single-account or dev deployments)
-      const defaultAccountResult = await query<{ id: string }>(
-        `SELECT id::text FROM accounts WHERE is_active = TRUE ORDER BY created_at ASC LIMIT 1`,
-        [],
-      )
+      // Get the first account (for single-account or dev deployments)
+      const defaultAccountResult = await query<{ id: string }>(`SELECT id::text FROM accounts ORDER BY created_at ASC LIMIT 1`, [])
       const defaultAccount = defaultAccountResult.rows[0]
       
       if (!defaultAccount?.id) {
@@ -132,19 +142,24 @@ export async function POST(request: NextRequest) {
         `
           INSERT INTO endpoints (
             account_id, agent_id, hostname, os, os_version, agent_version, ip_address, mac_address,
-            status, last_seen_at, registered_at
+            status, last_seen_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'online', NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'online', NOW())
           RETURNING id::text
         `,
         [accountId, agent_id || null, hostname, os, os_version || null, agent_version || null, body.ip_address || null, body.mac_address || null],
       )
 
-      await client.query(
-        `INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details)
-         VALUES ($1, 'endpoint_registered', 'endpoint', $2, $3::jsonb)`,
-        [accountId, insertedResult.rows[0].id, JSON.stringify({ hostname, os, os_version, agent_version, agent_id })],
-      )
+      try {
+        await client.query(
+          `INSERT INTO audit_logs (account_id, action, entity_type, entity_id, details)
+           VALUES ($1, 'endpoint_registered', 'endpoint', $2, $3::jsonb)`,
+          [accountId, insertedResult.rows[0].id, JSON.stringify({ hostname, os, os_version, agent_version, agent_id })],
+        )
+      } catch (auditErr) {
+        // Never fail endpoint registration because of audit log write issues.
+        console.warn("Audit log insert failed during register; continuing:", auditErr)
+      }
 
       await client.query("COMMIT")
       return NextResponse.json({ success: true, message: "Endpoint registered", endpoint_id: insertedResult.rows[0].id })
@@ -154,8 +169,14 @@ export async function POST(request: NextRequest) {
     } finally {
       client.release()
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error)
+    if (error?.code === "23503") {
+      return NextResponse.json({ error: "Registration failed: invalid account reference" }, { status: 400 })
+    }
+    if (error?.code === "23505") {
+      return NextResponse.json({ error: "Registration conflict: endpoint already exists" }, { status: 409 })
+    }
     const isDebug = process.env.DEBUG_REGISTRATION === "true" || process.env.NODE_ENV !== "production"
     const errMessage = error instanceof Error ? error.message : String(error)
     const payload = isDebug
