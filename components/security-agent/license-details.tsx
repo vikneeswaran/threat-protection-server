@@ -73,7 +73,7 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
 
       const targetAccount = subAccounts.find((a) => a.id === selectedAccount)
 
-      toast.success(`${qty} licenses allocated to ${targetAccount.name}`)
+      toast.success(`${qty} licenses allocated to ${targetAccount?.name || "selected account"}`)
       setAllocateOpen(false)
       setSelectedAccount("")
       setQuantity("")

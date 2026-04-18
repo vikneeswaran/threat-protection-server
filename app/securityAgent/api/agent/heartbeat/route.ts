@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
 
+type PolicyRecord = Record<string, unknown> & { id?: string }
+
 /**
  * POST /api/agent/heartbeat
  * 
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch policies assigned to this endpoint
-    const assignedPoliciesResult = await query<{ policy: Record<string, unknown> }>(
+    const assignedPoliciesResult = await query<{ policy: PolicyRecord | null }>(
       `
         SELECT row_to_json(p.*) AS policy
         FROM endpoint_policies ep
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest) {
     )
 
     // Also fetch account-level default policies
-    const defaultPoliciesResult = await query<Record<string, unknown>>(
+    const defaultPoliciesResult = await query<{ policy: PolicyRecord | null }>(
       `
         SELECT row_to_json(p.*) AS policy
         FROM policies p
@@ -92,12 +94,15 @@ export async function POST(request: NextRequest) {
       [endpoint.account_id],
     )
 
-    const allPolicies = [
+    const allPolicies: PolicyRecord[] = [
       ...assignedPoliciesResult.rows.map((row) => row.policy),
       ...defaultPoliciesResult.rows.map((row) => row.policy),
-    ].filter(
-      (p, i, arr) => p && arr.findIndex((x) => x && x.id === p.id) === i,
-    )
+    ].filter((p): p is PolicyRecord => Boolean(p))
+      .filter((p, i, arr) => {
+        const id = typeof p.id === "string" ? p.id : undefined
+        if (!id) {return true}
+        return arr.findIndex((x) => (typeof x.id === "string" ? x.id : undefined) === id) === i
+      })
 
     return NextResponse.json({
       success: true,

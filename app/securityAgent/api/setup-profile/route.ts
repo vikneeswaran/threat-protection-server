@@ -30,8 +30,8 @@ export async function POST(request: Request) {
     }
 
     // Calculate license expiry for free tier
-    const expiresAt =
-      tierData.trial_days > 0 ? new Date(Date.now() + tierData.trial_days * 24 * 60 * 60 * 1000).toISOString() : null
+    const trialDays = tierData.trial_days ?? 0
+    const expiresAt = trialDays > 0 ? new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString() : null
 
     const pool = getPool()
     const client = await pool.connect()

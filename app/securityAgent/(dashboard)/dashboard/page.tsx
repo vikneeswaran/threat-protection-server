@@ -204,20 +204,18 @@ export default async function DashboardPage() {
               is_active: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-              license_tier: profile.tier_id
-                ? {
-                    id: profile.tier_id,
-                    name: profile.tier_name || "free",
-                    min_endpoints: 1,
-                    max_endpoints: 5,
-                    price_per_endpoint: 0,
-                    support_type: profile.support_type || "none",
-                    response_time: profile.response_time,
-                    trial_days: 0,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  }
-                : undefined,
+              license_tier: {
+                id: profile.tier_id || "free",
+                name: profile.tier_name || "free",
+                min_endpoints: 1,
+                max_endpoints: 5,
+                price_per_endpoint: 0,
+                support_type: profile.support_type || "none",
+                response_time: profile.response_time,
+                trial_days: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
             }}
           />
         </div>

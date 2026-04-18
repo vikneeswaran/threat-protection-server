@@ -29,7 +29,8 @@ export async function POST(request: Request) {
     const tier = tierResult.rows[0]
 
     // Calculate expiry if trial days
-    const expiresAt = tier && tier.trial_days > 0 ? new Date(Date.now() + tier.trial_days * 24 * 60 * 60 * 1000).toISOString() : null
+    const trialDays = tier?.trial_days ?? 0
+    const expiresAt = trialDays > 0 ? new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString() : null
 
     const existingProfile = await query<{ id: string }>(`SELECT id::text FROM profiles WHERE id = $1 LIMIT 1`, [userData.id])
     if (existingProfile.rows[0]) {
