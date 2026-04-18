@@ -4,7 +4,15 @@ import { query } from "@/lib/db"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { agent_id, endpoint_id, account_id, status, system_info: _system_info } = body
+    const rawAgentId = body?.agent_id
+    const rawEndpointId = body?.endpoint_id
+    const rawAccountId = body?.account_id
+    const status = body?.status
+    const _system_info = body?.system_info
+
+    const agent_id = typeof rawAgentId === "string" ? rawAgentId.trim() : rawAgentId
+    const endpoint_id = typeof rawEndpointId === "string" ? rawEndpointId.trim() : rawEndpointId
+    const account_id = typeof rawAccountId === "string" ? rawAccountId.trim() : rawAccountId
 
     if (!agent_id && !endpoint_id) {
       return NextResponse.json({ error: "Missing required field: agent_id or endpoint_id" }, { status: 400 })
