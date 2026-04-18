@@ -1,7 +1,10 @@
 {
   "api_base": "https://kuaminisystems.com/api/agent",
-  "registration_token": "<BASE64_TOKEN>",
+  // REQUIRED: Registration token from Kuamini Security Console
+  "registration_token": "<REQUIRED: BASE64_TOKEN_FROM_CONSOLE>",
+  // REQUIRED: Unique agent ID (UUID). Will be generated if missing.
   "agent_id": "<GENERATED_AGENT_ID>",
+  // Optional: Account ID (auto-derived from token if not set)
   "account_id": "<ACCOUNT_ID>",
   "console_url": "https://kuaminisystems.com/securityAgent",
   "heartbeat_interval": 60,

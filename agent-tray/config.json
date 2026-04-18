@@ -1,7 +1,7 @@
 {
   "api_base": "https://kuaminisystems.com/api/agent",
-  "registration_token": "",
-  "agent_id": "",
+  "registration_token": "<REQUIRED: SET YOUR TOKEN>",
+  "agent_id": "<REQUIRED: SET OR GENERATE>",
   "account_id": "",
   "console_url": "https://kuaminisystems.com/securityAgent",
   "heartbeat_interval": 60,

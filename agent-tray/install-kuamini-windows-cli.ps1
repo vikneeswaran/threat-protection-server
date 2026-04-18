@@ -113,21 +113,21 @@ function Get-TokenFromConsole {
     Write-Host ""
     
     if ($Token) {
+        if ($Token.Trim() -eq "") {
+            Write-ErrorLog "Registration token is empty. Please provide a valid token from the Kuamini Security Console."
+            exit 1
+        }
         Write-Log "Token provided via parameter" "INFO"
         return $Token
     }
-    
     Write-Log "No token provided. Please enter your registration token:" "INFO"
     Write-Log "(Token is available in the Kuamini Security Console)" "INFO"
     Write-Host ""
-    
     $tokenInput = Read-Host "Enter registration token"
-    
-    if (-not $tokenInput) {
+    if (-not $tokenInput -or $tokenInput.Trim() -eq "") {
         Write-ErrorLog "No token provided. Installation cannot continue."
         exit 1
     }
-    
     return $tokenInput
 }
 
@@ -251,9 +251,15 @@ function New-ConfigFile {
         Write-Log "Created config directory: $script:CONFIG_DIR" "INFO"
     }
     
-    # Generate agent_id (UUID)
-    $agentId = [guid]::NewGuid().ToString()
-    
+    # Generate agent_id (UUID) if not present
+    $agentId = ""
+    if ($TokenData -and $TokenData.agentId) {
+        $agentId = $TokenData.agentId
+    }
+    if (-not $agentId -or $agentId.Trim() -eq "") {
+        $agentId = [guid]::NewGuid().ToString()
+    }
+
     $config = @{
         api_base           = $script:API_BASE_URL
         console_url        = $ConsoleUrl
@@ -263,13 +269,10 @@ function New-ConfigFile {
         heartbeat_interval = 60
         auto_register      = $true
     }
-    
     $configJson = ConvertTo-Json $config -Depth 10
     Set-Content -Path $script:CONFIG_FILE -Value $configJson -Encoding UTF8 -Force
-    
-    Write-Log "✓ Configuration file created: $script:CONFIG_FILE" "SUCCESS"
+    Write-Log "[32m Configuration file created: $script:CONFIG_FILE" "SUCCESS"
     Write-Log "Agent ID: $agentId" "INFO"
-    
     return $agentId
 }
 
