@@ -374,11 +374,44 @@ def _decode_account_id_from_token(token: str | None) -> str | None:
         logging.debug("Could not find account_id in any token part")
         return None
     except Exception as e:
-        logging.warning("Failed to decode account_id from token: %s", e)
+        logging.debug("Failed to decode account_id from token: %s", e)
     return None
 
 
 def load_config():
+    def _discover_token_from_install_paths() -> str | None:
+        """Best-effort token discovery from installer/runtime locations."""
+        candidate_dirs = []
+        try:
+            if getattr(sys, 'frozen', False):
+                exe_dir = Path(sys.executable).parent
+                candidate_dirs.extend([exe_dir, exe_dir.parent / "Resources"])
+        except Exception:
+            pass
+
+        # Dev/runtime fallbacks
+        try:
+            candidate_dirs.append(Path(__file__).parent)
+        except Exception:
+            pass
+        try:
+            candidate_dirs.append(Path.cwd())
+        except Exception:
+            pass
+
+        for base in candidate_dirs:
+            for token_name in ["registration.token", "registration_token.txt"]:
+                token_file = base / token_name
+                if token_file.exists():
+                    try:
+                        token = token_file.read_text(encoding="utf-8").strip()
+                        if token:
+                            logging.info("Recovered registration token from: %s", token_file)
+                            return token
+                    except Exception as e:
+                        logging.warning("Failed reading token file %s: %s", token_file, e)
+        return None
+
     config_path = get_config_path()
     logging.info("Looking for config at: %s", config_path)
     if config_path.exists():
@@ -431,24 +464,27 @@ def load_config():
                     logging.info("Derived account_id from token and saved to config: %s", cfg["account_id"])
                 except Exception as e:
                     logging.warning("Failed to persist derived account_id: %s", e)
+
+        # Recover token if existing config was created without one
+        if not cfg.get("registration_token"):
+            recovered_token = _discover_token_from_install_paths() or os.environ.get("REGISTRATION_TOKEN")
+            if recovered_token:
+                cfg["registration_token"] = recovered_token
+                logging.info("Recovered missing registration_token and updating config")
+                if not cfg.get("account_id"):
+                    derived = _decode_account_id_from_token(recovered_token)
+                    if derived:
+                        cfg["account_id"] = derived
+                try:
+                    save_config(cfg)
+                except Exception as e:
+                    logging.warning("Failed to persist recovered registration token: %s", e)
         return cfg
     # Fallback to env vars or token file
     logging.warning("Config file not found at %s, checking for token file or environment variables", config_path)
     
-    # Check for token files in the installation directory
-    token_from_file = None
-    if getattr(sys, 'frozen', False):
-        # Running as PyInstaller bundle
-        install_dir = Path(sys.executable).parent
-        for token_name in ["registration.token", "registration_token.txt"]:
-            token_file = install_dir / token_name
-            if token_file.exists():
-                try:
-                    token_from_file = token_file.read_text(encoding='utf-8').strip()
-                    logging.info("Found registration token in token file: %s", token_file)
-                    break
-                except Exception as e:
-                    logging.warning("Failed to read token file %s: %s", token_name, e)
+    # Check for token files in known installation/runtime paths
+    token_from_file = _discover_token_from_install_paths()
     
     cfg = {
         "api_base": os.environ.get("API_BASE") or "https://kuaminisystems.com/api/agent",
@@ -633,6 +669,7 @@ def heartbeat(config):
     ip, mac = get_network_info()
     agent_id = config.get("agent_id") or None
     account_id = config.get("account_id") or None
+    endpoint_id = config.get("endpoint_id") or None
     
     if not agent_id:
         logging.error("Heartbeat failed: missing agent_id")
@@ -640,6 +677,7 @@ def heartbeat(config):
     
     payload = {
         "agent_id": agent_id,
+        "endpoint_id": endpoint_id,
         "account_id": account_id,
         "status": "online",
         "system_info": {
@@ -681,7 +719,12 @@ def heartbeat(config):
             if ok_reg:
                 try:
                     logging.info("Retrying heartbeat after re-registration...")
-                    resp_retry = requests.post(url, json=payload, timeout=15)
+                    retry_payload = {
+                        **payload,
+                        "endpoint_id": config.get("endpoint_id") or payload.get("endpoint_id"),
+                        "account_id": config.get("account_id") or payload.get("account_id"),
+                    }
+                    resp_retry = requests.post(url, json=retry_payload, timeout=15)
                     if resp_retry.status_code < 400:
                         return True, resp_retry.json()
                     else:

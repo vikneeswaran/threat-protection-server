@@ -537,8 +537,11 @@ async function serveMacOSInstaller(token: string, accountId: string, clientIp?: 
 
     const rawBase = process.env.NEXT_PUBLIC_API_BASE_URL || "https://kuaminisystems.com"
     const normalizedBase = rawBase.replace(/\/$/, "")
-    const apiBase = normalizedBase.endsWith("/api/agent") ? normalizedBase : `${normalizedBase}/api/agent`
-    const consoleUrl = `${normalizedBase}/securityAgent`
+    const appBase = normalizedBase.endsWith("/api/agent")
+      ? normalizedBase.slice(0, -"/api/agent".length)
+      : normalizedBase
+    const apiBase = `${appBase}/api/agent`
+    const consoleUrl = `${appBase}/securityAgent`
 
     const installScript = `#!/bin/bash
 set -euo pipefail
@@ -563,7 +566,8 @@ TOKEN=$( /bin/cat "$TOKEN_FILE" )
   "console_url": "${consoleUrl}",
   "auto_register": true,
   "heartbeat_interval": 60,
-  "registration_token": "${token}"
+  "registration_token": "${token}",
+  "account_id": "${accountId}"
 }
 JSON
 

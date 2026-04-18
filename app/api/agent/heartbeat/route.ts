@@ -4,31 +4,52 @@ import { query } from "@/lib/db"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { agent_id, account_id, status, system_info: _system_info } = body
+    const { agent_id, endpoint_id, account_id, status, system_info: _system_info } = body
 
-    if (!agent_id) {
-      return NextResponse.json({ error: "Missing required field: agent_id" }, { status: 400 })
+    if (!agent_id && !endpoint_id) {
+      return NextResponse.json({ error: "Missing required field: agent_id or endpoint_id" }, { status: 400 })
     }
 
-    const foundByAgentResult = account_id
-      ? await query<{ id: string; account_id: string }>(
-          `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
-          [agent_id, account_id],
-        )
-      : await query<{ id: string; account_id: string }>(
-          `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
-          [agent_id],
-        )
-    const foundByAgentId = foundByAgentResult.rows[0]
+    let foundEndpoint: { id: string; account_id: string } | undefined
 
-    if (!foundByAgentId) {
+    if (endpoint_id) {
+      const foundByEndpointResult = await query<{ id: string; account_id: string }>(
+        `SELECT id::text, account_id::text FROM endpoints WHERE id = $1 LIMIT 1`,
+        [endpoint_id],
+      )
+      foundEndpoint = foundByEndpointResult.rows[0]
+    }
+
+    if (!foundEndpoint && agent_id) {
+      const foundByAgentResult = account_id
+        ? await query<{ id: string; account_id: string }>(
+            `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 AND account_id = $2 LIMIT 1`,
+            [agent_id, account_id],
+          )
+        : await query<{ id: string; account_id: string }>(
+            `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+            [agent_id],
+          )
+      foundEndpoint = foundByAgentResult.rows[0]
+    }
+
+    // Fallback for stale/mismatched account_id on agent side
+    if (!foundEndpoint && agent_id && account_id) {
+      const fallbackByAgent = await query<{ id: string; account_id: string }>(
+        `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+        [agent_id],
+      )
+      foundEndpoint = fallbackByAgent.rows[0]
+    }
+
+    if (!foundEndpoint) {
       // Endpoint not found by agent_id
       return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
     }
 
     await query(
       `UPDATE endpoints SET status = $1, last_seen_at = NOW(), updated_at = NOW() WHERE id = $2`,
-      [status || "online", foundByAgentId.id],
+      [status || "online", foundEndpoint.id],
     )
 
     const policyResult = await query<{ policy: Record<string, unknown> }>(
@@ -38,7 +59,7 @@ export async function POST(request: NextRequest) {
         JOIN policies p ON p.id = ep.policy_id
         WHERE ep.endpoint_id = $1
       `,
-      [foundByAgentId.id],
+      [foundEndpoint.id],
     )
 
     const policies = policyResult.rows.map((row) => row.policy)
