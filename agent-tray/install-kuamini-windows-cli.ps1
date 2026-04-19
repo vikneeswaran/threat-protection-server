@@ -271,7 +271,7 @@ function New-ConfigFile {
     }
     $configJson = ConvertTo-Json $config -Depth 10
     Set-Content -Path $script:CONFIG_FILE -Value $configJson -Encoding UTF8 -Force
-    Write-Log "[32m Configuration file created: $script:CONFIG_FILE" "SUCCESS"
+    Write-Log "✓ Configuration file created: $script:CONFIG_FILE" "SUCCESS"
     Write-Log "Agent ID: $agentId" "INFO"
     return $agentId
 }

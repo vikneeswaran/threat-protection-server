@@ -51,13 +51,57 @@ export async function POST(request: NextRequest) {
     }
 
     if (!foundEndpoint) {
-      // Endpoint not found by agent_id
-      return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
+      // Self-healing fallback for migrated environments:
+      // if endpoint row is missing but heartbeat has enough identity, recreate/upsert it.
+      if (agent_id && account_id) {
+        const rawOs = String(body?.system_info?.os || body?.os || "linux").toLowerCase()
+        const normalizedOs = rawOs.includes("win")
+          ? "windows"
+          : rawOs.includes("mac") || rawOs.includes("darwin")
+            ? "macos"
+            : "linux"
+
+        const hostname = String(body?.system_info?.hostname || body?.hostname || `endpoint-${String(agent_id).slice(0, 8)}`)
+        const osVersion = body?.system_info?.kernel || body?.os_version || null
+        const ipAddress = body?.system_info?.ip || body?.ip_address || null
+        const macAddress = body?.system_info?.mac || body?.mac_address || null
+
+        const upsertResult = await query<{ id: string; account_id: string }>(
+          `
+            INSERT INTO endpoints (
+              account_id, agent_id, hostname, os, os_version, ip_address, mac_address,
+              status, last_seen_at, registered_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4::endpoint_os, $5, $6, $7, 'online', NOW(), NOW(), NOW())
+            ON CONFLICT (agent_id)
+            DO UPDATE SET
+              account_id = EXCLUDED.account_id,
+              hostname = EXCLUDED.hostname,
+              os = EXCLUDED.os,
+              os_version = EXCLUDED.os_version,
+              ip_address = EXCLUDED.ip_address,
+              mac_address = EXCLUDED.mac_address,
+              status = 'online',
+              last_seen_at = NOW(),
+              updated_at = NOW()
+            RETURNING id::text, account_id::text
+          `,
+          [account_id, agent_id, hostname, normalizedOs, osVersion, ipAddress, macAddress],
+        )
+
+        foundEndpoint = upsertResult.rows[0]
+      }
+
+      if (!foundEndpoint) {
+        return NextResponse.json({ error: "Endpoint not found" }, { status: 404 })
+      }
     }
+
+    const safeStatus = ["online", "offline", "disconnected"].includes(String(status)) ? status : "online"
 
     await query(
       `UPDATE endpoints SET status = $1, last_seen_at = NOW(), updated_at = NOW() WHERE id = $2`,
-      [status || "online", foundEndpoint.id],
+      [safeStatus, foundEndpoint.id],
     )
 
     const policyResult = await query<{ policy: Record<string, unknown> }>(

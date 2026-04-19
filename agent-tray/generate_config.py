@@ -10,21 +10,10 @@ DEFAULTS = {
 
 
 def main():
-    token = os.environ.get("REGISTRATION_TOKEN", "")
-    if not token or token.strip() == "":
-        print("ERROR: REGISTRATION_TOKEN environment variable is required to generate config.json.")
-        print("Obtain your registration token from the Kuamini Security Console and set it as REGISTRATION_TOKEN.")
-        exit(1)
-
-    agent_id = os.environ.get("AGENT_ID", "")
-    if not agent_id or agent_id.strip() == "":
-        import uuid
-        agent_id = str(uuid.uuid4())
-
     cfg = {
         "api_base": os.environ.get("API_BASE", DEFAULTS["api_base"]),
-        "registration_token": token,
-        "agent_id": agent_id,
+        "registration_token": os.environ.get("REGISTRATION_TOKEN", ""),
+        "agent_id": os.environ.get("AGENT_ID", ""),
         "account_id": os.environ.get("ACCOUNT_ID", ""),
         "console_url": os.environ.get("CONSOLE_URL", DEFAULTS["console_url"]),
         "heartbeat_interval": int(os.environ.get("HEARTBEAT_INTERVAL", DEFAULTS["heartbeat_interval"])),
