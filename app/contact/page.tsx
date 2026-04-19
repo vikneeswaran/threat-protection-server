@@ -12,12 +12,40 @@ export default function ContactPage() {
     email: "",
     message: "",
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [resultMessage, setResultMessage] = useState<string | null>(null)
+  const [resultType, setResultType] = useState<"success" | "error" | null>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle form submission
-    console.info("Form submitted:", formData)
-    setFormData({ firstName: "", email: "", message: "" })
+
+    setIsSubmitting(true)
+    setResultMessage(null)
+    setResultType(null)
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string }
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to submit inquiry")
+      }
+
+      setFormData({ firstName: "", email: "", message: "" })
+      setResultType("success")
+      setResultMessage("Thank you. Your inquiry has been sent.")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to submit inquiry"
+      setResultType("error")
+      setResultMessage(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -42,6 +70,7 @@ export default function ContactPage() {
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     placeholder="Enter your first name"
                     className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#673de6] focus:border-transparent"
+                    required
                   />
                 </div>
 
@@ -71,10 +100,15 @@ export default function ContactPage() {
 
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="px-8 py-3 bg-[#8c85ff] hover:bg-[#673de6] text-white font-medium rounded-md transition-colors"
                 >
-                  Submit Your Inquiry
+                  {isSubmitting ? "Sending..." : "Submit Your Inquiry"}
                 </button>
+
+                {resultMessage && (
+                  <p className={`text-sm ${resultType === "success" ? "text-green-600" : "text-red-600"}`}>{resultMessage}</p>
+                )}
               </form>
             </div>
 

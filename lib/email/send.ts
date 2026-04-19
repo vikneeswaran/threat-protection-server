@@ -3,11 +3,14 @@
  * This is a placeholder that can be integrated with SendGrid, SES, or other providers
  */
 
+import nodemailer from "nodemailer"
+
 interface EmailOptions {
   to: string
   subject: string
   htmlBody: string
   textBody: string
+  replyTo?: string
 }
 
 /**
@@ -15,7 +18,36 @@ interface EmailOptions {
  * In production, integrate with SendGrid, AWS SES, Resend, or similar
  */
 export async function sendEmail(options: EmailOptions): Promise<void> {
-  const { to, subject, htmlBody, textBody } = options
+  const { to, subject, htmlBody, textBody, replyTo } = options
+
+  const smtpHost = process.env.SMTP_HOST
+  const smtpPort = Number(process.env.SMTP_PORT || "587")
+  const smtpUser = process.env.SMTP_USER
+  const smtpPass = process.env.SMTP_PASS
+  const smtpSecure = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true"
+  const fromEmail = process.env.FROM_EMAIL || "noreply@kuaminisystems.com"
+
+  if (smtpHost && smtpUser && smtpPass) {
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    })
+
+    await transporter.sendMail({
+      from: fromEmail,
+      to,
+      subject,
+      html: htmlBody,
+      text: textBody,
+      replyTo,
+    })
+    return
+  }
 
   // TODO: Integrate with actual email provider
   // Options:
@@ -34,19 +66,7 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
     return
   }
 
-  // In production, implement actual email sending here
-  // Example with SendGrid:
-  // const sgMail = require('@sendgrid/mail');
-  // sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  // await sgMail.send({
-  //   to,
-  //   from: process.env.FROM_EMAIL || 'noreply@kuaminisystems.com',
-  //   subject,
-  //   html: htmlBody,
-  //   text: textBody,
-  // });
-
-  console.warn("⚠️ [EMAIL] Email provider not configured. Email sending will fail in production.")
+  throw new Error("Email provider not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and FROM_EMAIL.")
 }
 
 /**
