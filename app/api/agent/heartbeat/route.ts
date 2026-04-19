@@ -66,28 +66,28 @@ export async function POST(request: NextRequest) {
         const ipAddress = body?.system_info?.ip || body?.ip_address || null
         const macAddress = body?.system_info?.mac || body?.mac_address || null
 
-        const upsertResult = await query<{ id: string; account_id: string }>(
-          `
-            INSERT INTO endpoints (
-              account_id, agent_id, hostname, os, os_version, ip_address, mac_address,
-              status, last_seen_at, registered_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4::endpoint_os, $5, $6, $7, 'online', NOW(), NOW(), NOW())
-            ON CONFLICT (agent_id)
-            DO UPDATE SET
-              account_id = EXCLUDED.account_id,
-              hostname = EXCLUDED.hostname,
-              os = EXCLUDED.os,
-              os_version = EXCLUDED.os_version,
-              ip_address = EXCLUDED.ip_address,
-              mac_address = EXCLUDED.mac_address,
-              status = 'online',
-              last_seen_at = NOW(),
-              updated_at = NOW()
-            RETURNING id::text, account_id::text
-          `,
-          [account_id, agent_id, hostname, normalizedOs, osVersion, ipAddress, macAddress],
+        // First try to find an existing row one more time (race-safe), then insert if still missing
+        const existingCheck = await query<{ id: string; account_id: string }>(
+          `SELECT id::text, account_id::text FROM endpoints WHERE agent_id = $1 LIMIT 1`,
+          [agent_id],
         )
+
+        let upsertResult: { rows: { id: string; account_id: string }[] }
+        if (existingCheck.rows.length > 0) {
+          upsertResult = existingCheck
+        } else {
+          upsertResult = await query<{ id: string; account_id: string }>(
+            `
+              INSERT INTO endpoints (
+                account_id, agent_id, hostname, os, os_version, ip_address, mac_address,
+                status, last_seen_at, registered_at, updated_at
+              )
+              VALUES ($1, $2, $3, $4::endpoint_os, $5, $6, $7, 'online', NOW(), NOW(), NOW())
+              RETURNING id::text, account_id::text
+            `,
+            [account_id, agent_id, hostname, normalizedOs, osVersion, ipAddress, macAddress],
+          )
+        }
 
         foundEndpoint = upsertResult.rows[0]
       }
