@@ -1,7 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import fs from "fs/promises"
-import path from "path"
 import { query } from "@/lib/db"
+import {
+  compareVersions,
+  findInstallerForOsVersion,
+  findLatestInstallerForOs,
+  parseVersionParts,
+} from "@/lib/agent-versions"
 
 type InstallerTargetOs = "windows" | "macos" | "linux"
 
@@ -16,70 +20,24 @@ function normalizeOs(value: unknown): InstallerTargetOs {
   return "linux"
 }
 
-function parseVersionParts(value: string | null | undefined): number[] {
-  if (!value) {
-    return []
-  }
-  const match = String(value).match(/(\d+(?:\.\d+)+)/)
-  if (!match) {
-    return []
-  }
-  return match[1].split(".").map((part) => Number(part) || 0)
-}
-
-function compareVersions(left: number[], right: number[]): number {
-  const max = Math.max(left.length, right.length)
-  for (let i = 0; i < max; i += 1) {
-    const l = left[i] ?? 0
-    const r = right[i] ?? 0
-    if (l !== r) {
-      return l - r
-    }
-  }
-  return 0
-}
-
-async function findLatestInstallerForOs(targetOs: InstallerTargetOs) {
-  const trayDir = path.join(process.cwd(), "public", "tray")
+async function buildInstallerUpdateForOs(targetOs: InstallerTargetOs, selectedVersion?: string | null) {
   const appBase = (process.env.NEXT_PUBLIC_APP_URL || "https://kuaminisystems.com").replace(/\/$/, "")
 
-  try {
-    const entries = await fs.readdir(trayDir)
-    const matches: Array<{ file: string; version: number[]; versionText: string }> = []
+  const pinnedVersion = typeof selectedVersion === "string" ? selectedVersion.trim() : ""
+  const desired = pinnedVersion ? await findInstallerForOsVersion(targetOs, pinnedVersion) : null
+  const latest = await findLatestInstallerForOs(targetOs)
+  const resolved = desired ?? latest
 
-    const patternByOs: Record<InstallerTargetOs, RegExp> = {
-      windows: /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u,
-      macos: /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.pkg$/u,
-      linux: /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.tar\.gz$/u,
-    }
-
-    const pattern = patternByOs[targetOs]
-    for (const file of entries) {
-      const matched = pattern.exec(file)
-      if (!matched) {
-        continue
-      }
-      matches.push({
-        file,
-        versionText: matched[1],
-        version: matched[1].split(".").map((v) => Number(v) || 0),
-      })
-    }
-
-    if (matches.length === 0) {
-      return null
-    }
-
-    matches.sort((a, b) => compareVersions(a.version, b.version))
-    const latest = matches[matches.length - 1]
-    return {
-      installer_filename: latest.file,
-      latest_version: latest.versionText,
-      download_url: `${appBase}/tray/${latest.file}`,
-      target_os: targetOs,
-    }
-  } catch {
+  if (!resolved) {
     return null
+  }
+
+  return {
+    installer_filename: resolved.file,
+    latest_version: resolved.versionText,
+    selected_version: pinnedVersion || null,
+    download_url: `${appBase}/tray/${resolved.file}`,
+    target_os: targetOs,
   }
 }
 
@@ -187,10 +145,21 @@ export async function POST(request: NextRequest) {
     const macAddress = system_info?.mac || body?.mac_address || null
     const detectedOs = normalizeOs(system_info?.os || body?.os)
 
-    const updateResult = await findLatestInstallerForOs(detectedOs)
+    const accountSettingsResult = await query<{ settings: Record<string, unknown> | null }>(
+      `SELECT settings FROM account_settings WHERE account_id = $1 LIMIT 1`,
+      [foundEndpoint.account_id],
+    )
+    const selectedVersionValue = accountSettingsResult.rows[0]?.settings?.target_agent_version
+    const selectedVersion =
+      typeof selectedVersionValue === "string" && selectedVersionValue !== "latest" ? selectedVersionValue.trim() : null
+
+    const updateResult = await buildInstallerUpdateForOs(detectedOs, selectedVersion)
     const currentVersionParts = parseVersionParts(typeof agent_version === "string" ? agent_version : null)
     const latestVersionParts = parseVersionParts(updateResult?.latest_version || null)
-    const isUpdateAvailable = latestVersionParts.length > 0 && compareVersions(currentVersionParts, latestVersionParts) < 0
+    const versionComparison =
+      latestVersionParts.length > 0 ? compareVersions(currentVersionParts, latestVersionParts) : 0
+    const isUpdateAvailable = latestVersionParts.length > 0 && versionComparison < 0
+    const downgradeBlocked = latestVersionParts.length > 0 && versionComparison > 0
 
     await query(
       `
@@ -223,11 +192,16 @@ export async function POST(request: NextRequest) {
       policies,
       agent_update: {
         available: isUpdateAvailable,
+        downgrade_blocked: downgradeBlocked,
         current_version: typeof agent_version === "string" ? agent_version : null,
         latest_version: updateResult?.latest_version || null,
+        selected_version: updateResult?.selected_version || null,
         installer_filename: updateResult?.installer_filename || null,
-        download_url: updateResult?.download_url || null,
+        download_url: isUpdateAvailable ? updateResult?.download_url || null : null,
         target_os: updateResult?.target_os || detectedOs,
+        message: downgradeBlocked
+          ? "Downgrade is blocked. Uninstall the current version and reinstall the selected older version."
+          : null,
       },
     })
   } catch (error) {

@@ -94,7 +94,44 @@ function compareVersions(left: number[], right: number[]) {
   return 0
 }
 
-async function findLatestWindowsMsi(basePath: string): Promise<string> {
+function normalizeRequestedVersion(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+  const trimmed = value.trim()
+  return /^\d+\.\d+\.\d+(?:\.\d+)?$/u.test(trimmed) ? trimmed : null
+}
+
+async function findSpecificVersionedFile(basePath: string, pattern: RegExp, requestedVersion: string): Promise<string | null> {
+  try {
+    const entries = await fs.readdir(basePath)
+    for (const entry of entries) {
+      const match = pattern.exec(entry)
+      if (match?.[1] === requestedVersion) {
+        return entry
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+async function findLatestWindowsMsi(basePath: string, requestedVersion?: string | null): Promise<string> {
+  const normalizedRequestedVersion = normalizeRequestedVersion(requestedVersion ?? null)
+
+  if (normalizedRequestedVersion) {
+    const specific = await findSpecificVersionedFile(
+      basePath,
+      /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u,
+      normalizedRequestedVersion,
+    )
+    if (specific) {
+      console.info(`[Windows Installer] Using requested MSI version: ${specific}`)
+      return specific
+    }
+  }
+
   // Try to find latest version from filesystem (local development)
   try {
     const entries = await fs.readdir(basePath)
@@ -162,13 +199,14 @@ async function buildWindowsInstallerBundle(
   clientIp?: string,
   userAgent?: string | null,
   requestOrigin?: string,
+  requestedVersion?: string | null,
 ): Promise<NextResponse> {
   // Determine MSI filename from available artifacts (avoids hardcoded version drift)
   const origin = (requestOrigin ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://kuaminisystems.com").replace(/\/$/, "")
   const trayBasePath = path.join(process.cwd(), "public", "tray")
   let msiName: string
   try {
-    msiName = await findLatestWindowsMsi(trayBasePath)
+    msiName = await findLatestWindowsMsi(trayBasePath, requestedVersion)
   } catch {
     msiName = INSTALLER_WINDOWS_MSI_FILENAME
   }
@@ -369,6 +407,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const platform = searchParams.get("platform") // macos, windows, linux
+    const requestedVersion = normalizeRequestedVersion(searchParams.get("version"))
     const accountId = searchParams.get("accountId")
     const subAccountId = searchParams.get("subAccountId")
     const clientIp = getClientIp(request)
@@ -435,11 +474,26 @@ export async function GET(request: NextRequest) {
     // Serve prebuilt installers. macOS stays dynamic to preserve postinstall token download.
     switch (platform) {
       case "macos":
-        return await generateMacOSInstaller(agentTrayDistPath, registrationToken, accountId, clientIp, request.headers.get("user-agent"))
+        return await generateMacOSInstaller(
+          agentTrayDistPath,
+          registrationToken,
+          accountId,
+          clientIp,
+          request.headers.get("user-agent"),
+          requestedVersion,
+        )
       case "windows":
-        return await serveWindowsInstaller(accountId, account.name, registrationToken, clientIp, request.headers.get("user-agent"), request.nextUrl.origin)
+        return await serveWindowsInstaller(
+          accountId,
+          account.name,
+          registrationToken,
+          clientIp,
+          request.headers.get("user-agent"),
+          request.nextUrl.origin,
+          requestedVersion,
+        )
       case "linux":
-        return await serveStaticInstaller("linux", accountId, clientIp, request.headers.get("user-agent"))
+        return await serveStaticInstaller("linux", accountId, clientIp, request.headers.get("user-agent"), requestedVersion)
       default:
         return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
     }
@@ -449,13 +503,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function serveStaticInstaller(platform: string, accountId: string, clientIp?: string, userAgent?: string | null) {
+async function serveStaticInstaller(
+  platform: string,
+  accountId: string,
+  clientIp?: string,
+  userAgent?: string | null,
+  requestedVersion?: string | null,
+) {
   try {
     const basePath = path.join(process.cwd(), "public", "tray")
+    const normalizedRequestedVersion = normalizeRequestedVersion(requestedVersion ?? null)
+    const linuxRequestedName = normalizedRequestedVersion ? `KuaminiSecurityClient-${normalizedRequestedVersion}.tar.gz` : null
     const candidates =
       platform === "windows"
         ? [INSTALLER_WINDOWS_MSI_FILENAME, "KuaminiSecurityClient-1.0.0.msi", "KuaminiSecurityClient-windows.zip", "windows.msi", "windows.zip"]
-        : ["KuaminiSecurityClient-linux.tar.gz", "linux.tar.gz", "linux.zip"]
+        : [linuxRequestedName, "KuaminiSecurityClient-linux.tar.gz", "linux.tar.gz", "linux.zip"].filter(
+            (value): value is string => Boolean(value),
+          )
 
     const filePath = await resolveBundlePath(candidates.map((f) => path.join(basePath, f)))
     const data = await fs.readFile(filePath)
@@ -505,10 +569,11 @@ async function serveWindowsInstaller(
   clientIp?: string,
   userAgent?: string | null,
   requestOrigin?: string,
+  requestedVersion?: string | null,
 ) {
   try {
     console.info("[Windows Installer] Building MSI + token bundle")
-    return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin)
+    return await buildWindowsInstallerBundle(accountId, token, clientIp, userAgent, requestOrigin, requestedVersion)
   } catch (error) {
     console.error("Error preparing Windows installer:", error)
     const message = error instanceof Error ? error.message : "Unknown error"
@@ -522,13 +587,23 @@ async function serveWindowsInstaller(
   }
 }
 
-async function serveMacOSInstaller(token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
+async function serveMacOSInstaller(
+  token: string,
+  accountId: string,
+  clientIp?: string,
+  userAgent?: string | null,
+  requestedVersion?: string | null,
+) {
   try {
+    const normalizedRequestedVersion = normalizeRequestedVersion(requestedVersion ?? null)
+    const requestedPkg = normalizedRequestedVersion ? `KuaminiSecurityClient-${normalizedRequestedVersion}.pkg` : null
+
     // Serve the pre-built base PKG from public/tray/
     // The postinstall script in the base PKG does not embed token.
     const publicPath = await resolveBundlePath([
-      path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-1.0.0.pkg"),
+      ...(requestedPkg ? [path.join(process.cwd(), "public", "tray", requestedPkg)] : []),
       path.join(process.cwd(), "public", "tray", "macos.pkg"),
+      path.join(process.cwd(), "public", "tray", "KuaminiSecurityClient-1.0.0.pkg"),
     ])
 
     const pkgName = path.basename(publicPath)
@@ -616,9 +691,16 @@ echo "If the tray icon is red, open the console and check endpoint status."
   }
 }
 
-async function generateMacOSInstaller(_distPath: string, token: string, accountId: string, clientIp?: string, userAgent?: string | null) {
+async function generateMacOSInstaller(
+  _distPath: string,
+  token: string,
+  accountId: string,
+  clientIp?: string,
+  userAgent?: string | null,
+  requestedVersion?: string | null,
+) {
   try {
-    return await serveMacOSInstaller(token, accountId, clientIp, userAgent)
+    return await serveMacOSInstaller(token, accountId, clientIp, userAgent, requestedVersion)
   } catch (error) {
     console.error("Error generating macOS installer:", error)
     throw error

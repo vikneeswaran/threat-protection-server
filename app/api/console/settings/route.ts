@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { query } from "@/lib/db"
 import { getConsoleProfile } from "@/lib/auth/console"
 import { getSessionUser } from "@/lib/auth/session"
+import { getCommonInstallerVersions } from "@/lib/agent-versions"
 
 export async function PUT(request: Request) {
   const user = await getSessionUser()
@@ -19,6 +20,22 @@ export async function PUT(request: Request) {
 
   if (!settings || typeof settings !== "object") {
     return NextResponse.json({ error: "Invalid settings payload" }, { status: 400 })
+  }
+
+  const targetAgentVersion =
+    typeof settings.target_agent_version === "string" ? settings.target_agent_version.trim() : undefined
+
+  if (targetAgentVersion && targetAgentVersion !== "latest") {
+    const selectableVersions = await getCommonInstallerVersions(3)
+    if (!selectableVersions.includes(targetAgentVersion)) {
+      return NextResponse.json(
+        {
+          error: "Invalid target agent version. You can only select from the latest 3 available versions.",
+          allowedVersions: selectableVersions,
+        },
+        { status: 400 },
+      )
+    }
   }
 
   await query(

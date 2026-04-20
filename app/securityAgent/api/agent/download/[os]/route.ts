@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+const INSTALLER_AGENT_VERSION = process.env.AGENT_VERSION ?? "1.0.6"
+
 // Get the base URL for the API
 function getBaseUrl(request: NextRequest): string {
   // Default to production domain and HTTPS when host header is missing.
@@ -71,12 +73,11 @@ register_agent() {
   log "Registering agent with server..."
   RESPONSE=$(curl -s -X POST "$API_BASE_URL/register" \\
     -H "Content-Type: application/json" \\
-    -d "{
       \\"token\\": \\"$REGISTRATION_TOKEN\\",
       \\"hostname\\": \\"$HOSTNAME\\",
       \\"os_type\\": \\"$OS_TYPE\\",
       \\"os_version\\": \\"$OS_VERSION\\",
-      \\"agent_version\\": \\"1.0.0\\",
+        \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\",
       \\"ip_address\\": \\"$(ipconfig getifaddr en0 2>/dev/null || echo 'unknown')\\"
     }")
   
@@ -98,7 +99,7 @@ send_heartbeat() {
       \\"status\\": \\"online\\",
       \\"cpu_usage\\": $(top -l 1 | grep "CPU usage" | awk '{print $3}' | tr -d '%'),
       \\"memory_usage\\": $(memory_pressure | grep "System-wide memory free percentage" | awk '{print 100-$5}' | tr -d '%'),
-      \\"agent_version\\": \\"1.0.0\\"
+         \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\"
     }" > /dev/null 2>&1
 }
 
@@ -238,7 +239,7 @@ register_agent() {
       \\"hostname\\": \\"$HOSTNAME\\",
       \\"os_type\\": \\"$OS_TYPE\\",
       \\"os_version\\": \\"$OS_VERSION\\",
-      \\"agent_version\\": \\"1.0.0\\",
+        \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\",
       \\"ip_address\\": \\"$IP_ADDR\\"
     }")
   
@@ -263,7 +264,7 @@ send_heartbeat() {
       \\"status\\": \\"online\\",
       \\"cpu_usage\\": $CPU,
       \\"memory_usage\\": $MEM,
-      \\"agent_version\\": \\"1.0.0\\"
+        \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\"
     }" > /dev/null 2>&1
 }
 
@@ -406,7 +407,7 @@ function Register-Agent {
         hostname = $config["HOSTNAME"]
         os_type = $config["OS_TYPE"]
         os_version = $config["OS_VERSION"]
-        agent_version = "1.0.0"
+        agent_version = "${INSTALLER_AGENT_VERSION}"
         ip_address = $ip
     } | ConvertTo-Json
 
@@ -430,7 +431,7 @@ function Send-Heartbeat {
         status = "online"
         cpu_usage = $cpu
         memory_usage = [math]::Round($mem, 2)
-        agent_version = "1.0.0"
+        agent_version = "${INSTALLER_AGENT_VERSION}"
     } | ConvertTo-Json
 
     try {

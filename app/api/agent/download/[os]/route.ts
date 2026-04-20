@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+const INSTALLER_AGENT_VERSION = process.env.AGENT_VERSION ?? "1.0.6"
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ os: string }> }) {
   const { os } = await params
   const searchParams = request.nextUrl.searchParams
@@ -110,7 +112,7 @@ log() {
 send_heartbeat() {
     curl -s -X POST "$API_BASE/heartbeat" \\
         -H "Content-Type: application/json" \\
-        -d "{\\"agent_id\\": \\"$AGENT_ID\\", \\"account_id\\": \\"$ACCOUNT_ID\\", \\"status\\": \\"online\\", \\"system_info\\": {\\"os\\": \\"$(uname -s)\\", \\"hostname\\": \\"$(hostname)\\", \\"kernel\\": \\"$(uname -r)\\"}}" \\
+  -d "{\\"agent_id\\": \\"$AGENT_ID\\", \\"account_id\\": \\"$ACCOUNT_ID\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\", \\"status\\": \\"online\\", \\"system_info\\": {\\"os\\": \\"$(uname -s)\\", \\"hostname\\": \\"$(hostname)\\", \\"kernel\\": \\"$(uname -r)\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\"}}" \\
         >> /var/log/kuamini/agent.log 2>&1
 }
 
@@ -120,7 +122,7 @@ register_agent() {
     
     curl -s -X POST "$API_BASE/register" \\
         -H "Content-Type: application/json" \\
-        -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"macos\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"1.0.0\\", \\"agent_id\\": \\"$AGENT_ID\\"}" \\
+        -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"macos\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\", \\"agent_id\\": \\"$AGENT_ID\\"}" \\
         >> /var/log/kuamini/agent.log 2>&1
 }
 
@@ -168,7 +170,7 @@ OS_VERSION=$(sw_vers -productVersion 2>/dev/null || uname -r)
 
 curl -s -X POST "$API_BASE/register" \\
     -H "Content-Type: application/json" \\
-    -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"macos\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"1.0.0\\", \\"agent_id\\": \\"$AGENT_ID\\"}"
+    -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"macos\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\", \\"agent_id\\": \\"$AGENT_ID\\"}"
 
 echo ""
 echo "[6/6] Starting agent service..."
@@ -275,7 +277,7 @@ log() {
 send_heartbeat() {
     curl -s -X POST "$API_BASE/heartbeat" \\
         -H "Content-Type: application/json" \\
-        -d "{\\"agent_id\\": \\"$AGENT_ID\\", \\"account_id\\": \\"$ACCOUNT_ID\\", \\"status\\": \\"online\\", \\"system_info\\": {\\"os\\": \\"linux\\", \\"hostname\\": \\"$(hostname)\\", \\"kernel\\": \\"$(uname -r)\\"}}" \\
+  -d "{\\"agent_id\\": \\"$AGENT_ID\\", \\"account_id\\": \\"$ACCOUNT_ID\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\", \\"status\\": \\"online\\", \\"system_info\\": {\\"os\\": \\"linux\\", \\"hostname\\": \\"$(hostname)\\", \\"kernel\\": \\"$(uname -r)\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\"}}" \\
         >> /var/log/kuamini/agent.log 2>&1
 }
 
@@ -285,7 +287,7 @@ register_agent() {
     
     curl -s -X POST "$API_BASE/register" \\
         -H "Content-Type: application/json" \\
-        -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"linux\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"1.0.0\\", \\"agent_id\\": \\"$AGENT_ID\\"}" \\
+        -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"linux\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\", \\"agent_id\\": \\"$AGENT_ID\\"}" \\
         >> /var/log/kuamini/agent.log 2>&1
 }
 
@@ -324,7 +326,7 @@ OS_VERSION=$(cat /etc/os-release | grep VERSION_ID | cut -d'"' -f2 2>/dev/null |
 
 curl -s -X POST "$API_BASE/register" \\
     -H "Content-Type: application/json" \\
-    -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"linux\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"1.0.0\\", \\"agent_id\\": \\"$AGENT_ID\\"}"
+    -d "{\\"token\\": \\"$REGISTRATION_TOKEN\\", \\"hostname\\": \\"$HOSTNAME\\", \\"os\\": \\"linux\\", \\"os_version\\": \\"$OS_VERSION\\", \\"agent_version\\": \\"${INSTALLER_AGENT_VERSION}\\", \\"agent_id\\": \\"$AGENT_ID\\"}"
 
 echo ""
 echo "[6/6] Starting agent service..."
@@ -425,11 +427,13 @@ function Send-Heartbeat {
     $body = @{
         agent_id = $config.AGENT_ID
         account_id = $config.ACCOUNT_ID
+    agent_version = "${INSTALLER_AGENT_VERSION}"
         status = "online"
         system_info = @{
             os = "windows"
             hostname = $env:COMPUTERNAME
             kernel = [System.Environment]::OSVersion.Version.ToString()
+      agent_version = "${INSTALLER_AGENT_VERSION}"
         }
     } | ConvertTo-Json
 
@@ -463,7 +467,7 @@ $body = @{
     hostname = $env:COMPUTERNAME
     os = "windows"
     os_version = [System.Environment]::OSVersion.Version.ToString()
-    agent_version = "1.0.0"
+    agent_version = "${INSTALLER_AGENT_VERSION}"
     agent_id = $AGENT_ID
 } | ConvertTo-Json
 

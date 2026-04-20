@@ -161,6 +161,7 @@ export interface AccountSettings {
     email_alerts?: boolean
     auto_quarantine?: boolean
     scan_schedule?: string
+    target_agent_version?: string
     [key: string]: unknown
   }
   locked_settings: string[]

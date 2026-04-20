@@ -15,10 +15,28 @@ interface InstallersPageProps {
   account: Account
 }
 
+interface Version {
+  version: string
+  releaseDate: string
+  notes: string
+}
+
+interface PlatformVersions {
+  windows: Version[]
+  macos: Version[]
+  linux: Version[]
+}
+
 export function InstallersPage({ profile: _profile, account }: InstallersPageProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [registrationToken, setRegistrationToken] = useState("")
   const [downloadingInstaller, setDownloadingInstaller] = useState<string | null>(null)
+  const [versions, setVersions] = useState<PlatformVersions>({
+    windows: [],
+    macos: [],
+    linux: [],
+  })
+  const [loadingVersions, setLoadingVersions] = useState(true)
 
   useEffect(() => {
     // Generate token only once on client side to avoid hydration mismatch
@@ -32,6 +50,29 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
     setRegistrationToken(token)
   }, [account.id, account.name])
 
+  useEffect(() => {
+    // Fetch available versions
+    const fetchVersions = async () => {
+      try {
+        const response = await fetch("/api/agent/versions")
+        if (response.ok) {
+          const data = await response.json()
+          const platformMap: PlatformVersions = {
+            windows: data.windows?.versions || [],
+            macos: data.macos?.versions || [],
+            linux: data.linux?.versions || [],
+          }
+          setVersions(platformMap)
+        }
+      } catch (error) {
+        console.error("Failed to fetch versions:", error)
+      } finally {
+        setLoadingVersions(false)
+      }
+    }
+    fetchVersions()
+  }, [])
+
   const copyToClipboard = async (text: string, commandType: string) => {
     await navigator.clipboard.writeText(text)
     setCopiedCommand(commandType)
@@ -39,13 +80,14 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
     setTimeout(() => setCopiedCommand(null), 2000)
   }
 
-  const downloadInstaller = async (platform: string, attempt = 0) => {
+  const downloadInstaller = async (platform: string, version?: string, attempt = 0) => {
+    const downloadKey = `${platform}:${version || "latest"}`
     try {
-      setDownloadingInstaller(platform)
-      toast.info(`Generating ${platform} installer...`)
+      setDownloadingInstaller(downloadKey)
+      toast.info(`Generating ${platform} installer${version ? ` v${version}` : ""}...`)
 
       const response = await fetch(
-        `/api/agent/installers/download?platform=${platform}&accountId=${account.id}`,
+        `/api/agent/installers/download?platform=${platform}&accountId=${account.id}${version ? `&version=${encodeURIComponent(version)}` : ""}`,
         {
           method: "GET",
         },
@@ -62,7 +104,7 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
 
         toast.info(`Installer is being prepared. Retrying in ${retryAfter}s...`)
         setTimeout(() => {
-          void downloadInstaller(platform, attempt + 1)
+          void downloadInstaller(platform, version, attempt + 1)
         }, retryAfter * 1000)
         return
       }
@@ -115,11 +157,9 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
       id: "windows",
       name: "Windows",
       icon: Monitor,
-      version: "1.0.0",
       size: "~12 MB",
       fileType: "MSI Installer (.msi)",
       requirements: "Windows 10/11, Server 2016+",
-      filename: "KuaminiSecurityClient-1.0.0.msi",
       description:
         "Windows installer package that automatically installs and configures the agent with automatic startup. Double-click to install.",
     },
@@ -127,22 +167,18 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
       id: "macos",
       name: "macOS",
       icon: Apple,
-      version: "1.0.0",
       size: "~15 MB",
       fileType: "ZIP Bundle (PKG + install script)",
       requirements: "macOS 11 (Big Sur) or later",
-      filename: "KuaminiSecurityClient-<account>-macos.zip",
       description: "macOS installer bundle that writes your account token into config.json, then installs the PKG as a LaunchAgent.",
     },
     {
       id: "linux",
       name: "Linux",
       icon: Terminal,
-      version: "1.0.0",
       size: "~8 MB",
       fileType: "TAR.GZ Archive (.tar.gz)",
       requirements: "Ubuntu 20.04+, RHEL 8+, Debian 10+, systemd",
-      filename: "KuaminiSecurityClient-linux.tar.gz",
       description: "Linux agent archive containing the security client executable. Extract and run to install as a systemd service for continuous monitoring.",
     },
   ]
@@ -212,96 +248,116 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
 
         {installers.map((installer) => (
           <TabsContent key={installer.id} value={installer.id}>
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                      <installer.icon className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        KuaminiThreatProtectAgent for {installer.name}
-                        <Badge variant="outline">v{installer.version}</Badge>
-                      </CardTitle>
-                      <CardDescription>{installer.description}</CardDescription>
-                    </div>
-                  </div>
-                  <Button 
-                    size="lg" 
-                    disabled={availableLicenses <= 0 || downloadingInstaller === installer.id} 
-                    onClick={() => downloadInstaller(installer.id)}
-                  >
-                    {downloadingInstaller === installer.id ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
+            <div className="space-y-4">
+              {/* Version selector */}
+              {!loadingVersions && versions[installer.id as keyof PlatformVersions]?.length > 0 ? (
+                versions[installer.id as keyof PlatformVersions].map((ver) => (
+                  <Card key={`${installer.id}-${ver.version}`}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                            <installer.icon className="h-6 w-6 text-primary" />
+                          </div>
+                          <div>
+                            <CardTitle className="flex items-center gap-2">
+                              KuaminiThreatProtectAgent for {installer.name}
+                              <Badge variant={ver.version === versions[installer.id as keyof PlatformVersions]?.[0]?.version ? "default" : "outline"}>
+                                v{ver.version}
+                              </Badge>
+                              {ver.notes && <Badge variant="secondary" className="text-xs">{ver.notes}</Badge>}
+                            </CardTitle>
+                            <CardDescription>{installer.description}</CardDescription>
+                          </div>
+                        </div>
+                        <Button
+                          size="lg"
+                          disabled={availableLicenses <= 0 || downloadingInstaller === `${installer.id}:${ver.version}`}
+                          onClick={() => downloadInstaller(installer.id, ver.version)}
+                        >
+                          {downloadingInstaller === `${installer.id}:${ver.version}` ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-4 w-4 mr-2" />
+                              Download
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => downloadUninstaller(installer.id)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download Uninstaller
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">File Type</p>
+                          <p className="font-medium">{installer.fileType}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">File Size</p>
+                          <p className="font-medium">{installer.size}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Release Date</p>
+                          <p className="font-medium text-xs">{ver.releaseDate}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Requirements</p>
+                          <p className="font-medium text-xs">{installer.requirements}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h4 className="font-medium">Quick Installation Steps</h4>
+                        <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                          <li>Click "Download" button above</li>
+                          <li>The installer will be customized with your account credentials</li>
+                          <li>
+                            Run the installer with administrator/root privileges on your endpoint
+                            {installer.id === "macos" && " (unzip and run install.sh)"}
+                            {installer.id === "windows" && " (right-click → Run as Administrator)"}
+                            {installer.id === "linux" && " (sudo bash install-kuamini-agent.sh)"}
+                          </li>
+                          <li>The agent will automatically register with your account</li>
+                          <li>Check the endpoints list to verify registration</li>
+                        </ol>
+                      </div>
+
+                      <Alert>
+                        <CheckCircle className="h-4 w-4" />
+                        <AlertTitle>Pre-configured Installer</AlertTitle>
+                        <AlertDescription>
+                          This installer is customized for <strong>{account.name}</strong>. The agent will automatically
+                          register to your account when installed. No manual configuration required!
+                        </AlertDescription>
+                      </Alert>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Card>
+                  <CardContent className="py-8 text-center">
+                    {loadingVersions ? (
+                      <p className="text-muted-foreground">Loading versions...</p>
                     ) : (
-                      <>
-                        <Download className="h-4 w-4 mr-2" />
-                        Download Installer
-                      </>
+                      <p className="text-muted-foreground">No versions available</p>
                     )}
-                  </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={() => downloadUninstaller(installer.id)}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Uninstaller
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">File Type</p>
-                    <p className="font-medium">{installer.fileType}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">File Size</p>
-                    <p className="font-medium">{installer.size}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">Requirements</p>
-                    <p className="font-medium text-xs">{installer.requirements}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">Filename</p>
-                    <p className="font-mono text-xs break-all">{installer.filename}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="font-medium">Quick Installation Steps</h4>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                    <li>Click "Download Installer" button above</li>
-                    <li>The installer will be customized with your account credentials</li>
-                    <li>
-                      Run the installer with administrator/root privileges on your endpoint
-                      {installer.id === "macos" && " (unzip and run install.sh)"}
-                      {installer.id === "windows" && " (right-click → Run as Administrator)"}
-                      {installer.id === "linux" && " (sudo bash install-kuamini-agent.sh)"}
-                    </li>
-                    <li>The agent will automatically register with your account</li>
-                    <li>Check the endpoints list to verify registration</li>
-                  </ol>
-                </div>
-
-                <Alert>
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertTitle>Pre-configured Installer</AlertTitle>
-                  <AlertDescription>
-                    This installer is customized for <strong>{account.name}</strong>. The agent will automatically
-                    register to your account when installed. No manual configuration required!
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </TabsContent>
         ))}
       </Tabs>

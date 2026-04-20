@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -20,17 +20,42 @@ interface SettingsFormProps {
 
 export function SettingsForm({ accountId, settings, lockedSettings, userRole, userId }: SettingsFormProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [versionOptions, setVersionOptions] = useState<string[]>([])
+  const [loadingVersions, setLoadingVersions] = useState(true)
   const [formSettings, setFormSettings] = useState({
     notifications_enabled: (settings.notifications_enabled as boolean) ?? true,
     email_alerts: (settings.email_alerts as boolean) ?? true,
     auto_quarantine: (settings.auto_quarantine as boolean) ?? false,
     scan_schedule: (settings.scan_schedule as string) ?? "daily",
+    target_agent_version: (settings.target_agent_version as string) ?? "latest",
   })
   const router = useRouter()
 
   const canEdit = ["super_admin", "admin"].includes(userRole)
 
   const isLocked = (key: string) => lockedSettings.includes(key)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/agent/versions?limit=3")
+        if (!response.ok) {
+          return
+        }
+        const payload = await response.json()
+        const versions = Array.isArray(payload?.common_versions) ? payload.common_versions.filter((v: unknown) => typeof v === "string") : []
+        setVersionOptions(versions)
+        const selected = typeof settings.target_agent_version === "string" ? settings.target_agent_version : null
+        if (versions.length > 0 && (!selected || !versions.includes(selected))) {
+          setFormSettings((prev) => ({ ...prev, target_agent_version: versions[0] }))
+        }
+      } catch (error) {
+        console.error("Failed to load version options", error)
+      } finally {
+        setLoadingVersions(false)
+      }
+    })()
+  }, [settings.target_agent_version])
 
   const handleSave = async () => {
     if (!canEdit) {return}
@@ -119,6 +144,31 @@ export function SettingsForm({ accountId, settings, lockedSettings, userRole, us
             <SelectItem value="daily">Daily</SelectItem>
             <SelectItem value="weekly">Weekly</SelectItem>
             <SelectItem value="monthly">Monthly</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="flex items-center gap-2">
+          Agent Rollout Version {isLocked("target_agent_version") && <Lock className="h-3 w-3 text-muted-foreground" />}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          Endpoints will only upgrade to this version. Downgrades are blocked; older versions require uninstall then reinstall.
+        </p>
+        <Select
+          value={formSettings.target_agent_version}
+          onValueChange={(value) => setFormSettings({ ...formSettings, target_agent_version: value })}
+          disabled={!canEdit || isLocked("target_agent_version") || loadingVersions}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={loadingVersions ? "Loading versions..." : "Select a version"} />
+          </SelectTrigger>
+          <SelectContent>
+            {versionOptions.map((version) => (
+              <SelectItem key={version} value={version}>
+                v{version}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
