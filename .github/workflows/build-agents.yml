@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'agent-tray/**'
+      - 'types/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig.json'
       - '.github/workflows/build-agents.yml'
   workflow_dispatch:
 
@@ -18,7 +22,7 @@ jobs:
     name: Build macOS Agent
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -48,7 +52,7 @@ jobs:
     name: Build Windows Agent
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -78,7 +82,7 @@ jobs:
     name: Build Linux Agent
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -116,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
