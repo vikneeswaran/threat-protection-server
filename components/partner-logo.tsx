@@ -10,13 +10,11 @@ export function PartnerLogo() {
   }
 
   return (
-    <div className="rounded-md bg-[#1d1e20] px-6 py-3">
-      <img
-        src="/cintelligence-logo-white-text.jpg"
-        alt="cIntelligence Partner"
-        className="h-20 w-auto object-contain"
-        onError={() => setHasError(true)}
-      />
-    </div>
+    <img
+      src="/cintelligence-logo-white-text.jpg"
+      alt="cIntelligence Partner"
+      className="h-auto w-full max-w-[568px] object-contain"
+      onError={() => setHasError(true)}
+    />
   )
 }

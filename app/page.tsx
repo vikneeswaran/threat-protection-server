@@ -91,10 +91,8 @@ export default function HomePage() {
       <section className="py-16 bg-gray-50">
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-2xl font-semibold text-gray-800 mb-8">Partners Who Trust Us</h2>
-          <div className="flex justify-center">
-            <div className="rounded-lg px-4 py-2">
-              <PartnerLogo />
-            </div>
+          <div className="mx-auto flex max-w-[600px] justify-center">
+            <PartnerLogo />
           </div>
         </div>
       </section>

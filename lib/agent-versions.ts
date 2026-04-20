@@ -73,8 +73,7 @@ export async function getInstallerVersionsByOs(): Promise<Record<InstallerTarget
 export async function getCommonInstallerVersions(limit = 3): Promise<string[]> {
   const byOs = await getInstallerVersionsByOs()
 
-  const [windows, macos, linux] = [
-    new Set(byOs.windows),
+  const [macos, linux] = [
     new Set(byOs.macos),
     new Set(byOs.linux),
   ]
