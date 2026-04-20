@@ -91,8 +91,16 @@ export default function HomePage() {
         <div className="container mx-auto px-6 text-center">
           <h2 className="text-2xl font-semibold text-gray-800 mb-8">Partners Who Trust Us</h2>
           <div className="flex justify-center">
-            <div className="bg-[#1d1e20] rounded-lg px-12 py-6">
-              <img src="/cintelligence-logo-white-text.jpg" alt="cIntelligence Partner" className="h-16 object-contain" />
+            <div className="rounded-lg px-4 py-2">
+              <img
+                src="/cintelligence-logo.png"
+                alt="cIntelligence Partner"
+                className="h-20 w-auto object-contain"
+                onError={(e) => {
+                  e.currentTarget.onerror = null
+                  e.currentTarget.src = "/cintelligence-logo-white-text.jpg"
+                }}
+              />
             </div>
           </div>
         </div>

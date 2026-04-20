@@ -1,5 +1,87 @@
 import { type NextRequest, NextResponse } from "next/server"
+import fs from "fs/promises"
+import path from "path"
 import { query } from "@/lib/db"
+
+type InstallerTargetOs = "windows" | "macos" | "linux"
+
+function normalizeOs(value: unknown): InstallerTargetOs {
+  const raw = String(value || "").toLowerCase()
+  if (raw.includes("win")) {
+    return "windows"
+  }
+  if (raw.includes("mac") || raw.includes("darwin")) {
+    return "macos"
+  }
+  return "linux"
+}
+
+function parseVersionParts(value: string | null | undefined): number[] {
+  if (!value) {
+    return []
+  }
+  const match = String(value).match(/(\d+(?:\.\d+)+)/)
+  if (!match) {
+    return []
+  }
+  return match[1].split(".").map((part) => Number(part) || 0)
+}
+
+function compareVersions(left: number[], right: number[]): number {
+  const max = Math.max(left.length, right.length)
+  for (let i = 0; i < max; i += 1) {
+    const l = left[i] ?? 0
+    const r = right[i] ?? 0
+    if (l !== r) {
+      return l - r
+    }
+  }
+  return 0
+}
+
+async function findLatestInstallerForOs(targetOs: InstallerTargetOs) {
+  const trayDir = path.join(process.cwd(), "public", "tray")
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "https://kuaminisystems.com").replace(/\/$/, "")
+
+  try {
+    const entries = await fs.readdir(trayDir)
+    const matches: Array<{ file: string; version: number[]; versionText: string }> = []
+
+    const patternByOs: Record<InstallerTargetOs, RegExp> = {
+      windows: /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u,
+      macos: /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.pkg$/u,
+      linux: /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.tar\.gz$/u,
+    }
+
+    const pattern = patternByOs[targetOs]
+    for (const file of entries) {
+      const matched = pattern.exec(file)
+      if (!matched) {
+        continue
+      }
+      matches.push({
+        file,
+        versionText: matched[1],
+        version: matched[1].split(".").map((v) => Number(v) || 0),
+      })
+    }
+
+    if (matches.length === 0) {
+      return null
+    }
+
+    matches.sort((a, b) => compareVersions(a.version, b.version))
+    const latest = matches[matches.length - 1]
+    return {
+      installer_filename: latest.file,
+      latest_version: latest.versionText,
+      download_url: `${appBase}/tray/${latest.file}`,
+      target_os: targetOs,
+    }
+  } catch {
+    return null
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,12 +89,14 @@ export async function POST(request: NextRequest) {
     const rawAgentId = body?.agent_id
     const rawEndpointId = body?.endpoint_id
     const rawAccountId = body?.account_id
+    const rawAgentVersion = body?.agent_version || body?.system_info?.agent_version
     const status = body?.status
-    const _system_info = body?.system_info
+    const system_info = body?.system_info
 
     const agent_id = typeof rawAgentId === "string" ? rawAgentId.trim() : rawAgentId
     const endpoint_id = typeof rawEndpointId === "string" ? rawEndpointId.trim() : rawEndpointId
     const account_id = typeof rawAccountId === "string" ? rawAccountId.trim() : rawAccountId
+    const agent_version = typeof rawAgentVersion === "string" ? rawAgentVersion.trim() : rawAgentVersion
 
     if (!agent_id && !endpoint_id) {
       return NextResponse.json({ error: "Missing required field: agent_id or endpoint_id" }, { status: 400 })
@@ -99,9 +183,27 @@ export async function POST(request: NextRequest) {
 
     const safeStatus = ["online", "offline", "disconnected"].includes(String(status)) ? status : "online"
 
+    const localIp = system_info?.local_ip || system_info?.ip || body?.ip_address || null
+    const macAddress = system_info?.mac || body?.mac_address || null
+    const detectedOs = normalizeOs(system_info?.os || body?.os)
+
+    const updateResult = await findLatestInstallerForOs(detectedOs)
+    const currentVersionParts = parseVersionParts(typeof agent_version === "string" ? agent_version : null)
+    const latestVersionParts = parseVersionParts(updateResult?.latest_version || null)
+    const isUpdateAvailable = latestVersionParts.length > 0 && compareVersions(currentVersionParts, latestVersionParts) < 0
+
     await query(
-      `UPDATE endpoints SET status = $1, last_seen_at = NOW(), updated_at = NOW() WHERE id = $2`,
-      [safeStatus, foundEndpoint.id],
+      `
+        UPDATE endpoints
+        SET status = $1,
+            last_seen_at = NOW(),
+            updated_at = NOW(),
+            ip_address = COALESCE($2, ip_address),
+            mac_address = COALESCE($3, mac_address),
+            agent_version = COALESCE($4, agent_version)
+        WHERE id = $5
+      `,
+      [safeStatus, localIp, macAddress, typeof agent_version === "string" && agent_version ? agent_version : null, foundEndpoint.id],
     )
 
     const policyResult = await query<{ policy: Record<string, unknown> }>(
@@ -119,6 +221,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       policies,
+      agent_update: {
+        available: isUpdateAvailable,
+        current_version: typeof agent_version === "string" ? agent_version : null,
+        latest_version: updateResult?.latest_version || null,
+        installer_filename: updateResult?.installer_filename || null,
+        download_url: updateResult?.download_url || null,
+        target_os: updateResult?.target_os || detectedOs,
+      },
     })
   } catch (error) {
     console.error("Heartbeat error:", error)

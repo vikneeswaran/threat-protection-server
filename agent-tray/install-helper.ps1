@@ -5,7 +5,7 @@ Kuamini Security Client Installer - Helper Script
 
 This script extracts the registration token and passes it to the MSI installer.
 Run this script from the extracted ZIP folder containing:
-- KuaminiSecurityClient-1.0.5.msi
+- KuaminiSecurityClient-<latest>.msi
 - registration.token
 
 .EXAMPLE
@@ -27,7 +27,13 @@ $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 Write-Host "Kuamini Security Client Installer"  -ForegroundColor Green
 
 # Check for required files
-$msiPath = Join-Path $scriptPath "KuaminiSecurityClient-1.0.5.msi"
+$msiPath = Get-ChildItem -Path $scriptPath -Filter "KuaminiSecurityClient-*.msi" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^KuaminiSecurityClient-\d+\.\d+\.\d+(\.\d+)?\.msi$' } |
+    Sort-Object {
+        $v = [regex]::Match($_.Name, 'KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi').Groups[1].Value.Split('.')
+        [Version](($v + @("0","0","0","0"))[0..3] -join '.')
+    } -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
 $tokenPath = Join-Path $scriptPath "registration.token"
 
 if (!(Test-Path $msiPath)) {

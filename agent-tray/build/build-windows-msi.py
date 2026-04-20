@@ -9,7 +9,49 @@ import os
 import sys
 import subprocess
 import shutil
+import re
 from pathlib import Path
+
+
+def _next_patch_version(version_parts):
+    parts = list(version_parts) if version_parts else [1, 0, 0]
+    while len(parts) < 3:
+        parts.append(0)
+    parts[2] += 1
+    return parts
+
+
+def determine_build_version(project_root: Path, agent_dir: Path) -> str:
+    explicit = os.environ.get("MSI_VERSION")
+    if explicit:
+        print(f"[INFO] Using explicit MSI_VERSION={explicit}")
+        return explicit
+
+    pattern = re.compile(r"^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$", re.IGNORECASE)
+    candidates = []
+    search_dirs = [project_root / "public" / "tray", agent_dir / "dist"]
+
+    for directory in search_dirs:
+        if not directory.exists():
+            continue
+        for name in os.listdir(directory):
+            match = pattern.match(name)
+            if not match:
+                continue
+            version_parts = [int(part) for part in match.group(1).split(".")]
+            candidates.append(version_parts)
+
+    if not candidates:
+        auto_version = "1.0.0"
+        print(f"[INFO] No prior MSI versions found. Using initial version {auto_version}")
+        return auto_version
+
+    candidates.sort(key=lambda parts: tuple(parts))
+    highest = candidates[-1]
+    next_version_parts = _next_patch_version(highest)
+    auto_version = ".".join(str(p) for p in next_version_parts)
+    print(f"[INFO] Auto-incremented MSI version: {'.'.join(str(p) for p in highest)} -> {auto_version}")
+    return auto_version
 
 def run_command(cmd, description):
     """Run a shell command and handle errors."""
@@ -82,8 +124,8 @@ Build Directory: {str(agent_dir)[-42:]}
         print(f"\n[ERROR] PowerShell build script not found at {ps_script}")
         sys.exit(1)
     
-    # Get version from environment or default
-    version = os.environ.get("MSI_VERSION", "1.0.5")
+    # Resolve build version (explicit MSI_VERSION wins; otherwise auto-increment latest found)
+    version = determine_build_version(project_root, agent_dir)
     
     powershell_cmd = [
         "powershell",

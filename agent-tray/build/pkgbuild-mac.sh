@@ -25,7 +25,49 @@ BUILD_DIR="${SCRIPT_DIR}"
 PACKAGE_DIR="${BUILD_DIR}/pkgtmp"
 SCRIPTS_DIR="${PACKAGE_DIR}/scripts"
 PAYLOAD_DIR="${PACKAGE_DIR}/payload"
-OUTPUT_PKG="${BUILD_DIR}/KuaminiSecurityClient-1.0.5.pkg"
+
+determine_next_version() {
+  local latest=""
+  local candidate
+  local file
+
+  for candidate in "${PROJECT_ROOT}/public/tray" "${BUILD_DIR}"; do
+    if [ ! -d "$candidate" ]; then
+      continue
+    fi
+    while IFS= read -r -d '' file; do
+      local base
+      base="$(basename "$file")"
+      if [[ "$base" =~ ^KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$ ]]; then
+        local ver="${BASH_REMATCH[1]}"
+        if [ -z "$latest" ] || [ "$(printf '%s\n%s\n' "$latest" "$ver" | sort -V | tail -n1)" = "$ver" ]; then
+          latest="$ver"
+        fi
+      fi
+    done < <(find "$candidate" -maxdepth 1 -type f -name "KuaminiSecurityClient-*.pkg" -print0 2>/dev/null)
+  done
+
+  if [ -z "$latest" ]; then
+    echo "1.0.0"
+    return
+  fi
+
+  IFS='.' read -r major minor patch extra <<< "$latest"
+  major=${major:-1}
+  minor=${minor:-0}
+  patch=${patch:-0}
+  patch=$((patch + 1))
+
+  if [ -n "$extra" ]; then
+    echo "$major.$minor.$patch.$extra"
+  else
+    echo "$major.$minor.$patch"
+  fi
+}
+
+AGENT_VERSION="${AGENT_VERSION:-$(determine_next_version)}"
+OUTPUT_PKG="${BUILD_DIR}/KuaminiSecurityClient-${AGENT_VERSION}.pkg"
+echo -e "${GREEN}Using package version: ${AGENT_VERSION}${NC}"
 
 # Cleanup function
 cleanup() {
@@ -95,7 +137,7 @@ cat > "$BUILD_DIR/distribution.plist" << 'EOF'
   <key>CFBundleIdentifier</key>
   <string>com.kuamini.securityclient</string>
   <key>CFBundleVersion</key>
-  <string>1.0.5</string>
+  <string>__AGENT_VERSION__</string>
   <key>IFMajorVersion</key>
   <integer>1</integer>
   <key>IFMinorVersion</key>
@@ -128,6 +170,9 @@ cat > "$BUILD_DIR/distribution.plist" << 'EOF'
 </plist>
 EOF
 
+sed -i.bak "s/__AGENT_VERSION__/${AGENT_VERSION}/g" "$BUILD_DIR/distribution.plist"
+rm -f "$BUILD_DIR/distribution.plist.bak"
+
 # Build the package using pkgbuild
 echo -e "${YELLOW}Building macOS package with pkgbuild...${NC}"
 
@@ -139,7 +184,7 @@ pkgbuild \
   --root "$PAYLOAD_DIR" \
   --scripts "$SCRIPTS_DIR" \
   --identifier "com.kuamini.securityclient" \
-  --version "1.0.5" \
+  --version "${AGENT_VERSION}" \
   --ownership preserve \
   "$OUTPUT_PKG"
 

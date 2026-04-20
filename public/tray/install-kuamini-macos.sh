@@ -71,10 +71,20 @@ echo ""
 # The PKG file should be in the same directory as this script, or passed as argument
 if [ -z "$PKG_FILE" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    PKG_FILE="$SCRIPT_DIR/KuaminiSecurityClient-1.0.0.pkg"
 
-    if [ ! -f "$PKG_FILE" ]; then
-        PKG_FILE="/tmp/KuaminiSecurityClient-1.0.0.pkg"
+    # Pick latest versioned PKG in script directory first, then /tmp fallback
+    PKG_FILE=$(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "KuaminiSecurityClient-*.pkg" 2>/dev/null \
+        | sed -E 's#^.*/KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$#\1 & #' \
+        | sort -V \
+        | awk '{sub(/^[^ ]+ /, ""); print}' \
+        | tail -n1)
+
+    if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
+        PKG_FILE=$(find /tmp -maxdepth 1 -type f -name "KuaminiSecurityClient-*.pkg" 2>/dev/null \
+            | sed -E 's#^.*/KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$#\1 & #' \
+            | sort -V \
+            | awk '{sub(/^[^ ]+ /, ""); print}' \
+            | tail -n1)
     fi
 fi
 

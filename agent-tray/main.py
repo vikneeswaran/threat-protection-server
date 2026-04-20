@@ -6,8 +6,10 @@ import time
 import webbrowser
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Tuple
+from urllib.parse import urlparse
 import uuid
 
 # --- SINGLETON ENFORCEMENT ---
@@ -62,6 +64,10 @@ except ImportError as e:
     sys.exit(1)
 
 DEFAULT_HEARTBEAT_INTERVAL = 60
+AGENT_VERSION = os.environ.get("AGENT_VERSION", "1.0.6")
+PUBLIC_IP_CACHE_TTL_SECONDS = 600
+_public_ip_cache_value: str | None = None
+_public_ip_cache_ts: float = 0.0
 
 def get_log_path() -> Path:
     """Get the path for the agent log file - define early so setup_logging can use it."""
@@ -551,11 +557,55 @@ def get_network_info() -> Tuple[str | None, str | None]:
     mac = None
     for iface, addrs in psutil.net_if_addrs().items():
         for addr in addrs:
-            if addr.family.name == "AF_INET" and not ip:
-                ip = addr.address
+            if addr.family.name == "AF_INET":
+                # Prefer non-loopback IPv4 as the local endpoint IP
+                if addr.address and not addr.address.startswith("127."):
+                    ip = addr.address
+                elif not ip:
+                    ip = addr.address
             if addr.family.name == "AF_PACKET" and not mac:
                 mac = addr.address
     return ip, mac
+
+
+def get_public_ip(force_refresh: bool = False) -> str | None:
+    """Best-effort public/global IPv4 lookup with short cache to avoid frequent external calls."""
+    global _public_ip_cache_value, _public_ip_cache_ts
+
+    now = time.time()
+    if (
+        not force_refresh
+        and _public_ip_cache_value
+        and (now - _public_ip_cache_ts) < PUBLIC_IP_CACHE_TTL_SECONDS
+    ):
+        return _public_ip_cache_value
+
+    providers = [
+        ("https://api.ipify.org?format=json", "json"),
+        ("https://ifconfig.me/ip", "text"),
+        ("https://icanhazip.com", "text"),
+    ]
+
+    for url, response_type in providers:
+        try:
+            resp = requests.get(url, timeout=5)
+            if resp.status_code >= 400:
+                continue
+
+            value = None
+            if response_type == "json":
+                value = (resp.json() or {}).get("ip")
+            else:
+                value = (resp.text or "").strip()
+
+            if isinstance(value, str) and value:
+                _public_ip_cache_value = value
+                _public_ip_cache_ts = now
+                return value
+        except Exception as exc:
+            logging.debug("Public IP provider failed (%s): %s", url, exc)
+
+    return _public_ip_cache_value
 
 
 def register(config):
@@ -611,7 +661,7 @@ def register(config):
         "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME") or "unknown",
         "os": "macos" if sys.platform == "darwin" else ("windows" if os.name == "nt" else "linux"),
         "os_version": _os_version(),
-        "agent_version": "tray-1.0.0",
+        "agent_version": AGENT_VERSION,
         "agent_id": config.get("agent_id"),
     }
     try:
@@ -666,7 +716,8 @@ def register(config):
 
 
 def heartbeat(config):
-    ip, mac = get_network_info()
+    local_ip, mac = get_network_info()
+    public_ip = get_public_ip()
     agent_id = config.get("agent_id") or None
     account_id = config.get("account_id") or None
     endpoint_id = config.get("endpoint_id") or None
@@ -679,18 +730,29 @@ def heartbeat(config):
         "agent_id": agent_id,
         "endpoint_id": endpoint_id,
         "account_id": account_id,
+        "agent_version": AGENT_VERSION,
         "status": "online",
         "system_info": {
             "os": "macos" if sys.platform == "darwin" else ("windows" if os.name == "nt" else "linux"),
             "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME") or "unknown",
-            "ip": ip,
+            "agent_version": AGENT_VERSION,
+            "ip": local_ip,
+            "local_ip": local_ip,
+            "public_ip": public_ip,
             "mac": mac,
         },
     }
     try:
         url = f"{config['api_base']}/heartbeat"
         logging.debug("Sending heartbeat to %s", url)
-        logging.debug("Heartbeat payload: agent_id=%s account_id=%s ip=%s", agent_id, account_id, ip)
+        logging.info("Endpoint network info: local_ip=%s public_ip=%s", local_ip, public_ip)
+        logging.debug(
+            "Heartbeat payload: agent_id=%s account_id=%s local_ip=%s public_ip=%s",
+            agent_id,
+            account_id,
+            local_ip,
+            public_ip,
+        )
         resp = requests.post(url, json=payload, timeout=15)
         if resp.status_code >= 400:
             # Log response body for easier troubleshooting
@@ -836,6 +898,14 @@ def tray_main():
     threat_system = initialize_threat_detection(config, log_callback=logging.info)
 
     status = {"text": "Idle", "color": (46, 204, 113)}
+    update_state = {
+        "current_version": AGENT_VERSION,
+        "latest_version": None,
+        "download_url": None,
+        "installer_filename": None,
+        "available": False,
+        "last_notified_version": None,
+    }
     threat_policy = {
         "enabled": True,
         "scan_interval": int(config.get("threat_scan_interval") or 3600),
@@ -874,6 +944,92 @@ def tray_main():
                 icon.notify(message, title)
         except Exception as e:
             logging.debug("Notification failed: %s", e)
+
+    def _apply_update_info(agent_update: dict | None):
+        if not isinstance(agent_update, dict):
+            return
+
+        available = bool(agent_update.get("available"))
+        latest_version = agent_update.get("latest_version")
+        download_url = agent_update.get("download_url")
+        installer_filename = agent_update.get("installer_filename")
+
+        update_state["available"] = available
+        update_state["latest_version"] = latest_version if isinstance(latest_version, str) else None
+        update_state["download_url"] = download_url if isinstance(download_url, str) else None
+        update_state["installer_filename"] = installer_filename if isinstance(installer_filename, str) else None
+
+        if available and update_state.get("latest_version"):
+            logging.info(
+                "Agent update available: current=%s latest=%s url=%s",
+                update_state.get("current_version"),
+                update_state.get("latest_version"),
+                update_state.get("download_url"),
+            )
+            if update_state.get("last_notified_version") != update_state.get("latest_version"):
+                update_state["last_notified_version"] = update_state.get("latest_version")
+                notify(
+                    "Agent update available",
+                    f"Version {update_state.get('latest_version')} is available. Use 'Upgrade to latest' from tray menu.",
+                )
+
+    def _safe_filename_from_url(url: str, fallback: str) -> str:
+        try:
+            parsed = urlparse(url)
+            name = Path(parsed.path).name
+            if name:
+                return name
+        except Exception:
+            pass
+        return fallback
+
+    def do_upgrade_agent(icon_, item):
+        if not update_state.get("available"):
+            notify("No update", "Agent is already on the latest available version.")
+            return
+
+        download_url = update_state.get("download_url")
+        latest_version = update_state.get("latest_version")
+        if not isinstance(download_url, str) or not download_url:
+            notify("Upgrade unavailable", "No download URL is available for this update.")
+            return
+
+        def _run_upgrade():
+            try:
+                set_status("Downloading update", (52, 152, 219))
+
+                fallback_name = update_state.get("installer_filename") or f"KuaminiSecurityClient-{latest_version}"
+                filename = _safe_filename_from_url(download_url, fallback_name)
+                temp_path = Path(tempfile.gettempdir()) / filename
+
+                logging.info("Downloading agent update from %s", download_url)
+                with requests.get(download_url, stream=True, timeout=60) as resp:
+                    resp.raise_for_status()
+                    with open(temp_path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=1024 * 128):
+                            if chunk:
+                                f.write(chunk)
+
+                logging.info("Downloaded update installer to %s", temp_path)
+
+                if os.name == "nt":
+                    subprocess.Popen(["msiexec", "/i", str(temp_path), "/passive", "/norestart"])
+                    notify("Upgrade started", f"Installing version {latest_version}.")
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", str(temp_path)])
+                    notify("Upgrade ready", "Installer opened. Complete the upgrade in the macOS installer.")
+                else:
+                    # Linux packaging differs across distros; fall back to browser download for manual install.
+                    webbrowser.open(download_url)
+                    notify("Upgrade download", "Downloaded latest installer. Follow your Linux install steps.")
+
+                set_status("Upgrade started", (46, 204, 113))
+            except Exception as exc:
+                logging.error("Failed to run agent upgrade: %s", exc, exc_info=True)
+                set_status("Upgrade failed", (231, 76, 60))
+                notify("Upgrade failed", str(exc))
+
+        threading.Thread(target=_run_upgrade, daemon=True).start()
 
     def _coerce_policy_bool(value, default: bool) -> bool:
         if isinstance(value, bool):
@@ -982,6 +1138,7 @@ def tray_main():
             ok, res = heartbeat(config)
             if ok and isinstance(res, dict):
                 apply_threat_policies(res.get("policies"))
+                _apply_update_info(res.get("agent_update"))
             set_status("Online" if ok else "Heartbeat failed", (46, 204, 113) if ok else (231, 76, 60))
             stop_event.wait(interval)
 
@@ -1165,10 +1322,21 @@ def tray_main():
         items = [
             pystray.MenuItem(lambda item: f"● Agent: {config.get('agent_id', 'unknown')[:8]}...", None, enabled=False),
             pystray.MenuItem(lambda item: f"◉ Status: {status.get('text', 'Unknown')}", None, enabled=False),
+            pystray.MenuItem(lambda item: f"⟳ Version: {update_state.get('current_version')}", None, enabled=False),
+            pystray.MenuItem(
+                lambda item: (
+                    f"⬆ Update: {update_state.get('latest_version')} available"
+                    if update_state.get("available") and update_state.get("latest_version")
+                    else "⬆ Update: Up to date"
+                ),
+                None,
+                enabled=False,
+            ),
             pystray.MenuItem(lambda item: f"  Account: {config.get('account_id', 'Not set')[:8]}..." if config.get('account_id') else "  Account: Not configured", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Register now", do_register),
             pystray.MenuItem("Send heartbeat", do_heartbeat),
+            pystray.MenuItem("Upgrade to latest", do_upgrade_agent),
             pystray.MenuItem("Open console", open_console),
         ]
 
