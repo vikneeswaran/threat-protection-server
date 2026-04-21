@@ -107,7 +107,8 @@ export function EndpointsList({ endpoints, userRole }: EndpointsListProps) {
               <TableHead className="w-[60px]">Health</TableHead>
               <TableHead>Endpoint</TableHead>
               <TableHead>OS</TableHead>
-              <TableHead>IP Address</TableHead>
+              <TableHead>Local IP</TableHead>
+              <TableHead>Public IP</TableHead>
               <TableHead>Agent Version</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Seen</TableHead>
@@ -154,6 +155,7 @@ export function EndpointsList({ endpoints, userRole }: EndpointsListProps) {
                     </Badge>
                   </TableCell>
                   <TableCell className="font-mono text-sm">{endpoint.ip_address || "-"}</TableCell>
+                  <TableCell className="font-mono text-sm">{endpoint.public_ip || "-"}</TableCell>
                   <TableCell>{endpoint.agent_version || "-"}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={statusColors[endpoint.computed_status]}>

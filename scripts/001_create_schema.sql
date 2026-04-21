@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS endpoints (
   os_version TEXT,
   agent_version TEXT,
   ip_address TEXT,
+  public_ip TEXT,
   mac_address TEXT,
   status endpoint_status DEFAULT 'offline',
   last_seen_at TIMESTAMPTZ,

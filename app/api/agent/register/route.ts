@@ -56,6 +56,9 @@ export async function POST(request: NextRequest) {
       }
     }
     const { token, hostname, os, os_version, agent_version, agent_id } = body
+    const localIp = body?.system_info?.local_ip || body?.system_info?.ip || body?.ip_address || null
+    const publicIp = body?.system_info?.public_ip || body?.public_ip || null
+    const macAddress = body?.system_info?.mac || body?.mac_address || null
 
     if (!hostname || !os) {
       return NextResponse.json({ error: "Missing required fields: hostname and os" }, { status: 400 })
@@ -125,13 +128,14 @@ export async function POST(request: NextRequest) {
                 agent_id = $5,
                 ip_address = $6,
                 mac_address = $7,
+                public_ip = $8,
                 status = 'online',
                 last_seen_at = NOW(),
                 updated_at = NOW()
-            WHERE id = $8
+            WHERE id = $9
             RETURNING id::text
           `,
-          [hostname, os, os_version || null, agent_version || null, agent_id || null, body.ip_address || null, body.mac_address || null, existingEndpoint.id],
+          [hostname, os, os_version || null, agent_version || null, agent_id || null, localIp, macAddress, publicIp, existingEndpoint.id],
         )
 
         await client.query("COMMIT")
@@ -141,13 +145,13 @@ export async function POST(request: NextRequest) {
       const insertedResult = await client.query<{ id: string }>(
         `
           INSERT INTO endpoints (
-            account_id, agent_id, hostname, os, os_version, agent_version, ip_address, mac_address,
+            account_id, agent_id, hostname, os, os_version, agent_version, ip_address, public_ip, mac_address,
             status, last_seen_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'online', NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'online', NOW())
           RETURNING id::text
         `,
-        [accountId, agent_id || null, hostname, os, os_version || null, agent_version || null, body.ip_address || null, body.mac_address || null],
+        [accountId, agent_id || null, hostname, os, os_version || null, agent_version || null, localIp, publicIp, macAddress],
       )
 
       try {

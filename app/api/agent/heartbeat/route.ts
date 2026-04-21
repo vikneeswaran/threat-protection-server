@@ -105,7 +105,8 @@ export async function POST(request: NextRequest) {
 
         const hostname = String(body?.system_info?.hostname || body?.hostname || `endpoint-${String(agent_id).slice(0, 8)}`)
         const osVersion = body?.system_info?.kernel || body?.os_version || null
-        const ipAddress = body?.system_info?.ip || body?.ip_address || null
+        const ipAddress = body?.system_info?.local_ip || body?.system_info?.ip || body?.ip_address || null
+        const publicIp = body?.system_info?.public_ip || body?.public_ip || null
         const macAddress = body?.system_info?.mac || body?.mac_address || null
 
         // First try to find an existing row one more time (race-safe), then insert if still missing
@@ -121,13 +122,13 @@ export async function POST(request: NextRequest) {
           upsertResult = await query<{ id: string; account_id: string }>(
             `
               INSERT INTO endpoints (
-                account_id, agent_id, hostname, os, os_version, ip_address, mac_address,
+                account_id, agent_id, hostname, os, os_version, ip_address, public_ip, mac_address,
                 status, last_seen_at, registered_at, updated_at
               )
-              VALUES ($1, $2, $3, $4::endpoint_os, $5, $6, $7, 'online', NOW(), NOW(), NOW())
+              VALUES ($1, $2, $3, $4::endpoint_os, $5, $6, $7, $8, 'online', NOW(), NOW(), NOW())
               RETURNING id::text, account_id::text
             `,
-            [account_id, agent_id, hostname, normalizedOs, osVersion, ipAddress, macAddress],
+            [account_id, agent_id, hostname, normalizedOs, osVersion, ipAddress, publicIp, macAddress],
           )
         }
 
@@ -142,6 +143,7 @@ export async function POST(request: NextRequest) {
     const safeStatus = ["online", "offline", "disconnected"].includes(String(status)) ? status : "online"
 
     const localIp = system_info?.local_ip || system_info?.ip || body?.ip_address || null
+    const publicIp = system_info?.public_ip || body?.public_ip || null
     const macAddress = system_info?.mac || body?.mac_address || null
     const detectedOs = normalizeOs(system_info?.os || body?.os)
 
@@ -168,11 +170,19 @@ export async function POST(request: NextRequest) {
             last_seen_at = NOW(),
             updated_at = NOW(),
             ip_address = COALESCE($2, ip_address),
-            mac_address = COALESCE($3, mac_address),
-            agent_version = COALESCE($4, agent_version)
-        WHERE id = $5
+            public_ip = COALESCE($3, public_ip),
+            mac_address = COALESCE($4, mac_address),
+            agent_version = COALESCE($5, agent_version)
+        WHERE id = $6
       `,
-      [safeStatus, localIp, macAddress, typeof agent_version === "string" && agent_version ? agent_version : null, foundEndpoint.id],
+      [
+        safeStatus,
+        localIp,
+        publicIp,
+        macAddress,
+        typeof agent_version === "string" && agent_version ? agent_version : null,
+        foundEndpoint.id,
+      ],
     )
 
     const policyResult = await query<{ policy: Record<string, unknown> }>(

@@ -556,15 +556,23 @@ def get_network_info() -> Tuple[str | None, str | None]:
     ip = None
     mac = None
     for iface, addrs in psutil.net_if_addrs().items():
+        iface_lower = str(iface).lower()
+        if iface_lower.startswith("lo") or iface_lower.startswith("loopback"):
+            continue
         for addr in addrs:
-            if addr.family.name == "AF_INET":
+            family_name = getattr(addr.family, "name", str(addr.family))
+
+            if family_name == "AF_INET":
                 # Prefer non-loopback IPv4 as the local endpoint IP
                 if addr.address and not addr.address.startswith("127."):
                     ip = addr.address
                 elif not ip:
                     ip = addr.address
-            if addr.family.name == "AF_PACKET" and not mac:
-                mac = addr.address
+
+            if family_name in ("AF_PACKET", "AF_LINK") and not mac:
+                candidate_mac = (addr.address or "").strip().lower()
+                if candidate_mac and candidate_mac != "00:00:00:00:00:00":
+                    mac = candidate_mac
     return ip, mac
 
 

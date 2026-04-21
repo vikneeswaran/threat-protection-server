@@ -14,6 +14,7 @@ type EndpointRow = {
   agent_version: string | null
   agent_id: string | null
   ip_address: string | null
+  public_ip: string | null
   mac_address: string | null
   status: "online" | "offline" | "disconnected"
   last_seen_at: string | null
@@ -40,7 +41,7 @@ export default async function EndpointsPage({
 
   if (params.search) {
     values.push(`%${params.search}%`)
-    whereClauses.push(`(hostname ILIKE $${values.length} OR ip_address ILIKE $${values.length})`)
+    whereClauses.push(`(hostname ILIKE $${values.length} OR ip_address ILIKE $${values.length} OR public_ip ILIKE $${values.length})`)
   }
 
   const endpointsResult = await query<EndpointRow>(
@@ -54,6 +55,7 @@ export default async function EndpointsPage({
         agent_version,
         agent_id,
         ip_address,
+        public_ip,
         mac_address,
         status::text as status,
         last_seen_at,

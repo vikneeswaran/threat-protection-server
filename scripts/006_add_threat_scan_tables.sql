@@ -107,6 +107,13 @@ BEGIN
   ) THEN
     ALTER TABLE endpoints ADD COLUMN agent_id TEXT UNIQUE;
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'endpoints' AND column_name = 'public_ip'
+  ) THEN
+    ALTER TABLE endpoints ADD COLUMN public_ip TEXT;
+  END IF;
 END $$;
 
 -- ============================================

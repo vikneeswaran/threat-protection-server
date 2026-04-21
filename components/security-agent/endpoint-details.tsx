@@ -58,8 +58,12 @@ export function EndpointDetails({ endpoint }: EndpointDetailsProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">IP Address</span>
+            <span className="text-muted-foreground">Local IP Address</span>
             <span className="font-mono text-sm">{endpoint.ip_address || "-"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Public IP Address</span>
+            <span className="font-mono text-sm">{endpoint.public_ip || "-"}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Status</span>

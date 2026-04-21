@@ -85,6 +85,7 @@ export interface Endpoint {
   agent_version: string | null
   agent_id: string | null
   ip_address: string | null
+  public_ip: string | null
   mac_address: string | null
   status: EndpointStatus
   last_seen_at: string | null
