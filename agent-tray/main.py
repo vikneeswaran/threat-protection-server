@@ -595,8 +595,11 @@ def get_network_info() -> Tuple[str | None, str | None]:
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(("8.8.8.8", 80))
-        primary_ip = sock.getsockname()[0]
+        candidate = sock.getsockname()[0]
         sock.close()
+        # Discard if loopback or link-local — the routing trick gave a bad result
+        if candidate and not candidate.startswith("127.") and not candidate.startswith("169.254."):
+            primary_ip = candidate
     except Exception:
         primary_ip = None
 
@@ -638,12 +641,21 @@ def get_network_info() -> Tuple[str | None, str | None]:
         candidate = value.strip().lower().replace("-", ":")
         return candidate not in ("", "00:00:00:00:00:00") and len(candidate.split(":")) >= 6
 
+    def _is_mac_family(addr) -> bool:
+        """Return True if this address entry represents a MAC/hardware address.
+        psutil reports AF_PACKET (17) on Linux, AF_LINK (18) on macOS.
+        It may expose these as integer values or as enum names depending on OS/version.
+        """
+        family = addr.family
+        family_int = family.value if hasattr(family, "value") else int(family)
+        family_name = getattr(family, "name", str(family))
+        return family_int in (17, 18) or family_name in ("AF_PACKET", "AF_LINK")
+
     # 2) Prefer MAC from the chosen interface.
     mac = None
     if best_iface and best_iface in addrs_by_iface:
         for addr in addrs_by_iface[best_iface]:
-            family_name = getattr(addr.family, "name", str(addr.family))
-            if family_name in ("AF_PACKET", "AF_LINK") and _valid_mac(addr.address):
+            if _is_mac_family(addr) and _valid_mac(addr.address):
                 mac = addr.address.strip().lower().replace("-", ":")
                 break
 
@@ -656,13 +668,23 @@ def get_network_info() -> Tuple[str | None, str | None]:
             if iface_virtual or not iface_is_up:
                 continue
             for addr in addrs:
-                family_name = getattr(addr.family, "name", str(addr.family))
-                if family_name in ("AF_PACKET", "AF_LINK") and _valid_mac(addr.address):
+                if _is_mac_family(addr) and _valid_mac(addr.address):
                     mac = addr.address.strip().lower().replace("-", ":")
                     break
             if mac:
                 break
 
+    # 4) Last-resort: derive MAC from uuid.getnode() (works on all platforms)
+    if not mac:
+        try:
+            node = uuid.getnode()
+            if node and not (node >> 40) & 0x02:  # bit 41 not set = not random
+                mac = ":".join(f"{(node >> (5-i)*8) & 0xff:02x}" for i in range(6))
+        except Exception:
+            pass
+
+    logging.info("Network detection: local_ip=%s mac=%s best_iface=%s primary_ip=%s",
+                 best_ip, mac, best_iface, primary_ip)
     return best_ip, mac
 
 
