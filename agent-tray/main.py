@@ -7,6 +7,8 @@ import webbrowser
 import logging
 import subprocess
 import tempfile
+import socket
+import ipaddress
 from pathlib import Path
 from typing import Tuple
 from urllib.parse import urlparse
@@ -553,27 +555,115 @@ def make_icon(status_color=(46, 204, 113), status_text=""):
 
 
 def get_network_info() -> Tuple[str | None, str | None]:
-    ip = None
-    mac = None
-    for iface, addrs in psutil.net_if_addrs().items():
-        iface_lower = str(iface).lower()
-        if iface_lower.startswith("lo") or iface_lower.startswith("loopback"):
-            continue
+    def _score_ipv4(address: str) -> int:
+        """Higher score means better candidate for endpoint local IP."""
+        try:
+            ip_obj = ipaddress.ip_address(address)
+            if ip_obj.version != 4:
+                return -1
+            if ip_obj.is_loopback:
+                return -10
+            if ip_obj.is_link_local:  # 169.254.x.x
+                return -5
+            if ip_obj.is_private:  # RFC1918 - usually what we want in console
+                return 30
+            if ip_obj.is_global:
+                return 20
+            return 0
+        except Exception:
+            return -1
+
+    def _is_virtual_iface(name: str) -> bool:
+        lowered = name.lower()
+        virtual_markers = [
+            "loopback",
+            "docker",
+            "veth",
+            "vmnet",
+            "utun",
+            "zerotier",
+            "tailscale",
+            "bridge",
+            "br-",
+            "virtual",
+            "npcap",
+        ]
+        return lowered.startswith("lo") or any(marker in lowered for marker in virtual_markers)
+
+    # 1) Best-effort primary outbound IPv4 using routing table decision.
+    primary_ip = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        primary_ip = sock.getsockname()[0]
+        sock.close()
+    except Exception:
+        primary_ip = None
+
+    addrs_by_iface = psutil.net_if_addrs()
+    stats_by_iface = psutil.net_if_stats()
+
+    candidates: list[tuple[int, str, str]] = []  # (score, ip, iface)
+    for iface, addrs in addrs_by_iface.items():
+        iface_name = str(iface)
+        iface_virtual = _is_virtual_iface(iface_name)
+        iface_is_up = bool(stats_by_iface.get(iface_name).isup) if stats_by_iface.get(iface_name) else True
+
         for addr in addrs:
             family_name = getattr(addr.family, "name", str(addr.family))
+            if family_name != "AF_INET":
+                continue
 
-            if family_name == "AF_INET":
-                # Prefer non-loopback IPv4 as the local endpoint IP
-                if addr.address and not addr.address.startswith("127."):
-                    ip = addr.address
-                elif not ip:
-                    ip = addr.address
+            ipv4 = (addr.address or "").strip()
+            if not ipv4:
+                continue
 
-            if family_name in ("AF_PACKET", "AF_LINK") and not mac:
-                candidate_mac = (addr.address or "").strip().lower()
-                if candidate_mac and candidate_mac != "00:00:00:00:00:00":
-                    mac = candidate_mac
-    return ip, mac
+            score = _score_ipv4(ipv4)
+            if iface_is_up:
+                score += 3
+            if iface_virtual:
+                score -= 8
+            if primary_ip and ipv4 == primary_ip:
+                score += 20
+
+            candidates.append((score, ipv4, iface_name))
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    best_ip = candidates[0][1] if candidates else primary_ip
+    best_iface = candidates[0][2] if candidates else None
+
+    def _valid_mac(value: str | None) -> bool:
+        if not value:
+            return False
+        candidate = value.strip().lower().replace("-", ":")
+        return candidate not in ("", "00:00:00:00:00:00") and len(candidate.split(":")) >= 6
+
+    # 2) Prefer MAC from the chosen interface.
+    mac = None
+    if best_iface and best_iface in addrs_by_iface:
+        for addr in addrs_by_iface[best_iface]:
+            family_name = getattr(addr.family, "name", str(addr.family))
+            if family_name in ("AF_PACKET", "AF_LINK") and _valid_mac(addr.address):
+                mac = addr.address.strip().lower().replace("-", ":")
+                break
+
+    # 3) Fallback: first valid MAC on a non-virtual interface that is up.
+    if not mac:
+        for iface, addrs in addrs_by_iface.items():
+            iface_name = str(iface)
+            iface_virtual = _is_virtual_iface(iface_name)
+            iface_is_up = bool(stats_by_iface.get(iface_name).isup) if stats_by_iface.get(iface_name) else True
+            if iface_virtual or not iface_is_up:
+                continue
+            for addr in addrs:
+                family_name = getattr(addr.family, "name", str(addr.family))
+                if family_name in ("AF_PACKET", "AF_LINK") and _valid_mac(addr.address):
+                    mac = addr.address.strip().lower().replace("-", ":")
+                    break
+            if mac:
+                break
+
+    return best_ip, mac
 
 
 def get_public_ip(force_refresh: bool = False) -> str | None:
@@ -592,6 +682,8 @@ def get_public_ip(force_refresh: bool = False) -> str | None:
         ("https://api.ipify.org?format=json", "json"),
         ("https://ifconfig.me/ip", "text"),
         ("https://icanhazip.com", "text"),
+        ("https://checkip.amazonaws.com", "text"),
+        ("https://ipinfo.io/ip", "text"),
     ]
 
     for url, response_type in providers:

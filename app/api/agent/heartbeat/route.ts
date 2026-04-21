@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/db"
+import net from "node:net"
 import {
   compareVersions,
   findInstallerForOsVersion,
@@ -18,6 +19,39 @@ function normalizeOs(value: unknown): InstallerTargetOs {
     return "macos"
   }
   return "linux"
+}
+
+function sanitizeLocalIpv4(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const ip = value.trim()
+  if (net.isIP(ip) !== 4) {
+    return null
+  }
+  if (ip.startsWith("127.") || ip.startsWith("169.254.") || ip === "0.0.0.0") {
+    return null
+  }
+  return ip
+}
+
+function sanitizePublicIpv4(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const ip = value.trim()
+  if (net.isIP(ip) !== 4) {
+    return null
+  }
+  const [firstOctetRaw, secondOctetRaw] = ip.split(".")
+  const firstOctet = Number(firstOctetRaw)
+  const secondOctet = Number(secondOctetRaw)
+  const isPrivate172 = firstOctet === 172 && secondOctet >= 16 && secondOctet <= 31
+
+  if (ip.startsWith("10.") || ip.startsWith("127.") || ip.startsWith("169.254.") || isPrivate172 || ip.startsWith("192.168.") || ip === "0.0.0.0") {
+    return null
+  }
+  return ip
 }
 
 async function buildInstallerUpdateForOs(targetOs: InstallerTargetOs, selectedVersion?: string | null) {
@@ -142,8 +176,8 @@ export async function POST(request: NextRequest) {
 
     const safeStatus = ["online", "offline", "disconnected"].includes(String(status)) ? status : "online"
 
-    const localIp = system_info?.local_ip || system_info?.ip || body?.ip_address || null
-    const publicIp = system_info?.public_ip || body?.public_ip || null
+    const localIp = sanitizeLocalIpv4(system_info?.local_ip || system_info?.ip || body?.ip_address)
+    const publicIp = sanitizePublicIpv4(system_info?.public_ip || body?.public_ip)
     const macAddress = system_info?.mac || body?.mac_address || null
     const detectedOs = normalizeOs(system_info?.os || body?.os)
 
