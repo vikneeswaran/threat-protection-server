@@ -103,11 +103,13 @@ echo ""
 # the app bundle under /Applications; in that case, extract payload manually as fallback.
 if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
     echo -e "${YELLOW}⚠️  App bundle not found after installer step. Trying fallback extraction...${NC}"
+    # Clean up any stale temp dirs from previous failed runs
+    rm -rf /tmp/kuamini-pkg-expand.* 2>/dev/null || true
     TMP_EXPAND_DIR="/tmp/kuamini-pkg-expand.$$"
     rm -rf "$TMP_EXPAND_DIR"
     trap 'rm -rf "$TMP_EXPAND_DIR"' EXIT
 
-    if pkgutil --expand-full "$PKG_FILE" "$TMP_EXPAND_DIR" >/dev/null 2>&1; then
+    if pkgutil --expand-full "$PKG_FILE" "$TMP_EXPAND_DIR" 2>/tmp/kuamini-pkgutil-err.log; then
         APP_SOURCE=""
 
         # Preferred known location
@@ -128,6 +130,7 @@ if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurity
         fi
     else
         echo -e "${YELLOW}⚠️  pkgutil --expand-full failed for fallback extraction${NC}"
+        cat /tmp/kuamini-pkgutil-err.log 2>/dev/null || true
     fi
 
     if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
