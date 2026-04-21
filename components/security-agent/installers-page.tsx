@@ -86,10 +86,13 @@ export function InstallersPage({ profile: _profile, account }: InstallersPagePro
       setDownloadingInstaller(downloadKey)
       toast.info(`Generating ${platform} installer${version ? ` v${version}` : ""}...`)
 
+      const cacheBust = Date.now()
+
       const response = await fetch(
-        `/api/agent/installers/download?platform=${platform}&accountId=${account.id}${version ? `&version=${encodeURIComponent(version)}` : ""}`,
+        `/api/agent/installers/download?platform=${platform}&accountId=${account.id}${version ? `&version=${encodeURIComponent(version)}` : ""}&_ts=${cacheBust}`,
         {
           method: "GET",
+          cache: "no-store",
         },
       )
 

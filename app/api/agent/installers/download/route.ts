@@ -23,6 +23,15 @@ const rateLimitBuckets = new Map<string, number[]>()
 // Simple checksum cache keyed by absolute path
 const checksumCache = new Map<string, { mtimeMs: number; hash: string }>()
 
+function withNoStoreHeaders(headers: Record<string, string>) {
+  return {
+    ...headers,
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  }
+}
+
 function base64Url(input: Buffer | string) {
   return Buffer.from(input)
     .toString("base64")
@@ -347,11 +356,11 @@ Why use .cmd launchers:
   console.info(`[Windows Installer] Serving MSI bundle for account ${accountId.slice(0, 8)} (${msiSource})`)
 
   return new NextResponse(new Uint8Array(zipData), {
-    headers: {
+    headers: withNoStoreHeaders({
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${bundleName}"`,
       "X-Bundle-Type": "msi+token+helper+cmd",
-    },
+    }),
   })
 }
 
@@ -550,11 +559,11 @@ async function serveStaticInstaller(
         : "application/gzip"
 
     return new NextResponse(data, {
-      headers: {
+      headers: withNoStoreHeaders({
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${filename}"`,
         "X-Checksum-SHA256": sha256,
-      },
+      }),
     })
   } catch (error) {
     console.error(`Error serving static ${platform} installer:`, error)
@@ -711,12 +720,12 @@ echo "If the tray icon is red, open the console and check endpoint status."
     const bundleName = `KuaminiSecurityClient-${accountId.slice(0, 8)}-macos.zip`
 
     return new NextResponse(new Uint8Array(zipData), {
-      headers: {
+      headers: withNoStoreHeaders({
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${bundleName}"`,
         "X-Checksum-SHA256": sha256,
         "X-Bundle-Type": "pkg+token+script",
-      },
+      }),
     })
   } catch (error) {
     console.error("Error serving macOS installer:", error)
@@ -846,11 +855,11 @@ Write-Host "Check the system tray for the Kuamini Security Client icon." -Foregr
     })
 
     return new NextResponse(scriptData, {
-      headers: {
+      headers: withNoStoreHeaders({
         "Content-Type": "application/octet-stream",
         "Content-Disposition": `attachment; filename="Install-KuaminiSecurityClient-${accountId.slice(0, 8)}.ps1"`,
         "X-Checksum-SHA256": bundleHash,
-      },
+      }),
     })
   } catch (error) {
     console.error("Error generating Windows installer:", error)
@@ -973,11 +982,11 @@ echo "Check status with: systemctl status kuamini-security-client"
     })
 
     return new NextResponse(scriptData, {
-      headers: {
+      headers: withNoStoreHeaders({
         "Content-Type": "application/x-sh",
         "Content-Disposition": `attachment; filename="install-kuamini-security-client-${accountId.slice(0, 8)}.sh"`,
         "X-Checksum-SHA256": bundleHash,
-      },
+      }),
     })
   } catch (error) {
     console.error("Error generating Linux installer:", error)
