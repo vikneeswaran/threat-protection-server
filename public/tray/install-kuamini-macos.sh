@@ -107,11 +107,26 @@ if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurity
     trap 'rm -rf "$TMP_EXPAND_DIR"' EXIT
 
     if pkgutil --expand-full "$PKG_FILE" "$TMP_EXPAND_DIR" >/dev/null 2>&1; then
+        APP_SOURCE=""
+
+        # Preferred known location
         if [ -d "$TMP_EXPAND_DIR/Payload/Applications/KuaminiSecurityClient.app" ]; then
-            rm -rf /Applications/KuaminiSecurityClient.app
-            cp -R "$TMP_EXPAND_DIR/Payload/Applications/KuaminiSecurityClient.app" /Applications/
-            echo -e "${GREEN}✅ Restored app bundle from package payload${NC}"
+            APP_SOURCE="$TMP_EXPAND_DIR/Payload/Applications/KuaminiSecurityClient.app"
+        else
+            # Fallback: search entire expanded directory for the app bundle
+            APP_SOURCE=$(find "$TMP_EXPAND_DIR" -type d -name "KuaminiSecurityClient.app" 2>/dev/null | head -n 1 || true)
         fi
+
+        if [ -n "$APP_SOURCE" ] && [ -d "$APP_SOURCE" ]; then
+            rm -rf /Applications/KuaminiSecurityClient.app
+            /usr/bin/ditto "$APP_SOURCE" /Applications/KuaminiSecurityClient.app
+            echo -e "${GREEN}✅ Restored app bundle from package payload${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Expanded package but could not locate KuaminiSecurityClient.app${NC}"
+            find "$TMP_EXPAND_DIR" -maxdepth 4 -print 2>/dev/null | sed -n '1,50p'
+        fi
+    else
+        echo -e "${YELLOW}⚠️  pkgutil --expand-full failed for fallback extraction${NC}"
     fi
 
     if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
