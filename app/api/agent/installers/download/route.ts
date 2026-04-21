@@ -618,24 +618,52 @@ async function serveMacOSInstaller(
     const apiBase = `${appBase}/api/agent`
     const consoleUrl = `${appBase}/securityAgent`
 
+    // Reuse the proven macOS helper installer script that sets up LaunchAgent/tray reliably.
+    // It accepts: <TOKEN> <PKG_PATH>
+    const macHelperScriptPath = path.join(process.cwd(), "public", "tray", "install-kuamini-macos.sh")
+    let macHelperScript: Buffer
+    try {
+      macHelperScript = await fs.readFile(macHelperScriptPath)
+    } catch {
+      const response = await fetch(`${appBase}/tray/install-kuamini-macos.sh`)
+      if (!response.ok) {
+        throw new Error(`Failed to load install-kuamini-macos.sh: ${response.status}`)
+      }
+      macHelperScript = Buffer.from(await response.arrayBuffer())
+    }
+
     const installScript = `#!/bin/bash
 set -euo pipefail
 
-CONSOLE_USER=$(/usr/bin/stat -f %Su /dev/console)
-CONFIG_DIR="/Users/\${CONSOLE_USER}/.kuamini"
-CONFIG_FILE="\${CONFIG_DIR}/config.json"
-TOKEN_FILE="$(cd "$(dirname "$0")" && pwd)/registration.token"
-PKG_FILE="$(cd "$(dirname "$0")" && pwd)/${pkgName}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOKEN_FILE="\${SCRIPT_DIR}/registration.token"
+PKG_FILE="\${SCRIPT_DIR}/${pkgName}"
+HELPER_SCRIPT="\${SCRIPT_DIR}/install-kuamini-macos.sh"
 
 if [ ! -f "$TOKEN_FILE" ]; then
   echo "registration.token not found in installer bundle" >&2
   exit 1
 fi
 
-TOKEN=$( /bin/cat "$TOKEN_FILE" )
+if [ ! -f "$PKG_FILE" ]; then
+  echo "${pkgName} not found in installer bundle" >&2
+  exit 1
+fi
 
+if [ ! -f "$HELPER_SCRIPT" ]; then
+  echo "install-kuamini-macos.sh not found in installer bundle" >&2
+  exit 1
+fi
+
+TOKEN=$( /bin/cat "$TOKEN_FILE" )
+chmod +x "$HELPER_SCRIPT"
+
+# Pre-seed user config (helper also writes/normalizes config).
+CONSOLE_USER=$(/usr/bin/stat -f %Su /dev/console)
+CONFIG_DIR="/Users/\${CONSOLE_USER}/.kuamini"
+CONFIG_FILE="\${CONFIG_DIR}/config.json"
 /bin/mkdir -p "$CONFIG_DIR"
-/bin/cat >"$CONFIG_FILE" <<JSON
+/bin/cat > "$CONFIG_FILE" <<JSON
 {
   "api_base": "${apiBase}",
   "console_url": "${consoleUrl}",
@@ -649,8 +677,12 @@ JSON
 /usr/sbin/chown "$CONSOLE_USER" "$CONFIG_FILE" || true
 /bin/chmod 644 "$CONFIG_FILE" || true
 
-echo "Installing Kuamini Security Client..."
-/usr/sbin/installer -pkg "$PKG_FILE" -target /
+echo "Installing and starting Kuamini Security Client..."
+if [ "$(id -u)" -eq 0 ]; then
+  bash "$HELPER_SCRIPT" "$TOKEN" "$PKG_FILE"
+else
+  sudo bash "$HELPER_SCRIPT" "$TOKEN" "$PKG_FILE"
+fi
 
 echo "Installation complete."
 echo "If the tray icon is red, open the console and check endpoint status."
@@ -661,6 +693,7 @@ echo "If the tray icon is red, open the console and check endpoint status."
     const zip = new AdmZip()
     zip.addFile(pkgName, pkgData)
     zip.addFile("registration.token", Buffer.from(token, "utf-8"))
+    zip.addFile("install-kuamini-macos.sh", macHelperScript)
     zip.addFile("install.sh", Buffer.from(installScript, "utf-8"))
     zip.addFile("README.txt", Buffer.from(readme, "utf-8"))
     const zipData = zip.toBuffer()
