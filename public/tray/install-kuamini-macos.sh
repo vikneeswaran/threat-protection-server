@@ -99,10 +99,27 @@ echo ""
 # Install the PKG with Apple's installer
 /usr/sbin/installer -pkg "$PKG_FILE" -target /
 
-# Verify the app exists
+# Verify the app exists. Some environments report install success but do not materialize
+# the app bundle under /Applications; in that case, extract payload manually as fallback.
 if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
-    echo -e "${RED}❌ Error: Application bundle not found after install${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  App bundle not found after installer step. Trying fallback extraction...${NC}"
+    TMP_EXPAND_DIR="$(mktemp -d /tmp/kuamini-pkg-expand.XXXXXX)"
+    trap 'rm -rf "$TMP_EXPAND_DIR"' EXIT
+
+    if pkgutil --expand-full "$PKG_FILE" "$TMP_EXPAND_DIR" >/dev/null 2>&1; then
+        if [ -d "$TMP_EXPAND_DIR/Payload/Applications/KuaminiSecurityClient.app" ]; then
+            rm -rf /Applications/KuaminiSecurityClient.app
+            cp -R "$TMP_EXPAND_DIR/Payload/Applications/KuaminiSecurityClient.app" /Applications/
+            echo -e "${GREEN}✅ Restored app bundle from package payload${NC}"
+        fi
+    fi
+
+    if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
+        echo -e "${RED}❌ Error: Application bundle not found after install${NC}"
+        echo -e "${YELLOW}ℹ️  Check whether the PKG contains the app with:${NC}"
+        echo "   pkgutil --expand-full \"$PKG_FILE\" /tmp/kuamini_pkg_expanded && ls /tmp/kuamini_pkg_expanded/Payload/Applications"
+        exit 1
+    fi
 fi
 
 # Fix permissions
