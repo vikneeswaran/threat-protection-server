@@ -18,15 +18,33 @@ import uuid
 def is_another_instance_running():
     import psutil
     this_pid = os.getpid()
-    exe_name = "KuaminiSecurityClient.exe"
-    count = 0
-    for proc in psutil.process_iter(["pid", "name"]):
+
+    def _looks_like_agent_process(proc_info: dict) -> bool:
+        name = str(proc_info.get("name") or "")
+        exe = str(proc_info.get("exe") or "")
+        cmdline_parts = proc_info.get("cmdline") or []
+        cmdline = " ".join(str(p) for p in cmdline_parts)
+
+        # Compiled app / executable names
+        if "KuaminiSecurityClient" in name or "KuaminiSecurityClient" in exe:
+            return True
+
+        # Dev run: python .../agent-tray/main.py
+        lower_cmd = cmdline.lower()
+        if "main.py" in lower_cmd and "agent-tray" in lower_cmd:
+            return True
+
+        return False
+
+    for proc in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
         try:
-            if proc.info["name"] == exe_name and proc.info["pid"] != this_pid:
-                count += 1
+            if proc.info.get("pid") == this_pid:
+                continue
+            if _looks_like_agent_process(proc.info):
+                return True
         except Exception:
             continue
-    return count > 0
+    return False
 
 # Import PIL first and add Pillow 10+ compatibility patch for pystray
 try:
