@@ -94,16 +94,27 @@ if [[ $EUID -ne 0 ]]; then
     echo "Re-running with sudo..."
     SCRIPT_SELF="${BASH_SOURCE[0]:-$0}"
 
-    if [ -r "$SCRIPT_SELF" ]; then
-        TEMP_SCRIPT="$(mktemp /tmp/kuamini-install.XXXXXX.sh)"
-        cat "$SCRIPT_SELF" > "$TEMP_SCRIPT"
-        chmod 700 "$TEMP_SCRIPT"
-        exec sudo "$TEMP_SCRIPT" "$@"
+    TEMP_SCRIPT="$(mktemp /tmp/kuamini-install.XXXXXX.sh)"
+    CLEANUP_TEMP=1
+    trap '[ "${CLEANUP_TEMP:-0}" -eq 1 ] && rm -f "$TEMP_SCRIPT"' EXIT
+
+    # If script was launched from a real file, copy it.
+    # If launched via process substitution (<(curl ...)), /dev/fd is a stream and
+    # copying it from current read position produces a truncated script.
+    if [ -f "$SCRIPT_SELF" ] && [ -r "$SCRIPT_SELF" ]; then
+        cp "$SCRIPT_SELF" "$TEMP_SCRIPT"
+    else
+        INSTALLER_URL="$BASE_URL/tray/install-kuamini-macos.sh"
+        if ! /usr/bin/curl -fsSL "$INSTALLER_URL" -o "$TEMP_SCRIPT"; then
+            echo -e "${RED}❌ Error: Unable to fetch installer for sudo re-run.${NC}"
+            echo -e "${YELLOW}ℹ️  Save the script to a local file and run: sudo ./install-kuamini-macos.sh <TOKEN>${NC}"
+            exit 1
+        fi
     fi
 
-    echo -e "${RED}❌ Error: Unable to re-run installer as root from this execution context.${NC}"
-    echo -e "${YELLOW}ℹ️  Save the script to a local file and run: sudo ./install-kuamini-macos.sh <TOKEN>${NC}"
-    exit 1
+    chmod 700 "$TEMP_SCRIPT"
+    CLEANUP_TEMP=0
+    exec sudo "$TEMP_SCRIPT" "$@"
 fi
 
 # Get the console user (the user who initiated sudo, not root)
