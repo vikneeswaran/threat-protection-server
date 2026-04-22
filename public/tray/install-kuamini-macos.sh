@@ -19,6 +19,58 @@ echo ""
 
 TOKEN=""
 PKG_FILE=""
+BASE_URL="${KUAMINI_BASE_URL:-https://kuaminisystems.com}"
+
+version_is_greater_or_equal() {
+    local left="$1"
+    local right="$2"
+    local left_parts right_parts
+    local left_len right_len max_len i left_part right_part
+
+    IFS='.' read -r -a left_parts <<< "$left"
+    IFS='.' read -r -a right_parts <<< "$right"
+
+    left_len=${#left_parts[@]}
+    right_len=${#right_parts[@]}
+    max_len=$left_len
+    if [ "$right_len" -gt "$max_len" ]; then
+        max_len=$right_len
+    fi
+
+    for ((i = 0; i < max_len; i++)); do
+        left_part=${left_parts[i]:-0}
+        right_part=${right_parts[i]:-0}
+
+        if ((10#$left_part > 10#$right_part)); then
+            return 0
+        fi
+        if ((10#$left_part < 10#$right_part)); then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+find_latest_pkg() {
+    local search_dir="$1"
+    local latest_version=""
+    local latest_file=""
+    local file base version
+
+    while IFS= read -r -d '' file; do
+        base="$(basename "$file")"
+        if [[ "$base" =~ ^KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            if [ -z "$latest_version" ] || version_is_greater_or_equal "$version" "$latest_version"; then
+                latest_version="$version"
+                latest_file="$file"
+            fi
+        fi
+    done < <(find "$search_dir" -maxdepth 1 -type f -name "KuaminiSecurityClient-*.pkg" -print0 2>/dev/null)
+
+    printf '%s' "$latest_file"
+}
 
 # Parse arguments:
 #   install-kuamini-macos.sh <TOKEN>
@@ -40,7 +92,18 @@ fi
 if [[ $EUID -ne 0 ]]; then
     echo "This installer requires root privileges."
     echo "Re-running with sudo..."
-    exec sudo "$0" "$@"
+    SCRIPT_SELF="${BASH_SOURCE[0]:-$0}"
+
+    if [ -r "$SCRIPT_SELF" ]; then
+        TEMP_SCRIPT="$(mktemp /tmp/kuamini-install.XXXXXX.sh)"
+        cat "$SCRIPT_SELF" > "$TEMP_SCRIPT"
+        chmod 700 "$TEMP_SCRIPT"
+        exec sudo "$TEMP_SCRIPT" "$@"
+    fi
+
+    echo -e "${RED}❌ Error: Unable to re-run installer as root from this execution context.${NC}"
+    echo -e "${YELLOW}ℹ️  Save the script to a local file and run: sudo ./install-kuamini-macos.sh <TOKEN>${NC}"
+    exit 1
 fi
 
 # Get the console user (the user who initiated sudo, not root)
@@ -70,21 +133,42 @@ echo ""
 
 # The PKG file should be in the same directory as this script, or passed as argument
 if [ -z "$PKG_FILE" ]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Pick latest versioned PKG in script directory first, then /tmp fallback
-    PKG_FILE=$(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "KuaminiSecurityClient-*.pkg" 2>/dev/null \
-        | sed -E 's#^.*/KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$#\1 & #' \
-        | sort -V \
-        | awk '{sub(/^[^ ]+ /, ""); print}' \
-        | tail -n1)
+    # Pick latest versioned PKG in script directory first, then /tmp fallback.
+    # Use Bash comparison instead of GNU sort -V because macOS ships BSD sort.
+    PKG_FILE="$(find_latest_pkg "$SCRIPT_DIR")"
 
     if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
-        PKG_FILE=$(find /tmp -maxdepth 1 -type f -name "KuaminiSecurityClient-*.pkg" 2>/dev/null \
-            | sed -E 's#^.*/KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$#\1 & #' \
-            | sort -V \
-            | awk '{sub(/^[^ ]+ /, ""); print}' \
-            | tail -n1)
+        PKG_FILE="$(find_latest_pkg /tmp)"
+    fi
+
+    # One-line curl installs usually don't have a local PKG. Download from server.
+    if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
+        PKG_FILE="/tmp/KuaminiSecurityClient-latest.pkg"
+
+        DOWNLOAD_URLS=(
+            "$BASE_URL/tray/macos.pkg"
+            "$BASE_URL/tray/KuaminiSecurityClient-1.0.0.pkg"
+        )
+
+        echo "⬇️  Downloading macOS package..."
+        DOWNLOADED=0
+        for url in "${DOWNLOAD_URLS[@]}"; do
+            if /usr/bin/curl -fsSL "$url" -o "$PKG_FILE"; then
+                DOWNLOADED=1
+                break
+            fi
+        done
+
+        if [ "$DOWNLOADED" -ne 1 ]; then
+            echo -e "${RED}❌ Error: Failed to download macOS installer package.${NC}"
+            echo -e "${YELLOW}ℹ️  Checked URLs:${NC}"
+            for url in "${DOWNLOAD_URLS[@]}"; do
+                echo "   - $url"
+            done
+            exit 1
+        fi
     fi
 fi
 

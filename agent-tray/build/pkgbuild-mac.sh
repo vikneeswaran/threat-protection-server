@@ -26,6 +26,37 @@ PACKAGE_DIR="${BUILD_DIR}/pkgtmp"
 SCRIPTS_DIR="${PACKAGE_DIR}/scripts"
 PAYLOAD_DIR="${PACKAGE_DIR}/payload"
 
+version_is_greater_or_equal() {
+  local left="$1"
+  local right="$2"
+  local left_parts right_parts
+  local left_len right_len max_len i left_part right_part
+
+  IFS='.' read -r -a left_parts <<< "$left"
+  IFS='.' read -r -a right_parts <<< "$right"
+
+  left_len=${#left_parts[@]}
+  right_len=${#right_parts[@]}
+  max_len=$left_len
+  if [ "$right_len" -gt "$max_len" ]; then
+    max_len=$right_len
+  fi
+
+  for ((i = 0; i < max_len; i++)); do
+    left_part=${left_parts[i]:-0}
+    right_part=${right_parts[i]:-0}
+
+    if ((10#$left_part > 10#$right_part)); then
+      return 0
+    fi
+    if ((10#$left_part < 10#$right_part)); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 determine_next_version() {
   local latest=""
   local candidate
@@ -40,7 +71,7 @@ determine_next_version() {
       base="$(basename "$file")"
       if [[ "$base" =~ ^KuaminiSecurityClient-([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\.pkg$ ]]; then
         local ver="${BASH_REMATCH[1]}"
-        if [ -z "$latest" ] || [ "$(printf '%s\n%s\n' "$latest" "$ver" | sort -V | tail -n1)" = "$ver" ]; then
+        if [ -z "$latest" ] || version_is_greater_or_equal "$ver" "$latest"; then
           latest="$ver"
         fi
       fi
