@@ -31,9 +31,26 @@ jobs:
           host: ${{ steps.target.outputs.host }}
           username: ${{ secrets.AWS_EC2_USER }}
           key: ${{ secrets.AWS_EC2_SSH_KEY }}
+          command_timeout: 45m
           script: |
             set -e
             cd /home/ubuntu/apps/kuamini-prod
+
+            echo "Disk usage before cleanup..."
+            df -h
+
+            echo "Cleaning caches and build artifacts to free disk space..."
+            rm -rf .next || true
+            rm -rf node_modules/.cache || true
+            rm -rf /tmp/*next* /tmp/*turbo* 2>/dev/null || true
+            pnpm store prune || true
+            npm cache clean --force || true
+            pm2 flush || true
+            find ~/.pm2/logs -type f -name "*.log" -size +20M -delete 2>/dev/null || true
+            git gc --prune=now || true
+
+            echo "Disk usage after cleanup..."
+            df -h
 
             echo "Pulling latest code..."
             git fetch origin
