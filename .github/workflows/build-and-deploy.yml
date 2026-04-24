@@ -94,11 +94,23 @@ jobs:
           chmod +x pkgbuild-mac.sh
           ./pkgbuild-mac.sh
 
+      - name: Resolve built macOS package path
+        id: macpkg
+        shell: bash
+        run: |
+          PKG_PATH=$(ls -t agent-tray/build/KuaminiSecurityClient-*.pkg | head -n1)
+          if [ -z "$PKG_PATH" ]; then
+            echo "No macOS package found" >&2
+            exit 1
+          fi
+          echo "path=$PKG_PATH" >> $GITHUB_OUTPUT
+          echo "Resolved macOS package: $PKG_PATH"
+
       - name: Upload macOS package
         uses: actions/upload-artifact@v4
         with:
           name: macos-pkg
-          path: agent-tray/build/KuaminiSecurityClient-1.0.0.pkg
+          path: ${{ steps.macpkg.outputs.path }}
           retention-days: 30
 
   build-windows:
@@ -185,7 +197,7 @@ jobs:
       - name: Deploy to public/tray
         run: |
           mkdir -p public/tray
-          cp macos-pkg/KuaminiSecurityClient-1.0.0.pkg public/tray/ || true
+          cp macos-pkg/KuaminiSecurityClient-*.pkg public/tray/ || true
           cp windows-msi/KuaminiSecurityClient-1.0.5.msi public/tray/ || true
           cp windows-zip/windows.zip public/tray/ || true
           cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true

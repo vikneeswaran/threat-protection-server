@@ -72,6 +72,44 @@ find_latest_pkg() {
     printf '%s' "$latest_file"
 }
 
+resolve_latest_macos_pkg_url() {
+    local versions_url="$BASE_URL/api/agent/versions?platform=macos&limit=1"
+    local latest_version=""
+
+    # Parse version without requiring jq.
+    # Response shape includes versions array entries with a version field.
+    if command -v /usr/bin/python3 >/dev/null 2>&1; then
+        latest_version=$(/usr/bin/curl -fsSL "$versions_url" 2>/dev/null | /usr/bin/python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    # Accept either { macos: { versions: [{version:"x"}] } } or { versions: [...] }
+    candidates = []
+    if isinstance(data, dict):
+        macos = data.get("macos")
+        if isinstance(macos, dict):
+            candidates = macos.get("versions") or []
+        if not candidates:
+            candidates = data.get("versions") or []
+    if isinstance(candidates, list) and candidates:
+        first = candidates[0]
+        if isinstance(first, dict):
+            v = first.get("version")
+            if isinstance(v, str) and v.strip():
+                print(v.strip())
+except Exception:
+    pass
+')
+    fi
+
+    if [ -n "$latest_version" ]; then
+        printf '%s' "$BASE_URL/tray/KuaminiSecurityClient-${latest_version}.pkg"
+        return 0
+    fi
+
+    return 1
+}
+
 # Parse arguments:
 #   install-kuamini-macos.sh <TOKEN>
 #   install-kuamini-macos.sh <PKG_PATH>
@@ -194,14 +232,18 @@ if [ -z "$PKG_FILE" ]; then
     if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
         PKG_FILE="/tmp/KuaminiSecurityClient-latest.pkg"
 
+        LATEST_PKG_URL="$(resolve_latest_macos_pkg_url || true)"
+
         # Enumerate versioned PKG files on the server (add new versions here as they are released)
         DOWNLOAD_URLS=(
+            "$LATEST_PKG_URL"
             "$BASE_URL/tray/KuaminiSecurityClient-1.0.0.pkg"
         )
 
         echo "⬇️  Downloading macOS package..."
         DOWNLOADED=0
         for url in "${DOWNLOAD_URLS[@]}"; do
+            [ -z "$url" ] && continue
             if /usr/bin/curl -fsSL "$url" -o "$PKG_FILE"; then
                 DOWNLOADED=1
                 break
@@ -212,6 +254,7 @@ if [ -z "$PKG_FILE" ]; then
             echo -e "${RED}❌ Error: Failed to download macOS installer package.${NC}"
             echo -e "${YELLOW}ℹ️  Checked URLs:${NC}"
             for url in "${DOWNLOAD_URLS[@]}"; do
+                [ -z "$url" ] && continue
                 echo "   - $url"
             done
             exit 1
