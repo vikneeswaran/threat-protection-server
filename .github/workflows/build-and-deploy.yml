@@ -17,6 +17,7 @@ on:
       - 'tsconfig.json'
       - 'eslint.config.js'
       - 'vitest.config.ts'
+      - 'public/tray/install-kuamini-macos.sh'
       - 'public/tray/install-kuamini-windows-cli.ps1'
       - 'public/tray/install-windows.cmd'
       - '.github/workflows/build-and-deploy.yml'
