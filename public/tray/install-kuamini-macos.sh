@@ -94,9 +94,9 @@ if [[ $EUID -ne 0 ]]; then
     echo "Re-running with sudo..."
     SCRIPT_SELF="${BASH_SOURCE[0]:-$0}"
 
-    TEMP_SCRIPT="$(mktemp /tmp/kuamini-install.XXXXXX.sh)"
+    TEMP_SCRIPT="/tmp/kuamini-install.$$.$(date +%s).sh"
     CLEANUP_TEMP=1
-    trap '[ "${CLEANUP_TEMP:-0}" -eq 1 ] && rm -f "$TEMP_SCRIPT"' EXIT
+    trap '[ "${CLEANUP_TEMP:-0}" -eq 1 ] && rm -f "$TEMP_SCRIPT" 2>/dev/null || true' EXIT
 
     # If script was launched from a real file, copy it.
     # If launched via process substitution (<(curl ...)), /dev/fd is a stream and
@@ -141,6 +141,42 @@ else
 fi
 
 echo ""
+
+# CRITICAL: Write config IMMEDIATELY after determining console user and before any PKG discovery
+# This ensures token is persisted even if PKG discovery fails or installer exits early.
+echo "🔧 Preparing configuration..."
+CONFIG_DIR="$ACTUAL_HOME/.kuamini"
+mkdir -p "$CONFIG_DIR"
+chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
+chmod 755 "$CONFIG_DIR" || true
+CONFIG_FILE="$CONFIG_DIR/config.json"
+AGENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+if [ -n "$TOKEN" ]; then
+    cat > "$CONFIG_FILE" << EOF
+{
+  "api_base": "https://kuaminisystems.com/api/agent",
+  "console_url": "https://kuaminisystems.com/securityAgent",
+  "auto_register": true,
+  "heartbeat_interval": 60,
+  "agent_id": "$AGENT_ID",
+  "registration_token": "$TOKEN"
+}
+EOF
+else
+    cat > "$CONFIG_FILE" << EOF
+{
+  "api_base": "https://kuaminisystems.com/api/agent",
+  "console_url": "https://kuaminisystems.com/securityAgent",
+  "auto_register": true,
+  "heartbeat_interval": 60,
+  "agent_id": "$AGENT_ID"
+}
+EOF
+fi
+chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
+chmod 644 "$CONFIG_FILE" || true
+echo ""
+
 
 # The PKG file should be in the same directory as this script, or passed as argument
 if [ -z "$PKG_FILE" ]; then
@@ -187,42 +223,6 @@ if [ ! -f "$PKG_FILE" ]; then
     echo -e "${RED}❌ Error: PKG file not found: $PKG_FILE${NC}"
     exit 1
 fi
-
-# Write config BEFORE running the installer so the token is persisted even if
-# the installer's postinstall script overwrites it with a default (tokenless) config.
-CONFIG_DIR="$ACTUAL_HOME/.kuamini"
-mkdir -p "$CONFIG_DIR"
-chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
-chmod 755 "$CONFIG_DIR" || true
-CONFIG_FILE="$CONFIG_DIR/config.json"
-AGENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
-if [ -n "$TOKEN" ]; then
-    echo "🔧 Writing configuration with registration token..."
-    cat > "$CONFIG_FILE" << EOF
-{
-  "api_base": "https://kuaminisystems.com/api/agent",
-  "console_url": "https://kuaminisystems.com/securityAgent",
-  "auto_register": true,
-  "heartbeat_interval": 60,
-  "agent_id": "$AGENT_ID",
-  "registration_token": "$TOKEN"
-}
-EOF
-else
-    echo "🔧 Writing configuration without token..."
-    cat > "$CONFIG_FILE" << EOF
-{
-  "api_base": "https://kuaminisystems.com/api/agent",
-  "console_url": "https://kuaminisystems.com/securityAgent",
-  "auto_register": true,
-  "heartbeat_interval": 60,
-  "agent_id": "$AGENT_ID"
-}
-EOF
-fi
-chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
-chmod 644 "$CONFIG_FILE" || true
-echo ""
 
 echo "📦 Installing from: $PKG_FILE"
 echo ""
@@ -283,9 +283,8 @@ chown -R root:wheel /Applications/KuaminiSecurityClient.app
 echo "✅ Application installed to /Applications/KuaminiSecurityClient.app"
 echo ""
 
-# Config was already written above before the installer ran.
-# Re-apply ownership in case installer postinstall changed it.
-echo "🔧 Ensuring config ownership is correct..."
+# Config was written above before the installer ran.
+# Ensure ownership is correct in case postinstall script modified it.
 chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
 chmod 644 "$CONFIG_FILE" || true
 
