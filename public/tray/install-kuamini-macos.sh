@@ -146,9 +146,9 @@ echo ""
 # This ensures token is persisted even if PKG discovery fails or installer exits early.
 echo "🔧 Preparing configuration..."
 CONFIG_DIR="$ACTUAL_HOME/.kuamini"
-mkdir -p "$CONFIG_DIR"
-chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
-chmod 755 "$CONFIG_DIR" || true
+/bin/mkdir -p "$CONFIG_DIR"
+/usr/sbin/chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
+/bin/chmod 755 "$CONFIG_DIR" || true
 CONFIG_FILE="$CONFIG_DIR/config.json"
 AGENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 if [ -n "$TOKEN" ]; then
@@ -173,8 +173,8 @@ else
 }
 EOF
 fi
-chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
-chmod 644 "$CONFIG_FILE" || true
+/usr/sbin/chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
+/bin/chmod 644 "$CONFIG_FILE" || true
 echo ""
 
 
@@ -274,23 +274,23 @@ fi
 
 # Remove quarantine attribute that macOS Gatekeeper adds to unsigned app bundles
 # (on macOS 13+ / Sequoia this silently prevents the binary from running otherwise)
-xattr -dr com.apple.quarantine /Applications/KuaminiSecurityClient.app 2>/dev/null || true
+/usr/bin/xattr -dr com.apple.quarantine /Applications/KuaminiSecurityClient.app 2>/dev/null || true
 
 # Fix permissions
-chmod -R 755 /Applications/KuaminiSecurityClient.app
-chown -R root:wheel /Applications/KuaminiSecurityClient.app
+/bin/chmod -R 755 /Applications/KuaminiSecurityClient.app
+/usr/sbin/chown -R root:wheel /Applications/KuaminiSecurityClient.app
 
 echo "✅ Application installed to /Applications/KuaminiSecurityClient.app"
 echo ""
 
 # Config was written above before the installer ran.
 # Ensure ownership is correct in case postinstall script modified it.
-chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
-chmod 644 "$CONFIG_FILE" || true
+/usr/sbin/chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
+/bin/chmod 644 "$CONFIG_FILE" || true
 
 # Install LaunchAgent
 echo "🚀 Installing launch agent..."
-mkdir -p "$ACTUAL_HOME/Library/LaunchAgents"
+/bin/mkdir -p "$ACTUAL_HOME/Library/LaunchAgents"
 
 PLIST_FILE="$ACTUAL_HOME/Library/LaunchAgents/com.kuamini.securityclient.plist"
 cat > "$PLIST_FILE" << EOF
@@ -323,8 +323,8 @@ cat > "$PLIST_FILE" << EOF
 </plist>
 EOF
 
-chown "$CONSOLE_USER:staff" "$PLIST_FILE" || true
-chmod 644 "$PLIST_FILE" || true
+/usr/sbin/chown "$CONSOLE_USER:staff" "$PLIST_FILE" || true
+/bin/chmod 644 "$PLIST_FILE" || true
 
 # Get numeric UID and reload agent cleanly
 USER_UID=$(id -u "$CONSOLE_USER")
