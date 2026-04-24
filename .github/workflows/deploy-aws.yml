@@ -34,28 +34,44 @@ jobs:
           command_timeout: 45m
           script: |
             set -e
-            cd /home/ubuntu/apps/kuamini-prod
+            APP_DIR="/home/ubuntu/apps/kuamini-prod"
+            REPO="git@github.com:vikneeswaran/threat-protection-agent.git"
 
-            echo "Disk usage before cleanup..."
-            df -h
+            echo "=== Disk usage before cleanup ==="
+            df -h /
 
-            echo "Cleaning caches and build artifacts to free disk space..."
-            rm -rf .next || true
-            rm -rf node_modules/.cache || true
-            rm -rf /tmp/*next* /tmp/*turbo* 2>/dev/null || true
-            pnpm store prune || true
-            npm cache clean --force || true
+            echo "=== Freeing disk space ==="
+            rm -rf "$APP_DIR/.next" || true
+            rm -rf "$APP_DIR/node_modules" || true
             pm2 flush || true
-            find ~/.pm2/logs -type f -name "*.log" -size +20M -delete 2>/dev/null || true
-            git gc --prune=now || true
+            find /home/ubuntu/.pm2/logs -type f -name "*.log" -size +10M -delete 2>/dev/null || true
+            sudo apt-get clean -y || true
+            sudo journalctl --vacuum-size=50M || true
+            sudo find /tmp -mindepth 1 -maxdepth 1 -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 
-            echo "Disk usage after cleanup..."
-            df -h
+            echo "=== Disk usage after cleanup ==="
+            df -h /
 
-            echo "Pulling latest code..."
+            echo "=== Ensuring repo is healthy ==="
+            if [ -d "$APP_DIR/.git" ]; then
+              if ! git -C "$APP_DIR" fsck --no-dangling --quiet 2>/dev/null; then
+                echo "Repo corrupted — re-cloning..."
+                cp "$APP_DIR/agent-tray/config.json" /tmp/kuamini-config.json.bak 2>/dev/null || true
+                rm -rf "$APP_DIR"
+                git clone "$REPO" "$APP_DIR"
+                cp /tmp/kuamini-config.json.bak "$APP_DIR/agent-tray/config.json" 2>/dev/null || true
+              fi
+            else
+              echo "Repo missing — cloning fresh..."
+              mkdir -p /home/ubuntu/apps
+              git clone "$REPO" "$APP_DIR"
+            fi
+
+            echo "=== Pulling latest code ==="
+            cd "$APP_DIR"
             git fetch origin
             git checkout ${{ github.ref_name }}
-            git pull origin ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
 
             echo "Installing dependencies..."
             pnpm install --frozen-lockfile
