@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
+import net from "node:net"
 import { getPool, query } from "@/lib/db"
 
 const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
@@ -39,6 +40,60 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
+function sanitizeLocalIpv4(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const ip = value.trim()
+  if (net.isIP(ip) !== 4) {
+    return null
+  }
+  if (ip.startsWith("127.") || ip.startsWith("169.254.") || ip === "0.0.0.0") {
+    return null
+  }
+  return ip
+}
+
+function sanitizePublicIpv4(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const ip = value.trim()
+  if (net.isIP(ip) !== 4) {
+    return null
+  }
+  const [firstOctetRaw, secondOctetRaw] = ip.split(".")
+  const firstOctet = Number(firstOctetRaw)
+  const secondOctet = Number(secondOctetRaw)
+  const isPrivate172 = firstOctet === 172 && secondOctet >= 16 && secondOctet <= 31
+
+  if (ip.startsWith("10.") || ip.startsWith("127.") || ip.startsWith("169.254.") || isPrivate172 || ip.startsWith("192.168.") || ip === "0.0.0.0") {
+    return null
+  }
+  return ip
+}
+
+function sanitizeMacAddress(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/-/g, ":")
+  if (!normalized) {
+    return null
+  }
+
+  if (/^[0-9a-f]{12}$/i.test(normalized)) {
+    return normalized.match(/.{1,2}/g)?.join(":") ?? null
+  }
+
+  if (/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(normalized) && normalized !== "00:00:00:00:00:00") {
+    return normalized
+  }
+
+  return null
+}
+
 export async function POST(request: NextRequest) {
   try {
     let body: any
@@ -56,9 +111,9 @@ export async function POST(request: NextRequest) {
       }
     }
     const { token, hostname, os, os_version, agent_version, agent_id } = body
-    const localIp = body?.system_info?.local_ip || body?.system_info?.ip || body?.ip_address || null
-    const publicIp = body?.system_info?.public_ip || body?.public_ip || null
-    const macAddress = body?.system_info?.mac || body?.mac_address || null
+    const localIp = sanitizeLocalIpv4(body?.system_info?.local_ip || body?.system_info?.ip || body?.ip_address)
+    const publicIp = sanitizePublicIpv4(body?.system_info?.public_ip || body?.public_ip)
+    const macAddress = sanitizeMacAddress(body?.system_info?.mac || body?.system_info?.mac_address || body?.mac_address)
 
     if (!hostname || !os) {
       return NextResponse.json({ error: "Missing required fields: hostname and os" }, { status: 400 })

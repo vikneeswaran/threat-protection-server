@@ -54,6 +54,28 @@ function sanitizePublicIpv4(value: unknown): string | null {
   return ip
 }
 
+function sanitizeMacAddress(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/-/g, ":")
+  if (!normalized) {
+    return null
+  }
+
+  // Accept xx:xx:xx:xx:xx:xx or xxxxxxxxxxxx (normalize to colon form)
+  if (/^[0-9a-f]{12}$/i.test(normalized)) {
+    return normalized.match(/.{1,2}/g)?.join(":") ?? null
+  }
+
+  if (/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(normalized) && normalized !== "00:00:00:00:00:00") {
+    return normalized
+  }
+
+  return null
+}
+
 async function buildInstallerUpdateForOs(targetOs: InstallerTargetOs, selectedVersion?: string | null) {
   const appBase = (process.env.NEXT_PUBLIC_APP_URL || "https://kuaminisystems.com").replace(/\/$/, "")
 
@@ -139,9 +161,9 @@ export async function POST(request: NextRequest) {
 
         const hostname = String(body?.system_info?.hostname || body?.hostname || `endpoint-${String(agent_id).slice(0, 8)}`)
         const osVersion = body?.system_info?.kernel || body?.os_version || null
-        const ipAddress = body?.system_info?.local_ip || body?.system_info?.ip || body?.ip_address || null
-        const publicIp = body?.system_info?.public_ip || body?.public_ip || null
-        const macAddress = body?.system_info?.mac || body?.mac_address || null
+        const ipAddress = sanitizeLocalIpv4(body?.system_info?.local_ip || body?.system_info?.ip || body?.ip_address)
+        const publicIp = sanitizePublicIpv4(body?.system_info?.public_ip || body?.public_ip)
+        const macAddress = sanitizeMacAddress(body?.system_info?.mac || body?.system_info?.mac_address || body?.mac_address)
 
         // First try to find an existing row one more time (race-safe), then insert if still missing
         const existingCheck = await query<{ id: string; account_id: string }>(
@@ -178,7 +200,7 @@ export async function POST(request: NextRequest) {
 
     const localIp = sanitizeLocalIpv4(system_info?.local_ip || system_info?.ip || body?.ip_address)
     const publicIp = sanitizePublicIpv4(system_info?.public_ip || body?.public_ip)
-    const macAddress = system_info?.mac || body?.mac_address || null
+    const macAddress = sanitizeMacAddress(system_info?.mac || system_info?.mac_address || body?.mac_address)
     const detectedOs = normalizeOs(system_info?.os || body?.os)
 
     const accountSettingsResult = await query<{ settings: Record<string, unknown> | null }>(

@@ -796,6 +796,9 @@ def register(config):
             logging.debug("Could not resolve os_version: %s", exc)
         return "unknown"
 
+    local_ip, mac = get_network_info()
+    public_ip = get_public_ip()
+
     payload = {
         "token": config.get("registration_token"),
         "hostname": os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME") or "unknown",
@@ -803,6 +806,14 @@ def register(config):
         "os_version": _os_version(),
         "agent_version": AGENT_VERSION,
         "agent_id": config.get("agent_id"),
+        "ip_address": local_ip,
+        "public_ip": public_ip,
+        "mac_address": mac,
+        "system_info": {
+            "local_ip": local_ip,
+            "public_ip": public_ip,
+            "mac": mac,
+        },
     }
     try:
         api_url = config.get('api_base') or "https://kuaminisystems.com/api/agent"
