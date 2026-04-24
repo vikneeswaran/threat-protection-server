@@ -158,8 +158,8 @@ if [ -z "$PKG_FILE" ]; then
     if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
         PKG_FILE="/tmp/KuaminiSecurityClient-latest.pkg"
 
+        # Enumerate versioned PKG files on the server (add new versions here as they are released)
         DOWNLOAD_URLS=(
-            "$BASE_URL/tray/macos.pkg"
             "$BASE_URL/tray/KuaminiSecurityClient-1.0.0.pkg"
         )
 
@@ -188,6 +188,42 @@ if [ ! -f "$PKG_FILE" ]; then
     exit 1
 fi
 
+# Write config BEFORE running the installer so the token is persisted even if
+# the installer's postinstall script overwrites it with a default (tokenless) config.
+CONFIG_DIR="$ACTUAL_HOME/.kuamini"
+mkdir -p "$CONFIG_DIR"
+chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
+chmod 755 "$CONFIG_DIR" || true
+CONFIG_FILE="$CONFIG_DIR/config.json"
+AGENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+if [ -n "$TOKEN" ]; then
+    echo "🔧 Writing configuration with registration token..."
+    cat > "$CONFIG_FILE" << EOF
+{
+  "api_base": "https://kuaminisystems.com/api/agent",
+  "console_url": "https://kuaminisystems.com/securityAgent",
+  "auto_register": true,
+  "heartbeat_interval": 60,
+  "agent_id": "$AGENT_ID",
+  "registration_token": "$TOKEN"
+}
+EOF
+else
+    echo "🔧 Writing configuration without token..."
+    cat > "$CONFIG_FILE" << EOF
+{
+  "api_base": "https://kuaminisystems.com/api/agent",
+  "console_url": "https://kuaminisystems.com/securityAgent",
+  "auto_register": true,
+  "heartbeat_interval": 60,
+  "agent_id": "$AGENT_ID"
+}
+EOF
+fi
+chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
+chmod 644 "$CONFIG_FILE" || true
+echo ""
+
 echo "📦 Installing from: $PKG_FILE"
 echo ""
 
@@ -204,7 +240,7 @@ if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurity
     rm -rf "$TMP_EXPAND_DIR"
     trap 'rm -rf "$TMP_EXPAND_DIR"' EXIT
 
-    if pkgutil --expand-full "$PKG_FILE" "$TMP_EXPAND_DIR" 2>/tmp/kuamini-pkgutil-err.log; then
+    if /usr/sbin/pkgutil --expand-full "$PKG_FILE" "$TMP_EXPAND_DIR" 2>/tmp/kuamini-pkgutil-err.log; then
         APP_SOURCE=""
 
         # Preferred known location
@@ -236,6 +272,10 @@ if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurity
     fi
 fi
 
+# Remove quarantine attribute that macOS Gatekeeper adds to unsigned app bundles
+# (on macOS 13+ / Sequoia this silently prevents the binary from running otherwise)
+xattr -dr com.apple.quarantine /Applications/KuaminiSecurityClient.app 2>/dev/null || true
+
 # Fix permissions
 chmod -R 755 /Applications/KuaminiSecurityClient.app
 chown -R root:wheel /Applications/KuaminiSecurityClient.app
@@ -243,44 +283,9 @@ chown -R root:wheel /Applications/KuaminiSecurityClient.app
 echo "✅ Application installed to /Applications/KuaminiSecurityClient.app"
 echo ""
 
-# Create config directory for the user
-CONFIG_DIR="$ACTUAL_HOME/.kuamini"
-if [ ! -d "$CONFIG_DIR" ]; then
-    echo "🔧 Creating configuration directory..."
-    mkdir -p "$CONFIG_DIR"
-fi
-chown "$CONSOLE_USER:staff" "$CONFIG_DIR" || true
-chmod 755 "$CONFIG_DIR" || true
-
-CONFIG_FILE="$CONFIG_DIR/config.json"
-AGENT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
-
-# Always write a normalized config so token flow works reliably
-if [ -n "$TOKEN" ]; then
-    echo "🔧 Writing configuration with registration token..."
-    cat > "$CONFIG_FILE" << EOF
-{
-  "api_base": "https://kuaminisystems.com/api/agent",
-  "console_url": "https://kuaminisystems.com/securityAgent",
-  "auto_register": true,
-  "heartbeat_interval": 60,
-  "agent_id": "$AGENT_ID",
-  "registration_token": "$TOKEN"
-}
-EOF
-else
-    echo "🔧 Writing configuration without token..."
-    cat > "$CONFIG_FILE" << EOF
-{
-  "api_base": "https://kuaminisystems.com/api/agent",
-  "console_url": "https://kuaminisystems.com/securityAgent",
-  "auto_register": true,
-  "heartbeat_interval": 60,
-  "agent_id": "$AGENT_ID"
-}
-EOF
-fi
-
+# Config was already written above before the installer ran.
+# Re-apply ownership in case installer postinstall changed it.
+echo "🔧 Ensuring config ownership is correct..."
 chown "$CONSOLE_USER:staff" "$CONFIG_FILE" || true
 chmod 644 "$CONFIG_FILE" || true
 
