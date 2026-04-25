@@ -136,11 +136,23 @@ jobs:
           cd agent-tray
           python build/build-windows-msi.py
 
+      - name: Resolve built Windows MSI path
+        id: winmsi
+        shell: bash
+        run: |
+          MSI_PATH=$(ls -t agent-tray/dist/KuaminiSecurityClient-*.msi | head -n1)
+          if [ -z "$MSI_PATH" ]; then
+            echo "No Windows MSI package found" >&2
+            exit 1
+          fi
+          echo "path=$MSI_PATH" >> $GITHUB_OUTPUT
+          echo "Resolved Windows MSI: $MSI_PATH"
+
       - name: Upload Windows MSI
         uses: actions/upload-artifact@v4
         with:
           name: windows-msi
-          path: agent-tray/dist/KuaminiSecurityClient-1.0.5.msi
+          path: ${{ steps.winmsi.outputs.path }}
           retention-days: 30
           
       - name: Upload Windows ZIP
@@ -199,7 +211,7 @@ jobs:
         run: |
           mkdir -p public/tray
           cp macos-pkg/KuaminiSecurityClient-*.pkg public/tray/ || true
-          cp windows-msi/KuaminiSecurityClient-1.0.5.msi public/tray/ || true
+          cp windows-msi/KuaminiSecurityClient-*.msi public/tray/ || true
           cp windows-zip/windows.zip public/tray/ || true
           cp linux-tar/KuaminiSecurityClient-linux.tar.gz public/tray/ || true
           
@@ -239,7 +251,7 @@ jobs:
         with:
           files: |
             public/tray/KuaminiSecurityClient-1.0.0.pkg
-            public/tray/KuaminiSecurityClient-1.0.5.msi
+            public/tray/KuaminiSecurityClient-*.msi
             public/tray/windows.zip
             public/tray/KuaminiSecurityClient-linux.tar.gz
           draft: false

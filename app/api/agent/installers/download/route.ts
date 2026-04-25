@@ -15,7 +15,7 @@ const RATE_LIMIT_MAX_REQUESTS = Number(process.env.INSTALLER_RATE_LIMIT_MAX ?? 3
 
 const INSTALLER_BUILD_GH_TOKEN = process.env.INSTALLER_BUILD_GH_TOKEN
 const INSTALLER_BUILD_GH_REPO = process.env.INSTALLER_BUILD_GH_REPO ?? "vikneeswaran/threat-protection-agent"
-const INSTALLER_WINDOWS_MSI_FILENAME = process.env.INSTALLER_WINDOWS_MSI_FILENAME ?? "KuaminiSecurityClient-1.0.5.msi"
+const INSTALLER_WINDOWS_MSI_FILENAME = process.env.INSTALLER_WINDOWS_MSI_FILENAME ?? "KuaminiSecurityClient-1.0.6.msi"
 
 // In-memory rate-limit buckets (per IP); best-effort for serverless
 const rateLimitBuckets = new Map<string, number[]>()
@@ -145,9 +145,18 @@ async function findLatestWindowsMsi(basePath: string, requestedVersion?: string 
   try {
     const entries = await fs.readdir(basePath)
     const msiFiles = entries
-      .filter((name) => /^KuaminiSecurityClient-\d+\.\d+\.\d+(?:\.\d+)?\.msi$/u.test(name))
-      .sort()
+      .map((name) => {
+        const match = /^KuaminiSecurityClient-(\d+\.\d+\.\d+(?:\.\d+)?)\.msi$/u.exec(name)
+        if (!match) {
+          return null
+        }
+        const version = match[1].split(".").map((part) => Number(part) || 0)
+        return { name, version }
+      })
+      .filter((item): item is { name: string; version: number[] } => Boolean(item))
+      .sort((a, b) => compareVersions(a.version, b.version))
       .reverse()
+      .map((item) => item.name)
 
     if (msiFiles.length > 0) {
       console.info(`[Windows Installer] Found MSI versions: ${msiFiles.slice(0, 3).join(", ")}...`)
