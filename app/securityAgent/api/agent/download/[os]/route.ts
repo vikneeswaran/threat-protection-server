@@ -400,7 +400,47 @@ function Write-Log {
 
 function Register-Agent {
     Write-Log "Registering agent with server..."
-    $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike "*Loopback*" } | Select-Object -First 1).IPAddress
+  $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.IPAddress -and
+      $_.IPAddress -notlike "127.*" -and
+      $_.IPAddress -notlike "169.254.*"
+    } |
+    Sort-Object -Property SkipAsSource |
+    Select-Object -First 1 -ExpandProperty IPAddress)
+
+  $macAddress = (Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.MACAddress -and
+      $_.NetEnabled -eq $true -and
+      $_.MACAddress -ne "00:00:00:00:00:00"
+    } |
+    Select-Object -First 1 -ExpandProperty MACAddress)
+
+  if ($macAddress) {
+    $macAddress = $macAddress.ToLower().Replace("-", ":")
+  }
+
+  $publicIp = $null
+  foreach ($url in @("https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://checkip.amazonaws.com")) {
+    try {
+      if ($url -like "*format=json*") {
+        $resp = Invoke-RestMethod -Uri $url -TimeoutSec 5
+        if ($resp.ip) {
+          $publicIp = [string]$resp.ip
+          break
+        }
+      } else {
+        $txt = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5).Content
+        if ($txt) {
+          $publicIp = $txt.Trim()
+          break
+        }
+      }
+    } catch {
+      # try next provider
+    }
+  }
     
     $body = @{
         token = $config["REGISTRATION_TOKEN"]
@@ -408,7 +448,15 @@ function Register-Agent {
         os_type = $config["OS_TYPE"]
         os_version = $config["OS_VERSION"]
         agent_version = "${INSTALLER_AGENT_VERSION}"
-        ip_address = $ip
+    ip_address = $localIp
+    public_ip = $publicIp
+    mac_address = $macAddress
+    system_info = @{
+      local_ip = $localIp
+      public_ip = $publicIp
+      mac = $macAddress
+      mac_address = $macAddress
+    }
     } | ConvertTo-Json
 
     try {
@@ -425,6 +473,47 @@ function Register-Agent {
 function Send-Heartbeat {
     $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
     $mem = (Get-CimInstance Win32_OperatingSystem | ForEach-Object { (($_.TotalVisibleMemorySize - $_.FreePhysicalMemory) / $_.TotalVisibleMemorySize) * 100 })
+  $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.IPAddress -and
+      $_.IPAddress -notlike "127.*" -and
+      $_.IPAddress -notlike "169.254.*"
+    } |
+    Sort-Object -Property SkipAsSource |
+    Select-Object -First 1 -ExpandProperty IPAddress)
+
+  $macAddress = (Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.MACAddress -and
+      $_.NetEnabled -eq $true -and
+      $_.MACAddress -ne "00:00:00:00:00:00"
+    } |
+    Select-Object -First 1 -ExpandProperty MACAddress)
+
+  if ($macAddress) {
+    $macAddress = $macAddress.ToLower().Replace("-", ":")
+  }
+
+  $publicIp = $null
+  foreach ($url in @("https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://checkip.amazonaws.com")) {
+    try {
+      if ($url -like "*format=json*") {
+        $resp = Invoke-RestMethod -Uri $url -TimeoutSec 5
+        if ($resp.ip) {
+          $publicIp = [string]$resp.ip
+          break
+        }
+      } else {
+        $txt = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5).Content
+        if ($txt) {
+          $publicIp = $txt.Trim()
+          break
+        }
+      }
+    } catch {
+      # try next provider
+    }
+  }
     
     $body = @{
         endpoint_id = $config["AGENT_ID"]
@@ -432,6 +521,19 @@ function Send-Heartbeat {
         cpu_usage = $cpu
         memory_usage = [math]::Round($mem, 2)
         agent_version = "${INSTALLER_AGENT_VERSION}"
+    ip_address = $localIp
+    public_ip = $publicIp
+    mac_address = $macAddress
+    system_info = @{
+      os = "windows"
+      hostname = $env:COMPUTERNAME
+      local_ip = $localIp
+      ip = $localIp
+      public_ip = $publicIp
+      mac = $macAddress
+      mac_address = $macAddress
+      agent_version = "${INSTALLER_AGENT_VERSION}"
+    }
     } | ConvertTo-Json
 
     try {

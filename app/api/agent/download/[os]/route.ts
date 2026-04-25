@@ -424,15 +424,58 @@ function Write-Log {
 }
 
 function Send-Heartbeat {
+  $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.IPAddress -and
+      $_.IPAddress -notlike "127.*" -and
+      $_.IPAddress -notlike "169.254.*"
+    } |
+    Select-Object -First 1 -ExpandProperty IPAddress)
+
+  $macAddress = (Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.MACAddress -and
+      $_.NetEnabled -eq $true -and
+      $_.MACAddress -ne "00:00:00:00:00:00"
+    } |
+    Select-Object -First 1 -ExpandProperty MACAddress)
+
+  if ($macAddress) {
+    $macAddress = $macAddress.ToLower().Replace("-", ":")
+  }
+
+  $publicIp = $null
+  foreach ($url in @("https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://checkip.amazonaws.com")) {
+    try {
+      if ($url -like "*format=json*") {
+        $resp = Invoke-RestMethod -Uri $url -TimeoutSec 5
+        if ($resp.ip) { $publicIp = [string]$resp.ip; break }
+      } else {
+        $txt = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5).Content
+        if ($txt) { $publicIp = $txt.Trim(); break }
+      }
+    } catch {
+      # try next provider
+    }
+  }
+
     $body = @{
         agent_id = $config.AGENT_ID
         account_id = $config.ACCOUNT_ID
     agent_version = "${INSTALLER_AGENT_VERSION}"
         status = "online"
+    ip_address = $localIp
+    public_ip = $publicIp
+    mac_address = $macAddress
         system_info = @{
             os = "windows"
             hostname = $env:COMPUTERNAME
             kernel = [System.Environment]::OSVersion.Version.ToString()
+      ip = $localIp
+      local_ip = $localIp
+      public_ip = $publicIp
+      mac = $macAddress
+      mac_address = $macAddress
       agent_version = "${INSTALLER_AGENT_VERSION}"
         }
     } | ConvertTo-Json
@@ -462,6 +505,41 @@ $settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-T
 Register-ScheduledTask -TaskName "KuaminiThreatProtectAgent" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
 Write-Host "[5/6] Registering agent with console..."
+$localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.IPAddress -and
+    $_.IPAddress -notlike "127.*" -and
+    $_.IPAddress -notlike "169.254.*"
+  } |
+  Select-Object -First 1 -ExpandProperty IPAddress)
+
+$macAddress = (Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.MACAddress -and
+    $_.NetEnabled -eq $true -and
+    $_.MACAddress -ne "00:00:00:00:00:00"
+  } |
+  Select-Object -First 1 -ExpandProperty MACAddress)
+
+if ($macAddress) {
+  $macAddress = $macAddress.ToLower().Replace("-", ":")
+}
+
+$publicIp = $null
+foreach ($url in @("https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://checkip.amazonaws.com")) {
+  try {
+    if ($url -like "*format=json*") {
+      $resp = Invoke-RestMethod -Uri $url -TimeoutSec 5
+      if ($resp.ip) { $publicIp = [string]$resp.ip; break }
+    } else {
+      $txt = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5).Content
+      if ($txt) { $publicIp = $txt.Trim(); break }
+    }
+  } catch {
+    # try next provider
+  }
+}
+
 $body = @{
     token = $REGISTRATION_TOKEN
     hostname = $env:COMPUTERNAME
@@ -469,6 +547,15 @@ $body = @{
     os_version = [System.Environment]::OSVersion.Version.ToString()
     agent_version = "${INSTALLER_AGENT_VERSION}"
     agent_id = $AGENT_ID
+  ip_address = $localIp
+  public_ip = $publicIp
+  mac_address = $macAddress
+  system_info = @{
+    local_ip = $localIp
+    public_ip = $publicIp
+    mac = $macAddress
+    mac_address = $macAddress
+  }
 } | ConvertTo-Json
 
 try {
