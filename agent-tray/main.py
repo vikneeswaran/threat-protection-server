@@ -653,6 +653,18 @@ def get_network_info() -> Tuple[str | None, str | None]:
     best_ip = candidates[0][1] if candidates else primary_ip
     best_iface = candidates[0][2] if candidates else None
 
+    # Extra fallback for environments where routing trick + psutil enumeration
+    # do not produce an IPv4 candidate (some restricted Windows setups).
+    if not best_ip:
+        try:
+            host = socket.gethostname()
+            for candidate in socket.gethostbyname_ex(host)[2]:
+                if candidate and not candidate.startswith("127.") and not candidate.startswith("169.254."):
+                    best_ip = candidate
+                    break
+        except Exception:
+            pass
+
     def _valid_mac(value: str | None) -> bool:
         if not value:
             return False
@@ -663,11 +675,12 @@ def get_network_info() -> Tuple[str | None, str | None]:
         """Return True if this address entry represents a MAC/hardware address.
         psutil reports AF_PACKET (17) on Linux, AF_LINK (18) on macOS.
         It may expose these as integer values or as enum names depending on OS/version.
+        On some Windows builds psutil can expose AF_LINK as -1.
         """
         family = addr.family
         family_int = family.value if hasattr(family, "value") else int(family)
-        family_name = getattr(family, "name", str(family))
-        return family_int in (17, 18) or family_name in ("AF_PACKET", "AF_LINK")
+        family_name = str(getattr(family, "name", str(family)))
+        return family_int in (-1, 17, 18) or ("AF_PACKET" in family_name) or ("AF_LINK" in family_name)
 
     # 2) Prefer MAC from the chosen interface.
     mac = None
@@ -696,7 +709,7 @@ def get_network_info() -> Tuple[str | None, str | None]:
     if not mac:
         try:
             node = uuid.getnode()
-            if node and not (node >> 40) & 0x02:  # bit 41 not set = not random
+            if node and node != 0 and node != 0xFFFFFFFFFFFF:
                 mac = ":".join(f"{(node >> (5-i)*8) & 0xff:02x}" for i in range(6))
         except Exception:
             pass
