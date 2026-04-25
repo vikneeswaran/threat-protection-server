@@ -140,13 +140,16 @@ chmod +x "$SCRIPTS_DIR/preinstall"
 cat > "$SCRIPTS_DIR/postinstall" << 'EOF'
 #!/bin/bash
 # Postinstall script for Kuamini Security Client
-set -e
+# NOTE: Do NOT use set -e here. Failures must not abort the install on macOS 13+/Sequoia.
 
 APP_PATH="/Applications/KuaminiSecurityClient.app"
 EXECUTABLE="$APP_PATH/Contents/MacOS/KuaminiSecurityClient"
 
 echo "Setting executable permissions..."
-chmod +x "$EXECUTABLE"
+chmod +x "$EXECUTABLE" 2>/dev/null || true
+
+# Remove quarantine (Gatekeeper blocks unsigned binaries on macOS 13+)
+/usr/bin/xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
 
 echo "Installation complete!"
 exit 0
