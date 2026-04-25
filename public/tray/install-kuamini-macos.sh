@@ -271,7 +271,11 @@ echo "📦 Installing from: $PKG_FILE"
 echo ""
 
 # Install the PKG with Apple's installer
-/usr/sbin/installer -pkg "$PKG_FILE" -target /
+INSTALLER_EXIT=0
+if ! /usr/sbin/installer -pkg "$PKG_FILE" -target /; then
+    INSTALLER_EXIT=$?
+    echo -e "${YELLOW}⚠️  Apple installer exited with code ${INSTALLER_EXIT}. Will try payload extraction fallback...${NC}"
+fi
 
 # Verify the app exists. Some environments report install success but do not materialize
 # the app bundle under /Applications; in that case, extract payload manually as fallback.
@@ -309,6 +313,10 @@ if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurity
 
     if [ ! -f /Applications/KuaminiSecurityClient.app/Contents/MacOS/KuaminiSecurityClient ]; then
         echo -e "${RED}❌ Error: Application bundle not found after install${NC}"
+        if [ "$INSTALLER_EXIT" -ne 0 ]; then
+            echo -e "${YELLOW}ℹ️  Installer failure details (last 60 lines of /var/log/install.log):${NC}"
+            /usr/bin/tail -n 60 /var/log/install.log 2>/dev/null || true
+        fi
         echo -e "${YELLOW}ℹ️  Check whether the PKG contains the app with:${NC}"
         echo "   pkgutil --expand-full \"$PKG_FILE\" /tmp/kuamini_pkg_expanded && ls /tmp/kuamini_pkg_expanded/Payload/Applications"
         exit 1
