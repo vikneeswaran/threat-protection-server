@@ -1,5 +1,16 @@
 -- Migration: Add immediate threat action command queue for endpoint execution
 
+-- Ensure uuid-ossp extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create enum type if it doesn't already exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'threat_action_type') THEN
+    CREATE TYPE threat_action_type AS ENUM ('quarantine', 'kill', 'allow', 'restore', 'delete');
+  END IF;
+END$$;
+
 CREATE TABLE IF NOT EXISTS threat_action_commands (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
