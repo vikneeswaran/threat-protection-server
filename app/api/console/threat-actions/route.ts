@@ -66,9 +66,15 @@ export async function POST(request: Request) {
     await client.query(
       `
         UPDATE threats
-        SET status = $2,
-            resolved_at = CASE WHEN $2 IN ('resolved', 'allowed') THEN NOW() ELSE NULL END,
-            resolved_by = CASE WHEN $2 IN ('resolved', 'allowed') THEN $3 ELSE NULL END,
+        SET status = $2::threat_status,
+            resolved_at = CASE
+              WHEN $2::threat_status IN ('resolved'::threat_status, 'allowed'::threat_status) THEN NOW()
+              ELSE NULL
+            END,
+            resolved_by = CASE
+              WHEN $2::threat_status IN ('resolved'::threat_status, 'allowed'::threat_status) THEN $3
+              ELSE NULL
+            END,
             updated_at = NOW()
         WHERE id = $1
       `,
