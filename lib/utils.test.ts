@@ -10,7 +10,8 @@ describe('Utils', () => {
     })
 
     it('should handle conditional classes', () => {
-      const result = cn('base-class', false && 'hidden', 'visible')
+      const shouldHide = Date.now() < 0
+      const result = cn('base-class', shouldHide ? 'hidden' : undefined, 'visible')
       expect(result).toBeTruthy()
     })
 

@@ -1028,6 +1028,72 @@ def report_scan_command_result(config, command_id: str, scan_id: str, scan_type:
         return False, str(e)
 
 
+def check_pending_threat_action_commands(config):
+    """Check if there are pending threat remediation commands from the console."""
+    agent_id = config.get("agent_id")
+    account_id = config.get("account_id")
+
+    if not agent_id or not account_id:
+        return None, "Missing agent_id or account_id"
+
+    try:
+        api_url = config.get("api_base", "https://kuaminisystems.com/api/agent")
+        url = f"{api_url}/threat-action-commands?agent_id={agent_id}&account_id={account_id}"
+        logging.debug("Checking for pending threat action commands")
+
+        resp = requests.get(url, timeout=10)
+        if resp.status_code >= 400:
+            logging.debug("Threat action command check HTTP %s", resp.status_code)
+            return None, f"HTTP {resp.status_code}"
+
+        body = resp.json()
+        if body.get("has_pending_command"):
+            return body.get("command"), None
+        return None, None
+    except Exception as e:
+        logging.debug("Error checking threat action commands: %s", e)
+        return None, str(e)
+
+
+def report_threat_action_command_result(
+    config,
+    command_id: str,
+    status: str = "completed",
+    error_message: str = None,
+    result_details: dict | None = None,
+) -> Tuple[bool, str]:
+    """Report the result of a threat action command execution."""
+    agent_id = config.get("agent_id")
+    account_id = config.get("account_id")
+
+    if not all([agent_id, account_id, command_id]):
+        return False, "Missing required config fields"
+
+    try:
+        payload = {
+            "agent_id": agent_id,
+            "account_id": account_id,
+            "command_id": command_id,
+            "status": status,
+            "error_message": error_message,
+            "result_details": result_details or {},
+        }
+
+        api_url = config.get("api_base", "https://kuaminisystems.com/api/agent")
+        url = f"{api_url}/threat-action-commands-result"
+
+        resp = requests.post(url, json=payload, timeout=15)
+        if resp.status_code >= 400:
+            logging.error("Threat action command result report failed HTTP %s", resp.status_code)
+            return False, f"HTTP {resp.status_code}"
+
+        logging.info("✓ Threat action command result reported: command_id=%s status=%s", command_id, status)
+        return True, "Success"
+    except Exception as e:
+        logging.error("Error reporting threat action command result: %s", e)
+        return False, str(e)
+
+
 def initialize_threat_detection(config: dict, log_callback=None) -> dict:
     try:
         from threat_detection import ThreatDetectionEngine, ThreatReporter, ThreatActionExecutor
@@ -1308,8 +1374,12 @@ def tray_main():
 
     def _execute_action_for_threat(action: str, threat: dict) -> Tuple[bool, str]:
         action = action.lower()
+        if action == "block":
+            action = "kill"
         if action == "quarantine" and threat.get("file_path"):
             return threat_system["executor"].quarantine_file(threat["file_path"])
+        if action == "restore" and threat.get("file_path"):
+            return threat_system["executor"].restore_file(threat["file_path"])
         if action == "delete" and threat.get("file_path"):
             return threat_system["executor"].delete_file(threat["file_path"])
         if action == "kill" and threat.get("process_id"):
@@ -1317,6 +1387,51 @@ def tray_main():
         if action == "allow" and threat.get("file_hash"):
             return threat_system["executor"].allow_threat(threat["file_hash"])
         return False, f"Unsupported or missing data for action: {action}"
+
+    def threat_action_loop():
+        poll_interval = int(config.get("threat_action_poll_interval") or 5)
+
+        while not stop_event.is_set():
+            try:
+                command, error = check_pending_threat_action_commands(config)
+                if error:
+                    logging.debug("Threat action command check failed: %s", error)
+                if not command:
+                    stop_event.wait(poll_interval)
+                    continue
+
+                action = str(command.get("action") or "").lower()
+                command_id = command.get("id")
+                threat_name = command.get("threat_name") or "Threat"
+
+                if not command_id:
+                    stop_event.wait(poll_interval)
+                    continue
+
+                handled, msg = _execute_action_for_threat(action, command)
+                if handled:
+                    notify("Threat action executed", f"{threat_name}: {action}")
+                    report_threat_action_command_result(
+                        config,
+                        command_id=command_id,
+                        status="completed",
+                        result_details={"message": msg, "action": action, "threat_name": threat_name},
+                    )
+                    logging.info("Immediate threat action applied: %s (%s)", action, threat_name)
+                else:
+                    report_threat_action_command_result(
+                        config,
+                        command_id=command_id,
+                        status="failed",
+                        error_message=msg,
+                        result_details={"action": action, "threat_name": threat_name},
+                    )
+                    logging.warning("Immediate threat action failed: %s (%s)", action, msg)
+
+            except Exception as e:
+                logging.error("Threat action loop error: %s", e, exc_info=True)
+
+            stop_event.wait(poll_interval)
 
     def _report_and_handle_actions(report):
         logging.info(f"Starting to report scan results: {report.total_threats} threats detected")
@@ -1560,6 +1675,7 @@ def tray_main():
     if threat_system.get("enabled"):
         threading.Thread(target=threat_scan_loop, daemon=True).start()
         threading.Thread(target=realtime_monitor_loop, daemon=True).start()
+        threading.Thread(target=threat_action_loop, daemon=True).start()
 
     icon.icon = make_icon(status["color"])
     

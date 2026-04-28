@@ -23,5 +23,5 @@ vi.mock('next/navigation', () => ({
 }))
 
 // Mock environment variables
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'
+process.env.DATABASE_URL = 'postgresql://test:test@127.0.0.1:5432/test'
 process.env.DATABASE_SSL = 'false'

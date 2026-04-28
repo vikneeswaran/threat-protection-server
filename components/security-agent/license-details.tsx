@@ -47,11 +47,11 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
   const allocatedPercentage =
     account.total_licenses > 0 ? (account.allocated_licenses / account.total_licenses) * 100 : 0
 
-  const isExpiringSoon = account.license_expires_at
-    ? new Date(account.license_expires_at) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    : false
+  const licenseExpiresAt = account.license_expires_at ? new Date(account.license_expires_at) : null
 
-  const isExpired = account.license_expires_at ? new Date(account.license_expires_at) < new Date() : false
+  const isExpiringSoon = licenseExpiresAt ? licenseExpiresAt < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : false
+
+  const isExpired = licenseExpiresAt ? licenseExpiresAt < new Date() : false
 
   const handleAllocate = async () => {
     if (!selectedAccount || !quantity) {return}
@@ -110,7 +110,7 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
               <span>
                 {isExpired
                   ? "Your license has expired. Please renew to continue using all features."
-                  : `Your license expires ${formatDistanceToNow(new Date(account.license_expires_at!), { addSuffix: true })}`}
+                  : `Your license expires ${licenseExpiresAt ? formatDistanceToNow(licenseExpiresAt, { addSuffix: true }) : "soon"}`}
               </span>
             </div>
           )}
@@ -163,9 +163,9 @@ export function LicenseDetails({ account, subAccounts, userId }: LicenseDetailsP
             </div>
           </div>
 
-          {account.license_expires_at && (
+          {licenseExpiresAt && (
             <div className="text-sm text-muted-foreground border-t pt-4">
-              License valid until: <strong>{format(new Date(account.license_expires_at), "PPP")}</strong>
+              License valid until: <strong>{format(licenseExpiresAt, "PPP")}</strong>
             </div>
           )}
         </CardContent>

@@ -1,13 +1,16 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import type { Threat, UserRole } from "@/lib/types/database"
+import type { Threat, ThreatActionType, UserRole } from "@/lib/types/database"
 import { formatDistanceToNow } from "date-fns"
-import { AlertTriangle, MoreHorizontal, Shield, Trash2, CheckCircle } from "lucide-react"
+import { AlertTriangle, MoreHorizontal, Shield, Trash2, CheckCircle, Ban, RotateCcw } from "lucide-react"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 interface EndpointThreatsProps {
   threats: Threat[]
@@ -33,6 +36,32 @@ const statusColors = {
 
 export function EndpointThreats({ threats, endpointId: _endpointId, userRole }: EndpointThreatsProps) {
   const canManage = ["super_admin", "admin", "operator"].includes(userRole)
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+
+  const handleAction = async (threatId: string, action: ThreatActionType) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/console/threat-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threatId, action }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: "Failed to perform action" }))
+        throw new Error(payload.error || "Failed to perform action")
+      }
+
+      toast.success(`Threat ${action}ed successfully`)
+      router.refresh()
+    } catch (error) {
+      console.error("Error performing threat action:", error)
+      toast.error("Failed to perform threat action")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   if (threats.length === 0) {
     return (
@@ -107,18 +136,36 @@ export function EndpointThreats({ threats, endpointId: _endpointId, userRole }: 
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Shield className="h-4 w-4 mr-2" />
-                          Quarantine
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Kill Process
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Allow
-                        </DropdownMenuItem>
+                        {threat.status !== "quarantined" && (
+                          <DropdownMenuItem onClick={() => handleAction(threat.id, "quarantine")} disabled={isLoading}>
+                            <Shield className="h-4 w-4 mr-2" />
+                            Quarantine
+                          </DropdownMenuItem>
+                        )}
+                        {threat.status !== "killed" && (
+                          <DropdownMenuItem onClick={() => handleAction(threat.id, "kill")} disabled={isLoading}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Block / Kill Process
+                          </DropdownMenuItem>
+                        )}
+                        {threat.status === "detected" && (
+                          <DropdownMenuItem onClick={() => handleAction(threat.id, "allow")} disabled={isLoading}>
+                            <Ban className="h-4 w-4 mr-2" />
+                            Allow
+                          </DropdownMenuItem>
+                        )}
+                        {threat.status === "quarantined" && (
+                          <DropdownMenuItem onClick={() => handleAction(threat.id, "restore")} disabled={isLoading}>
+                            <RotateCcw className="h-4 w-4 mr-2" />
+                            Restore
+                          </DropdownMenuItem>
+                        )}
+                        {threat.status !== "resolved" && (
+                          <DropdownMenuItem onClick={() => handleAction(threat.id, "delete")} disabled={isLoading}>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Mark Resolved
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

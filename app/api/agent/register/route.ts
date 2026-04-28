@@ -5,12 +5,41 @@ import { getPool, query } from "@/lib/db"
 
 const TOKEN_SECRET = process.env.INSTALLER_TOKEN_SECRET
 
+type RegistrationBody = {
+  token?: string
+  hostname?: string
+  os?: string
+  os_version?: string
+  agent_version?: string
+  agent_id?: string
+  ip_address?: string
+  public_ip?: string
+  mac_address?: string
+  system_info?: {
+    local_ip?: string
+    ip?: string
+    public_ip?: string
+    mac?: string
+    mac_address?: string
+  }
+}
+
+type TokenPayload = {
+  accountId?: unknown
+}
+
+type DbError = {
+  code?: string
+  message?: string
+  stack?: string
+}
+
 function base64UrlDecode(input: string) {
   const normalized = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4)
   return Buffer.from(normalized, "base64")
 }
 
-function verifyAndDecodeToken(token: string) {
+function verifyAndDecodeToken(token: string): unknown {
   // Check if it's a signed JWT token (has two parts with dot separator)
   if (token.includes(".")) {
     if (!TOKEN_SECRET) {
@@ -34,6 +63,14 @@ function verifyAndDecodeToken(token: string) {
     const decodedStr = Buffer.from(cleaned, "base64").toString("utf-8")
     return JSON.parse(decodedStr)
   }
+}
+
+function toRegistrationBody(value: unknown): RegistrationBody | null {
+  if (typeof value !== "object" || value === null) {
+    return null
+  }
+
+  return value as RegistrationBody
 }
 
 function isUuid(value: unknown): value is string {
@@ -96,14 +133,24 @@ function sanitizeMacAddress(value: unknown): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    let body: any
+    let body: RegistrationBody
     try {
-      body = await request.json()
+      const parsed = await request.json()
+      const normalized = toRegistrationBody(parsed)
+      if (!normalized) {
+        return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+      }
+      body = normalized
     } catch (parseErr) {
       const raw = await request.text()
       try {
         const repaired = raw.replace(/("token"\s*:\s*")([^"]*)(")/g, (_, p1, p2, p3) => p1 + String(p2).replace(/\s+/g, "") + p3)
-        body = JSON.parse(repaired)
+        const parsed = JSON.parse(repaired)
+        const normalized = toRegistrationBody(parsed)
+        if (!normalized) {
+          return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+        }
+        body = normalized
         console.warn("Repaired JSON body by cleaning token whitespace")
       } catch (repairErr) {
         console.error("Failed to parse JSON body and repair token:", repairErr, "original error:", parseErr)
@@ -125,8 +172,8 @@ export async function POST(request: NextRequest) {
     if (token) {
       // Decode and verify token (supports both signed JWT and legacy base64)
       try {
-        const decoded = verifyAndDecodeToken(token)
-        accountId = decoded.accountId
+        const decoded = verifyAndDecodeToken(token) as TokenPayload
+        accountId = typeof decoded.accountId === "string" ? decoded.accountId : null
       } catch (e) {
         console.error("Invalid registration token decode error:", e)
         return NextResponse.json({ error: "Invalid token" }, { status: 400 })
@@ -228,12 +275,14 @@ export async function POST(request: NextRequest) {
     } finally {
       client.release()
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const dbError = error as DbError
+
     console.error("Registration error:", error)
-    if (error?.code === "23503") {
+    if (dbError?.code === "23503") {
       return NextResponse.json({ error: "Registration failed: invalid account reference" }, { status: 400 })
     }
-    if (error?.code === "23505") {
+    if (dbError?.code === "23505") {
       return NextResponse.json({ error: "Registration conflict: endpoint already exists" }, { status: 409 })
     }
     const isDebug = process.env.DEBUG_REGISTRATION === "true" || process.env.NODE_ENV !== "production"

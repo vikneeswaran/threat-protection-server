@@ -144,8 +144,9 @@ export async function GET(request: NextRequest) {
       accountId = payload.accountId
       subAccountId = payload.subAccountId || null
       generatedBy = payload.generatedBy
-    } catch (error: any) {
-      return NextResponse.json({ error: error?.message || "Invalid token" }, { status: 400 })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Invalid token"
+      return NextResponse.json({ error: message }, { status: 400 })
     }
 
     // Use admin client since this is an unauthenticated endpoint (called during install)

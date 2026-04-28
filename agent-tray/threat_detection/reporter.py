@@ -233,10 +233,17 @@ class ThreatActionExecutor:
         getattr(self.logger, level)(msg)
         if self.log_callback:
             self.log_callback(f"[ThreatAction] {msg}")
+
+    def _quarantine_dir(self):
+        from pathlib import Path
+        import os
+
+        if os.name == 'nt':
+            return Path.home() / "AppData" / "Local" / "KuaminiSecurityClient" / "Quarantine"
+        return Path.home() / ".kuamini" / "quarantine"
     
     def quarantine_file(self, file_path: str) -> Tuple[bool, str]:
         """Move file to quarantine"""
-        import os
         import shutil
         from pathlib import Path
         
@@ -246,10 +253,7 @@ class ThreatActionExecutor:
                 return False, "File not found"
             
             # Create quarantine directory
-            if os.name == 'nt':
-                quarantine_dir = Path.home() / "AppData" / "Local" / "KuaminiSecurityClient" / "Quarantine"
-            else:
-                quarantine_dir = Path.home() / ".kuamini" / "quarantine"
+            quarantine_dir = self._quarantine_dir()
             
             quarantine_dir.mkdir(parents=True, exist_ok=True)
             
@@ -262,6 +266,27 @@ class ThreatActionExecutor:
         
         except Exception as e:
             self._log(f"Quarantine failed: {e}", "error")
+            return False, str(e)
+
+    def restore_file(self, original_path: str) -> Tuple[bool, str]:
+        """Restore a file from quarantine back to its original path."""
+        import shutil
+        from pathlib import Path
+
+        try:
+            target_path = Path(original_path)
+            quarantine_path = self._quarantine_dir() / target_path.name
+
+            if not quarantine_path.exists():
+                return False, f"Quarantined file not found: {quarantine_path}"
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(quarantine_path), str(target_path))
+
+            self._log(f"✓ Restored: {quarantine_path} -> {target_path}")
+            return True, f"Restored to {target_path}"
+        except Exception as e:
+            self._log(f"Restore failed: {e}", "error")
             return False, str(e)
     
     def kill_process(self, process_id: int, force: bool = False) -> Tuple[bool, str]:
