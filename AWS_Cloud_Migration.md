@@ -36,7 +36,7 @@ feature/New_Testing
 main branch
        ↓ (push to main)
 GitHub Actions
-       ↓ (deploy-aws.yml)
+   ↓ (`deploy-aws.yml` — GitHub Actions workflow)
 SSH to production EC2
   → git pull main
   → pnpm install --frozen-lockfile
