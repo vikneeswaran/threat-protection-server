@@ -135,3 +135,22 @@ CREATE INDEX IF NOT EXISTS idx_agent_instances_agent_id ON agent_instances(agent
 
 CREATE INDEX IF NOT EXISTS idx_threats_detection_source ON threats(detection_source);
 CREATE INDEX IF NOT EXISTS idx_threats_process_id ON threats(process_id) WHERE process_id IS NOT NULL;
+
+
+-- ============================================
+-- CREATE THREAT_SCAN_DATA TABLE (if missing)
+-- ============================================
+CREATE TABLE IF NOT EXISTS threat_scan_data (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  threat_id UUID NOT NULL REFERENCES threats(id) ON DELETE CASCADE,
+  scan_id TEXT NOT NULL,
+  endpoint_id UUID NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  threat_type TEXT,
+  severity TEXT,
+  details JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(threat_id, scan_id)
+);
