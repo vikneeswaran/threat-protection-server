@@ -97,12 +97,28 @@ class FileScanner:
             self._log(f"Failed to hash {file_path}: {e}", "debug")
             return None
     
+    def _whitelist_path(self):
+        from pathlib import Path
+        return Path(__file__).parent / "whitelist.json"
+
+    def _load_whitelist(self) -> set:
+        import json
+        try:
+            with open(self._whitelist_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return set(data.get("hashes", []))
+        except Exception:
+            return set()
+
     def _check_file_hash(self, file_path: Path) -> ThreatDetection | None:
-        """Check file against known malware hashes"""
+        """Check file against known malware hashes, skip whitelisted hashes"""
         file_hash = self._calculate_hash(file_path)
         if not file_hash:
             return None
-        
+        # Check whitelist first
+        if file_hash in self._load_whitelist():
+            self._log(f"Skipping whitelisted hash: {file_hash}", "info")
+            return None
         # Check against signature database
         for sig in THREAT_SIGNATURES.values():
             if sig.hashes and file_hash in sig.hashes:
@@ -117,7 +133,6 @@ class FileScanner:
                     detection_engine="signature",
                     details={"signature_id": sig.id, "description": sig.description}
                 )
-        
         return None
     
     def _check_file_pattern(self, file_path: Path) -> ThreatDetection | None:

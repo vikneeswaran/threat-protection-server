@@ -339,14 +339,37 @@ class ThreatActionExecutor:
             self._log(f"Delete failed: {e}", "error")
             return False, str(e)
     
-    def allow_threat(self, file_hash: str) -> Tuple[bool, str]:
-        """Add file to whitelist"""
+    def _whitelist_path(self):
+        import os
+        from pathlib import Path
+        # Store in threat_detection/whitelist.json (same dir as this file)
+        return Path(__file__).parent / "whitelist.json"
+
+    def _load_whitelist(self) -> set:
+        import json
         try:
-            # In production, this would update the threat signatures database
-            # to exclude this hash from detection
+            with open(self._whitelist_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return set(data.get("hashes", []))
+        except Exception:
+            return set()
+
+    def _save_whitelist(self, hashes: set) -> None:
+        import json
+        with open(self._whitelist_path(), "w", encoding="utf-8") as f:
+            json.dump({"hashes": list(hashes)}, f, indent=2)
+
+    def allow_threat(self, file_hash: str) -> Tuple[bool, str]:
+        """Add file to persistent whitelist"""
+        try:
+            hashes = self._load_whitelist()
+            if file_hash in hashes:
+                self._log(f"Already whitelisted: {file_hash}")
+                return True, f"Already whitelisted: {file_hash}"
+            hashes.add(file_hash)
+            self._save_whitelist(hashes)
             self._log(f"✓ Added to whitelist: {file_hash}")
             return True, f"Added {file_hash} to whitelist"
-        
         except Exception as e:
             self._log(f"Whitelist failed: {e}", "error")
             return False, str(e)
