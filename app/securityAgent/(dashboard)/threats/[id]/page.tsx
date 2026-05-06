@@ -4,16 +4,16 @@ import { notFound } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 
 export default async function ThreatDetailPage({ params }: { params: { id: string } }) {
-  const { user, profile } = await requireConsoleContext()
+  const { profile } = await requireConsoleContext()
   const threatId = params.id
-  if (!threatId) notFound()
+  if (!threatId) { notFound() }
 
   const result = await query(
     `SELECT id::text, account_id::text, endpoint_id::text, name, description, severity::text, status::text, file_path, file_hash, process_name, detection_engine, detected_at, resolved_at, resolved_by::text, created_at, updated_at FROM threats WHERE id = $1 AND account_id = $2 LIMIT 1`,
     [threatId, profile.account.id],
   )
   const threat = result.rows[0]
-  if (!threat) notFound()
+  if (!threat) { notFound() }
 
   return (
     <main className="flex-1 space-y-6 p-4 md:p-6">

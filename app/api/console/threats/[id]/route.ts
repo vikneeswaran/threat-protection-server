@@ -32,7 +32,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: "Threat not found" }, { status: 404 })
     }
     return NextResponse.json({ threat })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch threat details" }, { status: 500 })
   } finally {
     client.release()
