@@ -72,7 +72,7 @@ export async function POST(request: Request) {
               ELSE NULL
             END,
             resolved_by = CASE
-              WHEN $2::threat_status IN ('resolved'::threat_status, 'allowed'::threat_status) THEN $3
+              WHEN $2::threat_status IN ('resolved'::threat_status, 'allowed'::threat_status) THEN $3::uuid
               ELSE NULL
             END,
             updated_at = NOW()
