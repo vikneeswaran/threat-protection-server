@@ -110,8 +110,30 @@ class FileScanner:
         except Exception:
             return set()
 
+    def _fetch_action_policy(self, file_hash: str) -> str | None:
+        """Fetch allow/quarantine action policy for a file hash from the server (caches result)"""
+        import requests
+        if not hasattr(self, "_policy_cache"):
+            self._policy_cache = {}
+        if file_hash in self._policy_cache:
+            return self._policy_cache[file_hash]
+        try:
+            # TODO: Replace with dynamic base URL if needed
+            api_base_url = os.environ.get("KUAMINI_API_BASE_URL", "http://localhost:3000/api/console")
+            url = f"{api_base_url}/threat-action-policies?file_hash={file_hash}"
+            resp = requests.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("policies"):
+                    action = data["policies"][0]["action"]
+                    self._policy_cache[file_hash] = action
+                    return action
+        except Exception as e:
+            self._log(f"[POLICY] Failed to fetch action policy for {file_hash}: {e}", "warning")
+        return None
+
     def _check_file_hash(self, file_path: Path) -> ThreatDetection | None:
-        """Check file against known malware hashes, skip whitelisted hashes"""
+        """Check file against known malware hashes, skip whitelisted hashes, enforce persistent action policy"""
         file_hash = self._calculate_hash(file_path)
         if not file_hash:
             return None
@@ -119,6 +141,37 @@ class FileScanner:
         if file_hash in self._load_whitelist():
             self._log(f"Skipping whitelisted hash: {file_hash}", "info")
             return None
+        # Check persistent action policy (allow/quarantine)
+        action_policy = self._fetch_action_policy(file_hash)
+        if action_policy == "allow":
+            self._log(f"[POLICY] Auto-allowing file hash: {file_hash}", "info")
+            return None
+        if action_policy == "quarantine":
+            self._log(f"[POLICY] Auto-quarantining file hash: {file_hash}", "info")
+            # Simulate a threat detection for auto-quarantine
+            for sig in THREAT_SIGNATURES.values():
+                if sig.hashes and file_hash in sig.hashes:
+                    return ThreatDetection(
+                        threat_id=sig.id,
+                        threat_name=sig.name,
+                        threat_type=sig.type,
+                        severity=sig.severity,
+                        file_path=str(file_path),
+                        file_hash=file_hash,
+                        detection_engine="signature",
+                        details={"signature_id": sig.id, "description": sig.description, "auto_quarantine": True}
+                    )
+            # If not in signature DB, still return a generic detection
+            return ThreatDetection(
+                threat_id="auto_quarantine",
+                threat_name="Auto-Quarantine",
+                threat_type="policy",
+                severity="critical",
+                file_path=str(file_path),
+                file_hash=file_hash,
+                detection_engine="policy",
+                details={"auto_quarantine": True}
+            )
         # Check against signature database
         for sig in THREAT_SIGNATURES.values():
             if sig.hashes and file_hash in sig.hashes:

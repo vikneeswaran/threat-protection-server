@@ -243,27 +243,29 @@ class ThreatActionExecutor:
         return Path.home() / ".kuamini" / "quarantine"
     
     def quarantine_file(self, file_path: str) -> Tuple[bool, str]:
-        """Move file to quarantine"""
+        """Move file to quarantine, with extra diagnostics"""
         import shutil
         from pathlib import Path
-        
+        import os
         try:
             file_path = Path(file_path)
+            self._log(f"[DEBUG] Quarantine requested for: {file_path}")
             if not file_path.exists():
+                self._log(f"[ERROR] File not found for quarantine: {file_path}", "error")
                 return False, "File not found"
-            
             # Create quarantine directory
             quarantine_dir = self._quarantine_dir()
-            
+            self._log(f"[DEBUG] Ensuring quarantine dir exists: {quarantine_dir}")
             quarantine_dir.mkdir(parents=True, exist_ok=True)
-            
+            if not quarantine_dir.exists():
+                self._log(f"[ERROR] Failed to create quarantine dir: {quarantine_dir}", "error")
+                return False, f"Failed to create quarantine dir: {quarantine_dir}"
             # Move file
             quarantine_path = quarantine_dir / file_path.name
+            self._log(f"[DEBUG] Moving {file_path} to {quarantine_path}")
             shutil.move(str(file_path), str(quarantine_path))
-            
             self._log(f"✓ Quarantined: {file_path} -> {quarantine_path}")
             return True, f"Quarantined to {quarantine_path}"
-        
         except Exception as e:
             self._log(f"Quarantine failed: {e}", "error")
             return False, str(e)

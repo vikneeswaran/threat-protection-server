@@ -107,6 +107,16 @@ export async function POST(request: Request) {
       [affectedThreatIds, newStatus, user.id],
     )
 
+    // If applyToAllInstances and file_hash is present, persist action policy for future detections
+    if (applyToAllInstances && threat.file_hash) {
+      await client.query(
+        `INSERT INTO threat_action_policies (account_id, file_hash, action, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (account_id, file_hash) DO UPDATE SET action = EXCLUDED.action, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+        [profile.account.id, threat.file_hash, action, user.id]
+      )
+    }
+
     // Insert threat_actions and commands for each, collect command_ids
     const commandIds: string[] = []
     for (const tid of affectedThreatIds) {
