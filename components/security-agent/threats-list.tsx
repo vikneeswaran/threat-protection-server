@@ -60,6 +60,7 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
   }>({ open: false, threat: null, action: null })
   const [notes, setNotes] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [applyToAllInstances, setApplyToAllInstances] = useState(false)
   const router = useRouter()
 
   const canManage = ["super_admin", "admin", "operator"].includes(userRole)
@@ -78,6 +79,7 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
           notes,
           accountId,
           userId,
+          applyToAllInstances,
         }),
       })
 
@@ -89,6 +91,7 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
       toast.success(`Threat ${actionDialog.action}ed successfully`)
       setActionDialog({ open: false, threat: null, action: null })
       setNotes("")
+      setApplyToAllInstances(false)
       router.refresh()
     } catch (error) {
       console.error("Error performing action:", error)
@@ -270,6 +273,18 @@ export function ThreatsList({ threats, userRole, userId, accountId }: ThreatsLis
                 rows={3}
               />
             </div>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              id="applyToAllInstances"
+              checked={applyToAllInstances}
+              onChange={(e) => setApplyToAllInstances(e.target.checked)}
+              className="accent-primary"
+            />
+            <Label htmlFor="applyToAllInstances" className="text-xs cursor-pointer">
+              Apply to all instances (all endpoints and child accounts)
+            </Label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialog({ open: false, threat: null, action: null })}>

@@ -22,6 +22,7 @@ export async function POST(request: Request) {
   const requestedAction = String(body?.action || "").trim().toLowerCase()
   const action = (requestedAction === "block" ? "kill" : requestedAction) as ThreatActionType
   const notes = String(body?.notes || "").trim() || null
+  const applyToAllInstances = !!body?.applyToAllInstances
   const validActions: ThreatActionType[] = ["quarantine", "kill", "allow", "restore", "delete"]
 
   if (!threatId || !validActions.includes(action)) {
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
   try {
     await client.query("BEGIN")
 
+    // Get the threat and file_hash
     const threatResult = await client.query<{
       name: string
       status: string
@@ -56,13 +58,35 @@ export async function POST(request: Request) {
       `SELECT name, status::text as status, account_id::text, endpoint_id::text, file_path, file_hash, process_id FROM threats WHERE id = $1 LIMIT 1`,
       [threatId],
     )
-
     const threat = threatResult.rows[0]
     if (!threat || threat.account_id !== profile.account.id) {
       await client.query("ROLLBACK")
       return NextResponse.json({ error: "Threat not found" }, { status: 404 })
     }
 
+    let affectedThreatIds: string[] = [threatId]
+    // If applyToAllInstances and file_hash is present, find all threats with same hash for account and child accounts
+    if (applyToAllInstances && threat.file_hash) {
+      // Get all account IDs: current + children
+      const accountsResult = await client.query<{ id: string }>(
+        `WITH RECURSIVE children AS (
+          SELECT id FROM accounts WHERE id = $1
+          UNION ALL
+          SELECT a.id FROM accounts a INNER JOIN children c ON a.parent_account_id = c.id
+        ) SELECT id FROM children`,
+        [profile.account.id],
+      )
+      const accountIds = accountsResult.rows.map((row) => row.id)
+      // Find all threats with same file_hash in these accounts
+      const threatsResult = await client.query<{ id: string }>(
+        `SELECT id FROM threats WHERE file_hash = $1 AND account_id = ANY($2)`,
+        [threat.file_hash, accountIds],
+      )
+      affectedThreatIds = threatsResult.rows.map((row) => row.id)
+      if (!affectedThreatIds.includes(threatId)) affectedThreatIds.push(threatId)
+    }
+
+    // Update all affected threats
     await client.query(
       `
         UPDATE threats
@@ -76,68 +100,67 @@ export async function POST(request: Request) {
               ELSE NULL
             END,
             updated_at = NOW()
-        WHERE id = $1
+        WHERE id = ANY($1)
       `,
-      [threatId, newStatus, user.id],
+      [affectedThreatIds, newStatus, user.id],
     )
 
-    await client.query(
-      `INSERT INTO threat_actions (threat_id, action, performed_by, notes) VALUES ($1, $2, $3, $4)`,
-      [threatId, action, user.id, notes],
-    )
-
-    const commandResult = await client.query<{ id: string }>(
-      `
-        INSERT INTO threat_action_commands (
-          account_id,
-          endpoint_id,
-          threat_id,
+    // Insert threat_actions and commands for each
+    for (const tid of affectedThreatIds) {
+      await client.query(
+        `INSERT INTO threat_actions (threat_id, action, performed_by, notes) VALUES ($1, $2, $3, $4)`,
+        [tid, action, user.id, notes],
+      )
+      await client.query(
+        `
+          INSERT INTO threat_action_commands (
+            account_id,
+            endpoint_id,
+            threat_id,
+            action,
+            status,
+            created_by,
+            notes,
+            payload
+          )
+          VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7::jsonb)
+        `,
+        [
+          profile.account.id,
+          threat.endpoint_id,
+          tid,
           action,
-          status,
-          created_by,
+          user.id,
           notes,
-          payload
-        )
-        VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7::jsonb)
-        RETURNING id::text
-      `,
-      [
-        profile.account.id,
-        threat.endpoint_id,
-        threatId,
-        action,
-        user.id,
-        notes,
-        JSON.stringify({
-          threat_name: threat.name,
-          file_path: threat.file_path,
-          file_hash: threat.file_hash,
-          process_id: threat.process_id,
-        }),
-      ],
-    )
-
-    await client.query(
-      `
-        INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details)
-        VALUES ($1, $2, 'threat_action', 'threat', $3, $4::jsonb)
-      `,
-      [
-        profile.account.id,
-        user.id,
-        threatId,
-        JSON.stringify({
-          threat_name: threat.name,
-          action,
-          previous_status: threat.status,
-          new_status: newStatus,
-          command_id: commandResult.rows[0]?.id,
-        }),
-      ],
-    )
+          JSON.stringify({
+            threat_name: threat.name,
+            file_path: threat.file_path,
+            file_hash: threat.file_hash,
+            process_id: threat.process_id,
+          }),
+        ],
+      )
+      await client.query(
+        `
+          INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details)
+          VALUES ($1, $2, 'threat_action', 'threat', $3, $4::jsonb)
+        `,
+        [
+          profile.account.id,
+          user.id,
+          tid,
+          JSON.stringify({
+            threat_name: threat.name,
+            action,
+            previous_status: threat.status,
+            new_status: newStatus,
+          }),
+        ],
+      )
+    }
 
     await client.query("COMMIT")
-    return NextResponse.json({ ok: true, command_id: commandResult.rows[0]?.id ?? null })
+    return NextResponse.json({ ok: true, affectedThreatIds })
   } catch (error) {
     await client.query("ROLLBACK")
     console.error("Threat action error:", error)
