@@ -83,7 +83,9 @@ export async function POST(request: Request) {
         [threat.file_hash, accountIds],
       )
       affectedThreatIds = threatsResult.rows.map((row) => row.id)
-      if (!affectedThreatIds.includes(threatId)) affectedThreatIds.push(threatId)
+      if (!affectedThreatIds.includes(threatId)) {
+        affectedThreatIds.push(threatId)
+      }
     }
 
     // Update all affected threats
