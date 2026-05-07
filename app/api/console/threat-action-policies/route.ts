@@ -15,14 +15,14 @@ export async function GET(request: Request) {
   const client = await pool.connect()
   try {
     let query = `SELECT account_id, file_hash, action, updated_at FROM threat_action_policies WHERE account_id = (SELECT account_id FROM profiles WHERE user_id = $1 LIMIT 1)`
-    let params: any[] = [user.id]
+    const params: string[] = [user.id]
     if (fileHash) {
       query += ` AND file_hash = $2`
       params.push(fileHash)
     }
     const result = await client.query(query, params)
     return NextResponse.json({ policies: result.rows })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch policies" }, { status: 500 })
   } finally {
     client.release()
