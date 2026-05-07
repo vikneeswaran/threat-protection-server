@@ -144,7 +144,9 @@ export async function POST(request: Request) {
           }),
         ],
       )
-      if (commandResult.rows[0]?.id) commandIds.push(commandResult.rows[0].id)
+      if (commandResult.rows[0]?.id) {
+        commandIds.push(commandResult.rows[0].id)
+      }
       await client.query(
         `
           INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details)
