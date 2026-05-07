@@ -107,13 +107,14 @@ export async function POST(request: Request) {
       [affectedThreatIds, newStatus, user.id],
     )
 
-    // Insert threat_actions and commands for each
+    // Insert threat_actions and commands for each, collect command_ids
+    const commandIds: string[] = []
     for (const tid of affectedThreatIds) {
       await client.query(
         `INSERT INTO threat_actions (threat_id, action, performed_by, notes) VALUES ($1, $2, $3, $4)`,
         [tid, action, user.id, notes],
       )
-      await client.query(
+      const commandResult = await client.query<{ id: string }>(
         `
           INSERT INTO threat_action_commands (
             account_id,
@@ -126,6 +127,7 @@ export async function POST(request: Request) {
             payload
           )
           VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7::jsonb)
+          RETURNING id::text
         `,
         [
           profile.account.id,
@@ -142,6 +144,7 @@ export async function POST(request: Request) {
           }),
         ],
       )
+      if (commandResult.rows[0]?.id) commandIds.push(commandResult.rows[0].id)
       await client.query(
         `
           INSERT INTO audit_logs (account_id, user_id, action, entity_type, entity_id, details)
@@ -162,6 +165,11 @@ export async function POST(request: Request) {
     }
 
     await client.query("COMMIT")
+    // If only one threat, preserve old response shape for compatibility
+    if (affectedThreatIds.length === 1 && commandIds.length === 1) {
+      return NextResponse.json({ ok: true, command_id: commandIds[0] })
+    }
+    // Otherwise, return all affected threats
     return NextResponse.json({ ok: true, affectedThreatIds })
   } catch (error) {
     await client.query("ROLLBACK")
