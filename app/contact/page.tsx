@@ -70,7 +70,6 @@ export default function ContactPage() {
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     placeholder="Enter your first name"
                     className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#673de6] focus:border-transparent"
-                    required
                   />
                 </div>
 
@@ -94,7 +93,6 @@ export default function ContactPage() {
                     placeholder="Type your message here"
                     rows={4}
                     className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#673de6] focus:border-transparent resize-none"
-                    required
                   />
                 </div>
 
