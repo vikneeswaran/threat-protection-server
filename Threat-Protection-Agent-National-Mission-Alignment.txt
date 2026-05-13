@@ -1,0 +1,10 @@
+Primary Sector: Information Technology and Cybersecurity
+
+Our entity operates in the Information Technology sector, with a specialized focus on cybersecurity and AI-driven endpoint protection. The Kuamini Threat Protection Agent is designed to address the growing need for robust digital security among small and medium businesses, which is a critical component of India's Digital India initiative and the National Cyber Security Policy.
+
+Alignment with National Missions:
+- Our work directly supports the Government of India's Digital India mission by enabling secure digital transformation for businesses and organizations.
+- The product aligns with the National Cyber Security Policy by providing advanced, indigenous cybersecurity solutions that protect digital infrastructure and sensitive data.
+- Our focus on AI-powered security and cloud integration is in line with the Government's emphasis on emerging technologies, innovation, and Atmanirbhar Bharat (self-reliant India) in the technology sector.
+
+By empowering Indian businesses with advanced, locally developed cybersecurity solutions, we contribute to national priorities in digital security, innovation, and technology self-reliance.

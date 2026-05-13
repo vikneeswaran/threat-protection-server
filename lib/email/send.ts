@@ -38,14 +38,30 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
       },
     })
 
-    await transporter.sendMail({
-      from: fromEmail,
+    console.log("[EMAIL] Attempting SMTP send", {
+      smtpHost,
+      smtpPort,
+      smtpUser,
+      smtpSecure,
+      fromEmail,
       to,
-      subject,
-      html: htmlBody,
-      text: textBody,
-      replyTo,
+      subject
     })
+
+    try {
+      await transporter.sendMail({
+        from: fromEmail,
+        to,
+        subject,
+        html: htmlBody,
+        text: textBody,
+        replyTo,
+      })
+      console.log("[EMAIL] Email sent successfully")
+    } catch (err) {
+      console.error("[EMAIL] Error sending email:", err)
+      throw err
+    }
     return
   }
 

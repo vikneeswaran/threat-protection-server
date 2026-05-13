@@ -1,0 +1,300 @@
+Kuamini Systems Private Limited
+Threat Protection Agent Project Document
+
+---
+
+# 1. Company Overview & Mission
+
+Kuamini Systems Private Limited is a technology-driven software services company specializing in AI-powered solutions for Web and Mobile Application Development, Testing, and Cloud Integration. Our mission is to deliver innovative, customized digital solutions that empower businesses to achieve operational excellence and digital transformation.
+
+We are committed to leveraging cutting-edge technology and industry expertise to help our clients succeed in an increasingly digital world. As part of our innovation journey, we have developed the Kuamini Threat Protection Agent—a comprehensive endpoint security solution designed for small and medium businesses (SMBs).
+
+---
+
+# 2. Product Overview: Kuamini Threat Protection Agent
+
+The Kuamini Threat Protection Agent is a production-ready, cross-platform endpoint security solution with a centralized management console and distributed desktop agents for Windows, macOS, and Linux. It is designed to provide enterprise-grade security with minimal resource footprint, making advanced protection accessible to SMBs.
+
+**Key Differentiators:**
+- AI-powered threat detection and response
+- Real-time monitoring and reporting
+- Centralized cloud-based management
+- Affordable, scalable, and easy to deploy
+- Channel partnerships with leading security software providers
+
+---
+
+
+# 3. System Architecture
+
+## 3.1 High-Level Architecture
+
+The Kuamini Threat Protection Agent follows a robust client-server architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Kuamini Management Console                  │
+│                      (Web Application)                         │
+│                    Hosted on AWS EC2 with nginx                │
+└─────────────────────────────────────────────────────────────────┘
+														↓↑
+							┌─────────────────────────────┐
+							│   REST API Layer            │
+							│  (Next.js Route Handlers)   │
+							└─────────────────────────────┘
+														↓↑
+							┌─────────────────────────────┐
+							│  AWS RDS PostgreSQL         │
+							│ (Managed Database)          │
+							└─────────────────────────────┘
+														↓↑
+		┌──────────────────────────────────────────────────┐
+		│         Distributed Desktop Agents               │
+		│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+		│  │ Windows  │  │  macOS   │  │  Linux   │       │
+		│  │  Agent   │  │  Agent   │  │  Agent   │       │
+		│  └──────────┘  └──────────┘  └──────────┘       │
+		└──────────────────────────────────────────────────┘
+```
+
+## 3.2 Technology Stack
+
+**Frontend:**
+- Next.js 16.0.7 (React 19.2.0), TypeScript 5.x, Tailwind CSS 4.1.9
+- Radix UI, Shadcn/ui, React Hook Form, Zod, Lucide React
+- pnpm 10.x, Vitest, ESLint 9.x
+
+**Backend:**
+- Node.js 20+, Next.js API Routes, TypeScript, PostgreSQL pg driver
+- Zod validation, PM2 process manager, AWS EC2, nginx
+
+**Database:**
+- PostgreSQL 15+ (AWS RDS, Multi-AZ, SSL), direct SQL with pooling
+
+**Agent:**
+- Python 3.x, pystray (system tray), requests, psutil, Pillow, PyInstaller
+- Cross-platform: Windows, macOS, Linux
+
+**DevOps:**
+- AWS EC2, AWS RDS, GitHub Actions, PM2, nginx, CloudWatch
+
+## 3.3 Component & Directory Structure
+
+**Frontend:**
+```
+app/ (Next.js frontend & API)
+components/ (UI, kuamini, security-agent)
+lib/ (config, utils, db, types)
+public/ (icons, images)
+styles/ (globals.css)
+```
+
+**Agent:**
+```
+agent-tray/
+├── main.py (entry point)
+├── requirements.txt
+├── config.json / config.example.json
+├── generate_config.py
+├── build/ (installer scripts)
+├── dist/ (binaries)
+├── KuaminiSecurityClient.spec (PyInstaller)
+├── threat_detection/ (engine, signatures, scanner, reporter)
+```
+
+**Database:**
+```
+accounts, endpoints, threats, audit_logs, agent_versions, ...
+```
+
+## 3.4 Key Features
+
+- Singleton enforcement (one agent per endpoint)
+- Auto-start and system tray integration
+- Secure registration (token-based and token-less)
+- Heartbeat and full system scan scheduling
+- Threat detection, reporting, and policy enforcement
+- Audit logging and compliance features
+- HTTPS/TLS, CA bundle, HMAC-SHA256, encrypted config
+- Cross-platform log file storage
+
+## 3.5 API Overview
+
+**Base URL:** `https://kuaminisystems.com/api/agent`
+
+**Endpoints:**
+- POST /api/agent/register — Register new endpoint
+- POST /api/agent/heartbeat — Agent heartbeat/status update
+- POST /api/agent/threat — Threat detection report
+- GET /api/agent/download — Download agent/updates
+- POST /api/agent/installers — Get installer info
+- GET /api/health — API health & env check
+
+**Example: Agent Registration Request/Response**
+```json
+{
+	"token": "eyJhY2NvdW50SWQiOiAidXNlcl8xMjMifQ.signature",
+	"hostname": "DESKTOP-ABC123",
+	"os": "Windows",
+	"os_version": "11",
+	"agent_version": "1.0.0",
+	"agent_id": "agent-uuid-123",
+	"ip_address": "192.168.1.100",
+	"mac_address": "00:11:22:33:44:55"
+}
+```
+Response:
+```json
+{
+	"success": true,
+	"message": "Endpoint registered",
+	"endpoint_id": "endpoint-uuid-456"
+}
+```
+
+## 3.6 Database Schema (Core Tables)
+
+**accounts** (organizations), **endpoints** (devices), **threats** (alerts), **audit_logs** (actions), **agent_versions** (binaries)
+
+Example:
+```sql
+CREATE TABLE endpoints (
+	id UUID PRIMARY KEY,
+	account_id UUID REFERENCES accounts(id),
+	agent_id UUID UNIQUE,
+	hostname VARCHAR NOT NULL,
+	os VARCHAR,
+	os_version VARCHAR,
+	agent_version VARCHAR,
+	ip_address INET,
+	mac_address MACADDR,
+	status VARCHAR,
+	last_seen_at TIMESTAMP,
+	registered_at TIMESTAMP DEFAULT NOW(),
+	updated_at TIMESTAMP DEFAULT NOW(),
+	UNIQUE(account_id, hostname, mac_address)
+);
+```
+
+## 3.7 Agent Architecture & Threat Detection
+
+**Agent Stack:** Python 3.x, pystray, requests, psutil, Pillow, PyInstaller
+
+**Key Agent Features:**
+- System tray UI, real-time status, alerts
+- Threat engine: file scanner, process monitor, network security
+- Heartbeat (60s), full scan (1h), threat reporting
+- HTTPS with CA bundle, HMAC-SHA256, encrypted config
+- Audit logging, singleton enforcement, auto-start
+
+**Threat Detection Engine:**
+- Signatures, scanner, process monitor, engine, reporter
+- Quick scan, full scan, realtime monitor (policy-controlled)
+- Isolated from core agent (safe, non-blocking)
+
+**Example Threat Detection Flow:**
+1. Scan (quick/full/realtime) runs in daemon thread
+2. Detects threat (signature, behavior, hash)
+3. Generates report (metadata, severity)
+4. POST /api/agent/threat
+5. Console dashboard updates in real-time
+
+**Performance:**
+- Idle: <1% CPU, 30-50MB RAM
+- Full scan: 20-40% CPU (during scan)
+- Network: ~1-5KB per threat report
+
+**Policy Control:**
+```json
+{
+	"scheduled_scan": { "enabled": true, "interval": 3600, "mode": "full" },
+	"realtime_monitor": { "enabled": false },
+	"threat_reporting": { "enabled": true, "severity_threshold": 50 }
+}
+```
+
+## 3.8 Security Architecture
+
+- HTTPS/TLS, CA bundle, encrypted data in transit
+- JWT token validation, HMAC-SHA256, rate limiting, input validation
+- Row-level security, parameterized queries, audit logging
+- Agent: token-based authentication, config encryption, singleton enforcement
+
+## 3.9 Deployment & Operations
+
+- AWS EC2 (frontend, API), AWS RDS (database), S3 (installers/backups)
+- GitHub Actions CI/CD, PM2 process manager, nginx reverse proxy
+- Environment variables for secrets, session, and DB config
+- Automated build, test, lint, and deploy pipeline
+
+## 3.10 Scalability & Performance
+
+- Horizontal scaling: EC2 auto-scaling, nginx load balancing
+- Database: Multi-AZ, read replicas, automated failover
+- Agent: distributed, no agent-to-agent comms, scales with endpoints
+
+## 3.11 Known Limitations & Roadmap
+
+- Agent updates require manual install (auto-update planned)
+- Single AWS region (multi-region planned)
+- Limited threat intelligence feeds (expansion planned)
+- Future: ML analytics, mobile app, agent clustering, advanced dashboard
+
+---
+
+# 4. Technical Innovation
+
+## 4.1 AI-Powered Threat Detection
+
+The agent leverages AI and heuristic analysis to detect threats in real time, providing intelligent recommendations and automated responses. The backend aggregates threat data and enables policy-driven actions.
+
+## 4.2 Security Architecture
+
+- Transport Security: All communications are encrypted (HTTPS/TLS, CA bundle verification)
+- Application Security: JWT token validation, HMAC-SHA256, rate limiting, input validation
+- Database Security: Row-level security, parameterized queries, audit logging
+
+## 4.3 Scalability & Performance
+
+- Cloud-native design for horizontal scaling
+- Efficient agent-to-cloud communication (heartbeat, delta updates)
+- Performance benchmarks and monitoring (API baseline reports)
+
+---
+
+# 5. Validation, Pilots, and Impact
+
+## 5.1 Prototype Validation
+
+- Internal and external pilot deployments with SMB clients
+- Performance and security benchmarks (API latency, error rates)
+- User feedback on usability, deployment, and threat detection accuracy
+
+## 5.2 Security & Compliance
+
+- Code signing for all binaries and scripts
+- Encrypted data at rest and in transit
+- Audit logging for all critical operations
+- Compliance with industry best practices
+
+## 5.3 Market Impact
+
+- Addresses the cybersecurity gap for SMBs
+- Reduces operational complexity and cost for endpoint protection
+- Enables rapid deployment and centralized management
+
+---
+
+# 6. Conclusion & Future Roadmap
+
+Kuamini Threat Protection Agent exemplifies our commitment to innovation, security, and supporting the digital transformation of SMBs. With a robust, scalable, and secure architecture, we are well-positioned to address evolving cyber threats and expand our solution’s capabilities.
+
+**Future Enhancements:**
+- Advanced AI/ML threat analytics
+- Integration with third-party security platforms
+- Enhanced reporting and compliance modules
+- Broader channel partnerships and global reach
+
+---
+
+
