@@ -12,29 +12,33 @@ function escapeHtml(input: string): string {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = await request.json();
 
-    const firstName = String(body?.firstName || "").trim()
-    const email = String(body?.email || "").trim().toLowerCase()
-    const message = String(body?.message || "").trim()
-
-    if (!firstName || !email || !message) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    // Accept both full contact and email-only forms
+    const email = String(body?.email || "").trim().toLowerCase();
+    const firstName = String(body?.firstName || email || "Website Visitor").trim();
+    let message = String(body?.message || "").trim();
+    if (!email) {
+      return NextResponse.json({ error: "Missing required email field" }, { status: 400 });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return NextResponse.json({ error: "Invalid email address" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
     }
 
-    if (message.length < 5 || message.length > 5000) {
-      return NextResponse.json({ error: "Message must be between 5 and 5000 characters" }, { status: 400 })
+    // If message is missing or too short, use a default
+    if (!message || message.length < 5) {
+      message = "User submitted their email via Connect with us or left the message blank.";
+    }
+    if (message.length > 5000) {
+      return NextResponse.json({ error: "Message must be between 5 and 5000 characters" }, { status: 400 });
     }
 
-    const targetEmail = process.env.CONTACT_INBOX_EMAIL || "contact@kuaminisystems.com"
-    const safeName = escapeHtml(firstName)
-    const safeEmail = escapeHtml(email)
-    const safeMessage = escapeHtml(message)
+    const targetEmail = process.env.CONTACT_INBOX_EMAIL || "contact@kuaminisystems.com";
+    const safeName = escapeHtml(firstName);
+    const safeEmail = escapeHtml(email);
+    const safeMessage = escapeHtml(message);
 
     await sendEmail({
       to: targetEmail,
@@ -48,12 +52,12 @@ export async function POST(request: Request) {
         <pre style="white-space: pre-wrap; font-family: inherit;">${safeMessage}</pre>
       `,
       textBody: `New Inquiry from Kuamini Contact Page\n\nName: ${firstName}\nEmail: ${email}\n\nMessage:\n${message}`,
-    })
+    });
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    console.error("Contact inquiry error:", detail)
-    return NextResponse.json({ error: "Failed to send inquiry" }, { status: 500 })
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Contact inquiry error:", detail);
+    return NextResponse.json({ error: "Failed to send inquiry" }, { status: 500 });
   }
 }
