@@ -2,16 +2,41 @@
 
 import type React from "react"
 
+
 import { useState } from "react"
 
 export function Footer() {
-  const [email, setEmail] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [resultMessage, setResultMessage] = useState<string | null>(null)
+  const [resultType, setResultType] = useState<"success" | "error" | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle newsletter signup
-    console.info("Newsletter signup:", email)
-    setEmail("")
+    setIsSubmitting(true)
+    setResultMessage(null)
+    setResultType(null)
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as { error?: string }
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to submit inquiry")
+      }
+      setEmail("")
+      setResultType("success")
+      setResultMessage("Thank you. Your inquiry has been sent.")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to submit inquiry"
+      setResultType("error")
+      setResultMessage(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -44,13 +69,18 @@ export function Footer() {
                 placeholder="Your email here"
                 className="w-full px-4 py-2 rounded-md bg-white text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#673de6]"
                 required
+                disabled={isSubmitting}
               />
               <button
                 type="submit"
                 className="w-full md:w-auto px-6 py-2 bg-[#8c85ff] hover:bg-[#673de6] text-white text-sm font-medium rounded-md transition-colors"
+                disabled={isSubmitting}
               >
-                Connect With Us
+                {isSubmitting ? "Sending..." : "Connect With Us"}
               </button>
+              {resultMessage && (
+                <p className={`text-sm ${resultType === "success" ? "text-green-300" : "text-red-300"}`}>{resultMessage}</p>
+              )}
             </form>
           </div>
         </div>
