@@ -61,6 +61,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='KuaminiSecurityClient.app',
-    icon=None,
+    icon='icon-windowed.icns',
     bundle_identifier='com.kuamini.securityclient',
 )

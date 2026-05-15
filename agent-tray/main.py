@@ -73,6 +73,19 @@ except ImportError as e:
 
 try:
     import pystray
+
+    # --- ICON PATHS FOR STATUS ---
+    ICON_PATH_GREEN = str(Path(__file__).parent / "icon-green.png")
+    ICON_PATH_YELLOW = str(Path(__file__).parent / "icon-yellow.png")
+    ICON_PATH_RED = str(Path(__file__).parent / "icon-red.png")
+
+    # Helper to load PNG icon for pystray
+    def load_status_icon(path):
+        try:
+            return Image.open(path)
+        except Exception as e:
+            print(f"[ICON LOAD ERROR] Could not load icon {path}: {e}", file=sys.stderr)
+            return None
 except ImportError as e:
     print(f"[IMPORT ERROR] Failed to import pystray: {e}", file=sys.stderr)
     sys.exit(1)
@@ -1158,11 +1171,21 @@ def tray_main():
 
     stop_event = threading.Event()
 
+
     def set_status(text, color=(46, 204, 113)):
         status["text"] = text
         status["color"] = color
+        # Map color/status to icon
+        if color == (46, 204, 113):  # Green
+            icon_path = ICON_PATH_GREEN
+        elif color == (241, 196, 15):  # Yellow
+            icon_path = ICON_PATH_YELLOW
+        elif color == (231, 76, 60):  # Red
+            icon_path = ICON_PATH_RED
+        else:
+            icon_path = ICON_PATH_GREEN  # Default to green
         try:
-            icon.icon = make_icon(color, text)
+            icon.icon = load_status_icon(icon_path)
             icon.title = f"Kuamini: {text}"
         except Exception as e:
             logging.debug("Could not update icon: %s", e)
@@ -1677,7 +1700,8 @@ def tray_main():
         threading.Thread(target=realtime_monitor_loop, daemon=True).start()
         threading.Thread(target=threat_action_loop, daemon=True).start()
 
-    icon.icon = make_icon(status["color"])
+    # Set initial icon based on status
+    set_status(status["text"], status["color"])
     
     # Run the tray icon with error recovery
     try:

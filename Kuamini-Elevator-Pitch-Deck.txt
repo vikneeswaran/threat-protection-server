@@ -1,0 +1,56 @@
+# Kuamini Threat Protection Agent
+## Elevator Pitch Deck
+
+---
+
+## 1. The Problem & Opportunity
+
+Small and medium businesses (SMBs) are increasingly targeted by sophisticated cyber threats but lack access to affordable, effective, and easy-to-manage endpoint security solutions. Existing products are often too complex, expensive, or not tailored to SMB needs, leaving them exposed to malware, ransomware, and data breaches. The Indian SMB cybersecurity market is rapidly growing, presenting a significant opportunity for innovation.
+
+---
+
+## 2. Our Solution: Kuamini Threat Protection Agent
+
+- **AI-Powered Security:** Proprietary algorithms deliver real-time threat detection and automated response.
+- **Cross-Platform Agent:** Lightweight, secure desktop agent for Windows, macOS, and Linux.
+- **Cloud-Based Console:** Centralized management, reporting, and policy control via a user-friendly web dashboard.
+- **Cost-Effective & Scalable:** Enterprise-grade protection at a price point accessible to all businesses.
+- **Continuous Innovation:** Ongoing R&D ensures the platform evolves with emerging threats and customer needs.
+
+**Key Features:**
+- Real-time monitoring and reporting
+- Automated threat response
+- Secure communication (HTTPS, HMAC, encrypted config)
+- Easy deployment and management
+- Audit logging and compliance
+
+---
+
+## 3. Business Model & Competitive Edge
+
+- **SaaS Subscription:** Recurring revenue via per-endpoint monthly/annual fees.
+- **Premium Add-ons:** Advanced analytics, managed security services, and integrations.
+- **Channel Partnerships:** Collaboration with MSPs and security vendors for rapid market reach.
+
+**Unique Selling Points:**
+- Proprietary AI-driven detection engine
+- Cost-effective and accessible for SMBs
+- Fast onboarding and minimal IT overhead
+- Designed and engineered in India for Indian and global markets
+
+**Traction & Vision:**
+- Recognized by DPIIT as an innovative startup
+- Pilot deployments with positive feedback
+- Scalable architecture ready for rapid growth
+
+---
+
+## 4. Why Kuamini?
+
+- **Technology Leadership:** 19+ years of technical and project management experience in cybersecurity and software delivery.
+- **Market Fit:** Tailored for SMBs, a segment underserved by legacy security vendors.
+- **Positive Impact:** Empowers businesses to operate securely and confidently in a digital world.
+- **Future Ready:** Roadmap includes advanced AI/ML analytics, mobile management, and global expansion.
+
+**Contact:**
+www.kuaminisystems.com | Bengaluru, India | LinkedIn: Kuamini Systems
