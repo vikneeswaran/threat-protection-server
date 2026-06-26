@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { query } from "@/lib/db"
 import { createSession } from "@/lib/auth/session"
+import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap"
 
 type LoginUserRow = {
   id: string
@@ -13,6 +14,8 @@ type LoginUserRow = {
 
 export async function POST(request: Request) {
   try {
+    await ensureLocalAuthSchema()
+
     const body = await request.json()
     const email = String(body?.email || "").trim().toLowerCase()
     const password = String(body?.password || "")

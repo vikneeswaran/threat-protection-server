@@ -3,11 +3,14 @@ import bcrypt from "bcryptjs"
 import { query } from "@/lib/db"
 import { generateVerificationToken, getVerificationEmailTemplate, getVerificationEmailPlainText } from "@/lib/email/verification"
 import { sendVerificationEmail } from "@/lib/email/send"
+import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap"
 
 type LicenseTierRow = { id: string }
 
 export async function POST(request: Request) {
   try {
+    await ensureLocalAuthSchema()
+
     const body = await request.json()
 
     const organizationName = String(body?.organizationName || "").trim()

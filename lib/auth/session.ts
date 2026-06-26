@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers"
 import { randomBytes, createHash } from "crypto"
 import { query } from "@/lib/db"
+import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap"
 
 const SESSION_COOKIE_NAME = "kta_session"
 const SESSION_DAYS = 7
@@ -18,6 +19,8 @@ export type AuthUser = {
 }
 
 export async function createSession(userId: string) {
+  await ensureLocalAuthSchema()
+
   const token = randomBytes(48).toString("base64url")
   const tokenHash = hashToken(token)
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000)
@@ -64,6 +67,8 @@ export async function clearSession() {
 }
 
 export async function getSessionUser(): Promise<AuthUser | null> {
+  await ensureLocalAuthSchema()
+
   const cookieStore = await cookies()
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
 
@@ -98,3 +103,6 @@ export async function getSessionUser(): Promise<AuthUser | null> {
 export async function requireSessionUser() {
   return getSessionUser()
 }
+
+// Ensure the auth schema is initialized on startup
+ensureLocalAuthSchema()
