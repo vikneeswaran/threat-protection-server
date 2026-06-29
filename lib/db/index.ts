@@ -3,11 +3,20 @@ import { Pool, type QueryResultRow } from "pg"
 let pool: Pool | null = null
 
 function getDatabaseUrl() {
-  const url = process.env.DATABASE_URL
-  if (!url) {
-    throw new Error("DATABASE_URL is not set")
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL
+
+  if (url) {
+    return url
   }
-  return url
+
+  const username = process.env.POSTGRES_USER || process.env.USER || "postgres"
+  const password = process.env.POSTGRES_PASSWORD
+  const host = process.env.POSTGRES_HOST || "127.0.0.1"
+  const port = process.env.POSTGRES_PORT || "5432"
+  const database = process.env.POSTGRES_DB || "ktps_main"
+  const authPart = password ? `${username}:${password}` : username
+
+  return `postgresql://${authPart}@${host}:${port}/${database}`
 }
 
 export function getPool() {
