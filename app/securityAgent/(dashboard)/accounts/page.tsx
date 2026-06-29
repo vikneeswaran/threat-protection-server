@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { redirect } from "next/navigation"
 import { SecurityHeader } from "@/components/security-agent/header"
 import { SubAccountsList } from "@/components/security-agent/sub-accounts-list"
