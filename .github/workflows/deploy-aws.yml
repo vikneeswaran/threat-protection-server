@@ -35,7 +35,7 @@ jobs:
           script: |
             set -e
             APP_DIR="/home/ubuntu/apps/kuamini-prod"
-            REPO="git@github.com:vikneeswaran/threat-protection-agent.git"
+            REPO="git@github.com:vikneeswaran/threat-protection-server.git"
 
             echo "=== Disk usage before cleanup ==="
             df -h /

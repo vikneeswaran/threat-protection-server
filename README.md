@@ -157,8 +157,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
 
 ```bash
 # Clone repository
-git clone https://github.com/kuamini/threat-protection-agent.git
-cd threat-protection-agent
+git clone https://github.com/kuamini/threat-protection-server.git
+cd threat-protection-server
 
 # Install dependencies
 pnpm install
@@ -183,7 +183,7 @@ pnpm run validate
 ### Project Structure
 
 ```
-threat-protection-agent/
+threat-protection-server/
 ├── app/                   # Next.js frontend + API routes
 │   ├── page.tsx          # Home page
 │   ├── api/              # Backend endpoints
@@ -455,9 +455,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md#18-threat-detection-architecture) for thre
 
 **Resources:**
 - 🌐 [Web Console](https://kuaminisystems.com/securityAgent)
-- 🐛 [Bug Reports](https://github.com/kuamini/threat-protection-agent/issues)
+- 🐛 [Bug Reports](https://github.com/kuamini/threat-protection-server/issues)
 - 📧 [Email Support](mailto:support@kuaminisystems.com)
-- 💬 [Community Discussions](https://github.com/kuamini/threat-protection-agent/discussions)
+- 💬 [Community Discussions](https://github.com/kuamini/threat-protection-server/discussions)
 
 **Updates:**
 - Follow [DEPLOYMENT.md](DEPLOYMENT.md) for release notes
