@@ -1,26 +1,6 @@
 name: Build and Deploy Installers
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'agent-tray/**'
-      - 'app/**'
-      - 'components/**'
-      - 'hooks/**'
-      - 'lib/**'
-      - 'tests/**'
-      - 'types/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'tsconfig.json'
-      - 'eslint.config.js'
-      - 'vitest.config.ts'
-      - 'public/tray/install-kuamini-macos.sh'
-      - 'public/tray/install-kuamini-windows-cli.ps1'
-      - 'public/tray/install-windows.cmd'
-      - '.github/workflows/build-and-deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -200,7 +180,7 @@ jobs:
   deploy:
     needs: [test, build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
 
