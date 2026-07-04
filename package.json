@@ -1,5 +1,5 @@
 {
-  "name": "threat-protection-agent",
+  "name": "threat-protection-server",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -23,10 +23,7 @@
     "test:watch": "vitest --watch",
     "benchmark:baseline": "node scripts/benchmark/collect-api-baseline.mjs",
     "type-check": "tsc --noEmit",
-    "validate": "npm run lint && npm run type-check && npm run test",
-    "build:agent": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/build-windows-msi.ps1",
-    "build:agent:token": "powershell -ExecutionPolicy Bypass -File ./agent-tray/build/build-windows-msi.ps1 -RegistrationToken",
-    "build:installer": "npm run build:agent"
+    "validate": "npm run lint && npm run type-check && npm run test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

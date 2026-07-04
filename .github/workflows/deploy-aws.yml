@@ -54,10 +54,8 @@ jobs:
             if [ -d "$APP_DIR/.git" ]; then
               if ! git -C "$APP_DIR" fsck --no-dangling --quiet 2>/dev/null; then
                 echo "Repo corrupted — re-cloning..."
-                cp "$APP_DIR/agent-tray/config.json" /tmp/kuamini-config.json.bak 2>/dev/null || true
                 rm -rf "$APP_DIR"
                 git clone "$REPO" "$APP_DIR"
-                cp /tmp/kuamini-config.json.bak "$APP_DIR/agent-tray/config.json" 2>/dev/null || true
               fi
             else
               echo "Repo missing — cloning fresh..."

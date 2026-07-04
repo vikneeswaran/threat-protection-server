@@ -10,8 +10,6 @@ export default [
       'dist',
       'coverage',
       '.venv',
-      'agent-tray/dist',
-      'agent-tray/build',
     ],
   },
   {

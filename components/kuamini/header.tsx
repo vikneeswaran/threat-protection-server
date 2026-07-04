@@ -11,7 +11,6 @@ export function Header() {
     { href: "/about", label: "About" },
     { href: "/services", label: "Services" },
     { href: "/contact", label: "Contact" },
-    { href: "/securityAgent", label: "Security Console" },
   ]
 
   return (
