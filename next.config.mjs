@@ -25,30 +25,6 @@ const nextConfig = {
   },
   // AWS EC2 deployment configuration
   output: process.env.STANDALONE === 'true' ? 'standalone' : undefined,
-  async redirects() {
-    return [
-      {
-        source: '/securityAgent',
-        destination: '/',
-        permanent: true,
-      },
-      {
-        source: '/securityAgent/:path*',
-        destination: '/',
-        permanent: true,
-      },
-      {
-        source: '/securityagent',
-        destination: '/',
-        permanent: true,
-      },
-      {
-        source: '/securityagent/:path*',
-        destination: '/',
-        permanent: true,
-      },
-    ]
-  },
 }
 
 export default nextConfig
