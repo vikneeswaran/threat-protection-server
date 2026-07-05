@@ -6,11 +6,6 @@ import { useRouter } from "next/navigation"
 import { Header } from "@/components/kuamini/header"
 import { Footer } from "@/components/kuamini/footer"
 
-export const metadata = {
-  title: "Login | Kuamini Security Agent",
-  description: "Login to Kuamini Security Agent console",
-}
-
 export default function SecurityAgentLoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
