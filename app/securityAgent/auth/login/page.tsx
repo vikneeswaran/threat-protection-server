@@ -1,3 +1,7 @@
+"use client"
+
+import type { FormEvent } from "react"
+import { useRouter } from "next/navigation"
 import { Header } from "@/components/kuamini/header"
 import { Footer } from "@/components/kuamini/footer"
 
@@ -7,6 +11,13 @@ export const metadata = {
 }
 
 export default function SecurityAgentLoginPage() {
+  const router = useRouter()
+
+  const handleSignIn = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    router.push("/securityAgent/dashboard")
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -17,7 +28,7 @@ export default function SecurityAgentLoginPage() {
             <h1 className="text-3xl font-semibold mb-2 text-center">Login</h1>
             <p className="text-gray-300 text-sm text-center mb-8">Access your Kuamini Security Agent console</p>
 
-            <form className="space-y-4">
+            <form className="space-y-4" onSubmit={handleSignIn}>
               <div>
                 <label className="block text-sm text-gray-200 mb-1">Email</label>
                 <input
@@ -37,7 +48,7 @@ export default function SecurityAgentLoginPage() {
               </div>
 
               <button
-                type="button"
+                type="submit"
                 className="w-full bg-white text-[#2f1c6a] font-semibold px-4 py-2.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 Sign In
