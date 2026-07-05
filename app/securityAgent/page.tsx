@@ -127,7 +127,7 @@ export default function SecurityAgentPage() {
             Lightweight. Always-on. Built for organisations that take security seriously.
           </p>
           <a
-            href="/securityagent/auth/login"
+            href="/securityAgent/auth/login"
             className="inline-block bg-white text-[#2f1c6a] font-semibold px-8 py-3 rounded-lg hover:bg-gray-100 transition-colors"
           >
             Get Access →
@@ -156,7 +156,7 @@ export default function SecurityAgentPage() {
               <div className="space-y-4 mb-8">
                 {/* Login Button */}
                 <a
-                  href="/securityagent/auth/login"
+                  href="/securityAgent/auth/login"
                   className="block w-full text-center bg-white text-[#2f1c6a] font-semibold px-6 py-3 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   Login to Console
@@ -164,7 +164,7 @@ export default function SecurityAgentPage() {
 
                 {/* Register Button */}
                 <a
-                  href="/securityagent/auth/register"
+                  href="/securityAgent/auth/register"
                   className="block w-full text-center border-2 border-white text-white font-semibold px-6 py-3 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors"
                 >
                   Create Account

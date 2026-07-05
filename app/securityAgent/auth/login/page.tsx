@@ -46,7 +46,7 @@ export default function SecurityAgentLoginPage() {
 
             <p className="text-sm text-gray-300 mt-6 text-center">
               New here?{" "}
-              <a href="/securityagent/auth/register" className="text-white underline">
+              <a href="/securityAgent/auth/register" className="text-white underline">
                 Create an account
               </a>
             </p>
