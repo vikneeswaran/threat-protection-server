@@ -1,6 +1,7 @@
 "use client"
 
 import type { FormEvent } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/kuamini/header"
 import { Footer } from "@/components/kuamini/footer"
@@ -12,10 +13,40 @@ export const metadata = {
 
 export default function SecurityAgentLoginPage() {
   const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSignIn = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    router.push("/securityAgent/dashboard")
+    void (async () => {
+      setErrorMessage("")
+      setIsSubmitting(true)
+
+      try {
+        const response = await fetch("/api/securityagent/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          setErrorMessage(result?.error || "Invalid email or password")
+          return
+        }
+
+        router.push("/securityAgent/dashboard")
+      } catch {
+        setErrorMessage("Unable to sign in right now. Please try again.")
+      } finally {
+        setIsSubmitting(false)
+      }
+    })()
   }
 
   return (
@@ -33,7 +64,10 @@ export default function SecurityAgentLoginPage() {
                 <label className="block text-sm text-gray-200 mb-1">Email</label>
                 <input
                   type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
                   placeholder="you@company.com"
+                  required
                   className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-white/40"
                 />
               </div>
@@ -42,16 +76,22 @@ export default function SecurityAgentLoginPage() {
                 <label className="block text-sm text-gray-200 mb-1">Password</label>
                 <input
                   type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                   placeholder="••••••••"
+                  required
                   className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-white/40"
                 />
               </div>
 
+              {errorMessage ? <p className="text-sm text-red-300">{errorMessage}</p> : null}
+
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="w-full bg-white text-[#2f1c6a] font-semibold px-4 py-2.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                Sign In
+                {isSubmitting ? "Signing In..." : "Sign In"}
               </button>
             </form>
 
