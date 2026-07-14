@@ -1,4 +1,5 @@
 
+
 // import { NextRequest, NextResponse } from "next/server";
 
 // import {
@@ -81,32 +82,104 @@
 
 
 import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 
-import {
-  
-  getVerificationEmailTemplate,
-  getVerificationEmailPlainText,
-} from "@/lib/email/verification";
 import { query } from "@/lib/db";
 
-//import { sendVerificationEmail } from "@/lib/email/send";
+// import {
+//   generateVerificationToken,
+//   getVerificationEmailTemplate,
+//   getVerificationEmailPlainText,
+// } from "@/lib/email/verification";
+
+// import { sendVerificationEmail } from "@/lib/email/send";
 
 export async function POST(request: NextRequest) {
   try {
-    // Read request body
     const body = await request.json();
 
-    const { fullName, companyName, email } = body;
+    const {
+      fullName,
+      companyName,
+      phoneNumber,
+      email,
+      password,
+      licenceType,
+    } = body;
 
     console.log("Register Request:", body);
 
+    // Check existing user
+    const existingUser = await query(
+      `SELECT id FROM app_users WHERE email = $1`,
+      [email]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Email already registered.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Store user in database
+// Store user in database
+try {
+  const result = await query(
+    `
+    INSERT INTO app_users
+    (
+      id,
+      email,
+      full_name,
+      company_name,
+      phone_number,
+      password_hash,
+      licence_type,
+      email_verified,
+      is_active
+    )
+    VALUES
+    (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      false,
+      true
+    )
+    RETURNING *;
+    `,
+    [
+      email,
+      fullName,
+      companyName,
+      phoneNumber,
+      passwordHash,
+      licenceType,
+    ]
+  );
+
+  console.log("Inserted User:", result.rows[0]);
+} catch (err) {
+  console.error("INSERT ERROR:", err);
+  throw err;
+}
     // Generate verification token
-    //const { token } = generateVerificationToken();
+ //   const { token } = generateVerificationToken();
 
-    // Create verification link
-    //const verificationLink = `${process.env.NEXT_PUBLIC_APP_URL}/securityAgent/auth/verify?token=${token}`;
+    // const verificationLink =
+    //   `${process.env.NEXT_PUBLIC_APP_URL}/securityAgent/auth/verify?token=${token}`;
 
-    // Generate email templates
     // const htmlTemplate = getVerificationEmailTemplate(
     //   verificationLink,
     //   fullName,
@@ -119,8 +192,6 @@ export async function POST(request: NextRequest) {
     //   companyName || "Organization"
     // );
 
-    // Uncomment this after SMTP is configured
-    
     // await sendVerificationEmail(
     //   email,
     //   fullName,
@@ -129,12 +200,12 @@ export async function POST(request: NextRequest) {
     //   htmlTemplate,
     //   textTemplate
     // );
-    
 
     return NextResponse.json({
       success: true,
       message: "Registration successful.",
     });
+
   } catch (error) {
     console.error("Register Error:", error);
 

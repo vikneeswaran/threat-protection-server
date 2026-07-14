@@ -146,14 +146,30 @@ export async function ensureLocalAuthSchema() {
   `)
 
   await query(`
-    INSERT INTO app_users (id, email, full_name, email_verified, is_active)
-    SELECT p.id, p.email, p.full_name, TRUE, p.is_active
-    FROM profiles p
-    LEFT JOIN app_users u ON u.id = p.id
-    WHERE u.id IS NULL
-    ON CONFLICT (id) DO NOTHING
-  `)
-
+INSERT INTO app_users (
+    id,
+    email,
+    full_name,
+    company_name,
+    password_hash,
+    licence_type,
+    email_verified,
+    is_active
+)
+SELECT
+    p.id,
+    p.email,
+    p.full_name,
+    'Unknown Company',
+    'DISABLED_USER',
+    1,
+    TRUE,
+    p.is_active
+FROM profiles p
+LEFT JOIN app_users u ON u.id = p.id
+WHERE u.id IS NULL
+ON CONFLICT (id) DO NOTHING
+`)
   await query(`
     DO $$
     BEGIN
