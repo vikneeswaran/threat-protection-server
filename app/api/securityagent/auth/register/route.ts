@@ -122,58 +122,50 @@ export async function POST(request: NextRequest) {
           message: "Email already registered.",
         },
         { status: 400 }
-      );
+      ); 
     }
 
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Store user in database
-// Store user in database
-try {
-  const result = await query(
-    `
-    INSERT INTO app_users
-    (
-      id,
-      email,
-      full_name,
-      company_name,
-      phone_number,
-      password_hash,
-      licence_type,
-      email_verified,
-      is_active
-    )
-    VALUES
-    (
-      gen_random_uuid(),
-      $1,
-      $2,
-      $3,
-      $4,
-      $5,
-      $6,
-      false,
-      true
-    )
-    RETURNING *;
-    `,
-    [
-      email,
-      fullName,
-      companyName,
-      phoneNumber,
-      passwordHash,
-      licenceType,
-    ]
-  );
+    await query(
+      `
+      INSERT INTO app_users
+      (
+        id,
+        email,
+        full_name,
+        company_name,
+        phone_number,
+        password_hash,
+        licence_type,
+        email_verified,
+        is_active
+      )
+      VALUES
+      (
+        gen_random_uuid(),
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        false,
+        true
+      )
+      `,
+      [
+        email,
+        fullName,
+        companyName,
+        phoneNumber,
+        passwordHash,
+        licenceType,
+      ]
+    );
 
-  console.log("Inserted User:", result.rows[0]);
-} catch (err) {
-  console.error("INSERT ERROR:", err);
-  throw err;
-}
     // Generate verification token
  //   const { token } = generateVerificationToken();
 

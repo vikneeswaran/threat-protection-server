@@ -17,6 +17,7 @@ export default function ForgotPasswordPage() {
     if (!email) {
       return toast.error("Email is required");
     }
+    
 
     try {
       setLoading(true);

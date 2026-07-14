@@ -144,6 +144,7 @@ export async function ensureLocalAuthSchema() {
     SELECT 'free', 0, 5, 0, 'email', '24h', 14
     WHERE NOT EXISTS (SELECT 1 FROM license_tiers WHERE name = 'free')
   `)
+  
 
   await query(`
 INSERT INTO app_users (

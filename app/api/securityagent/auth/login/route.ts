@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
-import { createSession } from "@/lib/auth/session"
+import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+
+import { query } from "@/lib/db";
+import { createSession } from "@/lib/auth/session";
+
 type LoginUserRow = {
   id: string;
   password_hash: string;
-}
+};
 
 export async function POST(request: Request) {
   try {
@@ -18,16 +20,17 @@ export async function POST(request: Request) {
     }
 
     const result = await query<LoginUserRow>(
-  `
-    SELECT id, password_hash
-    FROM app_users
-    WHERE email = $1
-      AND is_active = TRUE
-      AND password_hash IS NOT NULL
-    LIMIT 1
-  `,
-  [email]
-);
+      `
+        SELECT id, password_hash
+        FROM app_users
+        WHERE email = $1
+          AND is_active = TRUE
+          AND password_hash IS NOT NULL
+          AND password_hash = crypt($2, password_hash)
+        LIMIT 1
+      `,
+      [email, password]
+    )
 
 const user = result.rows[0];
 

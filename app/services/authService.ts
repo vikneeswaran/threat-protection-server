@@ -1,5 +1,4 @@
 import api from "./api";
-
 export const register = async (data: any) => {
   const response = await api.post(
     "/api/securityagent/auth/register",
@@ -8,7 +7,6 @@ export const register = async (data: any) => {
 
   return response.data;
 };
-
 
 export const login = async (data: {
   email: string;
