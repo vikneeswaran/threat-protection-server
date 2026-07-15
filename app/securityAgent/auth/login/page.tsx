@@ -14,7 +14,7 @@ export default function SecurityAgentLoginPage() {
   const [errorMessage, setErrorMessage] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSignIn = (event: FormEvent<HTMLFormElement>) => {
+  const handleSignIn = (event: FormEvent<globalThis.HTMLFormElement>) => {
     event.preventDefault()
     void (async () => {
       setErrorMessage("")
