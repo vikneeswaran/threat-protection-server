@@ -4,7 +4,7 @@ export async function POST(request: NextRequest) {
   try {
     const { email } = await request.json();
 
-    console.log("Reset password requested for:", email);
+    console.info("Reset password requested for:", email);
 
     // TODO:
     // 1. Check if the email exists in the database.
