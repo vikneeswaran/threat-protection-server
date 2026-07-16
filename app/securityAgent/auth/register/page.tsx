@@ -9,6 +9,7 @@ import { Header } from "@/components/kuamini/header";
 import { Footer } from "@/components/kuamini/footer";
 import { register } from "@/app/services/authService";
 
+
 export default function SecurityAgentRegisterPage() {
   const router = useRouter(); 
 const [companyName, setCompanyName] = useState("");
@@ -18,41 +19,79 @@ const [licenceType, setLicenceType] = useState("");
 const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  //const [showPasswordRules, setShowPasswordRules] = useState(false);
 
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async (event: React.FormEvent) => {
   event.preventDefault();
+  const cleanedFullName = fullName.trim().replace(/\s+/g, " ");
+const cleanedCompanyName = companyName.trim().replace(/\s+/g, " ");
+const cleanedPhoneNumber = phoneNumber.trim();
+const cleanedPassword = password.trim();
+const cleanedConfirmPassword = confirmPassword.trim();
+const cleanedLicenceType = licenceType.trim();
 
-  if (!fullName || !email || !password || !confirmPassword || !licenceType) {
-    return toast.error("Please fill all required fields.");
+  const cleanedEmail = email.trim().toLowerCase();
+  
+
+  if (
+  !fullName.trim() ||
+  !cleanedEmail ||
+  !password.trim() ||
+  !confirmPassword.trim() ||
+  !companyName.trim() ||
+  !licenceType.trim()
+) {
+  return toast.error("Please fill all required fields.");
+}
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailRegex.test(cleanedEmail)) {
+    return toast.error("Please enter a valid email address.");
   }
+  const passwordRegex =
+  /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>[\]\\/'`~_+=-]).{8,}$/;
 
-  if (password !== confirmPassword) {
-    return toast.error("Passwords do not match.");
-  }
+if (!passwordRegex.test(cleanedPassword)) {
+  return toast.error(
+    "Password must be at least 8 characters and contain at least one letter, one number, and one special character."
+  );
+}
 
-  try {
+if (cleanedPassword !== cleanedConfirmPassword) {
+  return toast.error("Passwords do not match.");
+}
+  try { 
     setLoading(true);
 
-    const response = await register({
-      fullName,
-      companyName,
-      phoneNumber,
-      email,
-      password,
-      licenceType,
-    });
+   const response = await register({
+  fullName: cleanedFullName,
+  companyName: cleanedCompanyName,
+  phoneNumber: cleanedPhoneNumber,
+  email: cleanedEmail,
+  password: cleanedPassword,
+  licenceType: cleanedLicenceType,
+});
 
-    toast.success(response.data?.message || "Registration successful.");
+    toast.success(
+      response.data?.message || "Registration successful."
+    );
 
     router.push("/securityAgent/auth/login");
 
   } catch (error: any) {
-    toast.error(
-      error?.response?.data?.message ||
-      "Registration failed."
-    );
+  const message = error?.response?.data?.message;
+
+  if (
+    message?.toLowerCase().includes("company") &&
+    message?.toLowerCase().includes("already")
+  ) {
+    toast.error("This company name is already registered.");
+  } else {
+    toast.error(message || "Registration failed.");
+  }
   } finally {
     setLoading(false);
   }
@@ -78,13 +117,20 @@ const [fullName, setFullName] = useState("");
                 Register for Kuamini Security Agent
               </p>
 
-             <form onSubmit={handleRegister} className="space-y-4">
+             <form onSubmit={handleRegister} className="space-y-4" autoComplete="off">
                <div>
-                 <label className="block text-sm text-gray-200 mb-1">Full Name</label>
+                 <label className="block text-sm text-gray-200 mb-1">Full Name<span className="text-red-400"> * </span></label>
                 <input
   type="text"
   value={fullName}
-  onChange={(e) => setFullName(e.target.value)}
+ onChange={(e) => {
+    const value = e.target.value
+      .replace(/\s+/g, " ") 
+      .trimStart();         
+
+    setFullName(value);
+  }}
+  onBlur={() => setFullName(fullName.trim())}
   placeholder="Your name"
    required
   className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
@@ -92,11 +138,11 @@ const [fullName, setFullName] = useState("");
                </div>
 
                 <div>
-                 <label className="block text-sm text-gray-200 mb-1">Email</label>
+                 <label className="block text-sm text-gray-200 mb-1">Email<span className="text-red-400"> * </span></label>
                  <input
   type="email"
   value={email}
-  onChange={(e) => setEmail(e.target.value)}
+   onChange={(e) => setEmail(e.target.value.trim())}
    required
   placeholder="you@company.com"
   className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
@@ -104,7 +150,7 @@ const [fullName, setFullName] = useState("");
                </div>
 <div>
   <label className="block text-sm mb-1">
-    Company Name
+    Company Name<span className="text-red-400"> * </span>
   </label>
 
   <input
@@ -135,63 +181,127 @@ const [fullName, setFullName] = useState("");
     className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
   />
 </div>
-                <div>
-                  <label className="block text-sm mb-1">
-                    Password
-                  </label>
-
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) =>
-                      setPassword(e.target.value)
-                    }
-                     required
-                    className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2"
-                  />
-                </div>
-                <div>
+ <div className="relative group">
   <label className="block text-sm mb-1">
-    Confirm Password
+    Password<span className="text-red-400"> * </span>
+  </label>
+
+  <input
+    type="password"
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    autoComplete="new-password"
+    placeholder="Enter Password"
+    required
+    className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
+  />
+
+  {/* Password tooltip */}
+  <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-full rounded-lg border border-gray-500 bg-gray-600 px-4 py-3 text-[10px] text-gray-100 opacity-0 shadow-xl transition-opacity duration-200 group-hover:opacity-100">
+  <p className="text-center font-semibold italic">
+    Password must contain:
+    <span className="ml-1 font-normal italic">
+      8+ characters • Letter • Number • Special character
+    </span>
+  </p>
+</div>
+</div>               
+<div>
+  <label className="block text-sm mb-1">
+    Confirm Password<span className="text-red-400"> * </span>
   </label>
 
   <input
     type="password"
     value={confirmPassword}
     onChange={(e) => setConfirmPassword(e.target.value)}
+    autoComplete="new-password"
     placeholder="Confirm Password"
     className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
   />
 </div><div>
   <label className="block text-sm mb-1">
-    License Type
+    License Type <span className="text-red-400">*</span>
   </label>
 
-  <select
-   value={licenceType}
-onChange={(e) => setLicenceType(e.target.value)}
-     required
-    className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
-  >
-    <option value="" disabled className="text-gray-900">
-                Select License Type
-                </option>
+  <div className="relative">
+    <select
+      value={licenceType}
+      onChange={(e) => setLicenceType(e.target.value)}
+      required
+      className="w-full appearance-none rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white focus:outline-none"
+    >
+      <option value="" disabled className="bg-white text-gray-900">
+        Select License Type
+      </option>
 
-                <option value="1">Trial License 1-5</option>
-<option value="2">User License 1-50</option>
-<option value="3">User License 51-100</option>
-<option value="4">User License 101-500</option>
-<option value="5">User License 500+</option>
-  </select>
+      <option value="1" className="bg-white text-gray-900">
+        Trial License 1-5
+      </option>
+
+      <option value="2" className="bg-white text-gray-900">
+        User License 1-50
+      </option>
+
+      <option value="3" className="bg-white text-gray-900">
+        User License 51-100
+      </option>
+
+      <option value="4" className="bg-white text-gray-900">
+        User License 101-500
+      </option>
+
+      <option value="5" className="bg-white text-gray-900">
+        User License 500+
+      </option>
+    </select>
+
+    {/* Custom dropdown arrow */}
+    <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+      <svg
+        className="h-5 w-5 text-white"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+    </div>
+  </div>
 </div>
+<div className="flex gap-3">
+  {/* Create Account Button - Left Side (3/4) */}
+  <button
+    type="submit"
+    disabled={loading}
+    className="w-500 rounded-lg bg-white py-2.5 font-semibold text-[#2f1c6a]"
+  >
+    {loading ? "Creating..." : "Create Account"}
+  </button>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-white text-[#2f1c6a] font-semibold py-2.5 rounded-lg"
-                >
-                  {loading ? "Creating..." : "Create Account"}
-                </button>
+  {/* Clear Button - Right Side (1/4) */}
+  <button
+    type="button"
+    onClick={() => {
+      setFullName("");
+      setEmail("");
+      setCompanyName("");
+      setPhoneNumber("");
+      setPassword("");
+      setConfirmPassword("");
+      setLicenceType("");
+    }}
+    disabled={loading}
+    className="w-200 rounded-lg border border-white/30 bg-white/10 py-2.5 font-semibold text-white hover:bg-white/20"
+  >
+    Clear
+  </button>
+</div>
               </form>
 
               <p className="text-center mt-6">
