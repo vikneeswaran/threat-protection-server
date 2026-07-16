@@ -18,31 +18,107 @@ export async function POST(request: NextRequest) {
     const {
       fullName,
       companyName,
-      phoneNumber,
       email,
+      phoneNumber,
       password,
       licenceType,
     } = body;
 
-    console.info("Register Request:", body);
+    console.log("Register Request:", body);
 
+ const cleanedEmail = email?.trim().toLowerCase();
 
-    
+    const cleanedCompanyName = companyName
+      ?.trim()
+      .replace(/\s+/g, " ");
+
+    const cleanedFullName = fullName
+      ?.trim()
+      .replace(/\s+/g, " ");
+
+    const cleanedPhoneNumber = phoneNumber?.trim();
     // Check existing user
-    const existingUser = await query(
-      `SELECT id FROM app_users WHERE email = $1`,
-      [email]
-    );
 
-    if (existingUser.rows.length > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Email already registered.",
-        },
-        { status: 400 }
-      ); 
-    }
+
+
+const [existingUser, existingCompany] = await Promise.all([
+  query(
+    `
+    SELECT id
+    FROM app_users
+    WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))
+    `,
+    [cleanedEmail]
+  ),
+
+  query(
+    `
+    SELECT id
+    FROM app_users
+    WHERE LOWER(TRIM(company_name)) = LOWER(TRIM($1))
+    `,
+    [cleanedCompanyName]
+  ),
+]);
+
+
+if (existingUser.rows.length > 0) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Email already registered.",
+    },
+    { status: 400 }
+  );
+}
+
+if (existingCompany.rows.length > 0) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Company name already registered.",
+    },
+    { status: 400 }
+  );
+}
+
+
+
+
+
+
+//     const existingUser = await query(
+//       `SELECT id FROM app_users WHERE email = $1`,
+//       [email]
+//     );
+
+//     if (existingUser.rows.length > 0) {
+//       return NextResponse.json(
+//         {
+//           success: false,
+//           message: "Email already registered.",
+//         },
+//         { status: 400 }
+//       ); 
+//     }
+// const existingCompany = await query(
+//       `
+//       SELECT id
+//       FROM app_users
+//       WHERE LOWER(TRIM(company_name)) = LOWER(TRIM($1))
+//       `,
+//       [cleanedCompanyName]
+//     );
+
+//     if (existingCompany.rows.length > 0) {
+//       return NextResponse.json(
+//         {
+//           success: false,
+//           message: "Company name already registered.",
+//         },
+//         { status: 400 }
+//       );
+//     }
 
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
@@ -75,11 +151,11 @@ export async function POST(request: NextRequest) {
         true
       )
       `,
-      [
-        email,
-        fullName,
-        companyName,
-        phoneNumber,
+       [
+        cleanedEmail,
+        cleanedFullName,
+        cleanedCompanyName,
+        cleanedPhoneNumber || null,
         passwordHash,
         licenceType,
       ]
