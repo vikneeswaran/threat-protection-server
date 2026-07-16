@@ -38,7 +38,7 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
       },
     })
 
-    console.log("[EMAIL] Attempting SMTP send", {
+    console.info("[EMAIL] Attempting SMTP send", {
       smtpHost,
       smtpPort,
       smtpUser,
@@ -57,7 +57,7 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
         text: textBody,
         replyTo,
       })
-      console.log("[EMAIL] Email sent successfully")
+      console.info("[EMAIL] Email sent successfully")
     } catch (err) {
       console.error("[EMAIL] Error sending email:", err)
       throw err

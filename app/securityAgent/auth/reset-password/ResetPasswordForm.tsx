@@ -14,7 +14,7 @@ export default function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
 
   const handleResetPassword = async (
-    e: React.FormEvent<HTMLFormElement>
+    e: React.FormEvent<globalThis.HTMLFormElement>
   ) => {
     e.preventDefault();
 

@@ -48,10 +48,16 @@ const [fullName, setFullName] = useState("");
 
     router.push("/securityAgent/auth/login");
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message =
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message === "string"
+        ? (error as { response: { data: { message: string } } }).response.data.message
+        : "Registration failed.";
     toast.error(
-      error?.response?.data?.message ||
-      "Registration failed."
+      message
     );
   } finally {
     setLoading(false);

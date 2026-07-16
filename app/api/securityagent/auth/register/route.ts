@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       licenceType,
     } = body;
 
-    console.log("Register Request:", body);
+    console.info("Register Request:", body);
 
     // Check existing user
     const existingUser = await query(

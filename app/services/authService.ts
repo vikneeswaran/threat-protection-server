@@ -1,5 +1,15 @@
 import api from "./api";
-export const register = async (data: any) => {
+
+type RegisterPayload = {
+  fullName: string;
+  companyName: string;
+  phoneNumber: string;
+  email: string;
+  password: string;
+  licenceType: string;
+};
+
+export const register = async (data: RegisterPayload) => {
   const response = await api.post(
     "/api/securityagent/auth/register",
     data
