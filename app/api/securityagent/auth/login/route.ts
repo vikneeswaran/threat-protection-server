@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server"
-import { query } from "@/lib/db"
-import { createSession } from "@/lib/auth/session"
+import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+
+import { query } from "@/lib/db";
+import { createSession } from "@/lib/auth/session";
 
 type LoginUserRow = {
-  id: string
-}
+  id: string;
+  password_hash: string;
+};
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +21,7 @@ export async function POST(request: Request) {
 
     const result = await query<LoginUserRow>(
       `
-        SELECT id
+        SELECT id, password_hash
         FROM app_users
         WHERE email = $1
           AND is_active = TRUE
@@ -29,12 +32,26 @@ export async function POST(request: Request) {
       [email, password]
     )
 
-    const user = result.rows[0]
+const user = result.rows[0];
 
-    if (!user) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
-    }
+if (!user) {
+  return NextResponse.json(
+    { error: "Invalid email or password" },
+    { status: 401 }
+  );
+}
 
+const passwordMatch = await bcrypt.compare(
+  password,
+  user.password_hash
+);
+
+if (!passwordMatch) {
+  return NextResponse.json(
+    { error: "Invalid email or password" },
+    { status: 401 }
+  );
+}
     await query(
       `
         UPDATE app_users
