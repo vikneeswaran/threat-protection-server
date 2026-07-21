@@ -48,6 +48,7 @@ const [fullName, setFullName] = useState("");
 
     router.push("/securityAgent/auth/login");
 
+<<<<<<< Updated upstream
   } catch (error: unknown) {
     const message =
       typeof error === "object" &&
@@ -58,6 +59,12 @@ const [fullName, setFullName] = useState("");
         : "Registration failed.";
     toast.error(
       message
+=======
+  } catch (error: any) {
+    toast.error(
+      error?.response?.data?.message ||
+      "Registration failed."
+>>>>>>> Stashed changes
     );
   } finally {
     setLoading(false);
