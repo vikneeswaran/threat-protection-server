@@ -100,6 +100,10 @@ jobs:
             } > "$APP_DIR/.env.production"
             chmod 600 "$APP_DIR/.env.production"
 
+            if [ -f "$APP_DIR/.env.local" ]; then
+              mv "$APP_DIR/.env.local" "$APP_DIR/.env.local.bak.$(date +%Y%m%d%H%M%S)"
+            fi
+
             echo "Installing dependencies..."
             pnpm install --frozen-lockfile
 
