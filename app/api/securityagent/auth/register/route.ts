@@ -1,18 +1,13 @@
+// Import required modules for API handling, password hashing, and database operations.
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-
 import { query } from "@/lib/db";
 
-// import {
-//   generateVerificationToken,
-//   getVerificationEmailTemplate,
-//   getVerificationEmailPlainText,
-// } from "@/lib/email/verification";
-
-// import { sendVerificationEmail } from "@/lib/email/send";
-
+// API endpoint to register a new user with validation, password encryption, duplicate checks, and database insertion.
 export async function POST(request: NextRequest) {
   try {
+   
+    // Extract registration details from the incoming request body.
     const body = await request.json();
 
     const {
@@ -26,7 +21,8 @@ export async function POST(request: NextRequest) {
 
     console.log("Register Request:", body);
 
- const cleanedEmail = email?.trim().toLowerCase();
+    // Normalize user input by trimming spaces and converting email to lowercase.
+    const cleanedEmail = email?.trim().toLowerCase();
 
     const cleanedCompanyName = companyName
       ?.trim()
@@ -40,8 +36,8 @@ export async function POST(request: NextRequest) {
     // Check existing user
 
 
-
-const [existingUser, existingCompany] = await Promise.all([
+    // Check if email or company name already exists to prevent duplicate registrations.
+    const [existingUser, existingCompany] = await Promise.all([
   query(
     `
     SELECT id
@@ -61,7 +57,7 @@ const [existingUser, existingCompany] = await Promise.all([
   ),
 ]);
 
-
+// Return error response if email is already registered.
 if (existingUser.rows.length > 0) {
   return NextResponse.json(
     {
@@ -82,48 +78,10 @@ if (existingCompany.rows.length > 0) {
   );
 }
 
-
-
-
-
-
-//     const existingUser = await query(
-//       `SELECT id FROM app_users WHERE email = $1`,
-//       [email]
-//     );
-
-//     if (existingUser.rows.length > 0) {
-//       return NextResponse.json(
-//         {
-//           success: false,
-//           message: "Email already registered.",
-//         },
-//         { status: 400 }
-//       ); 
-//     }
-// const existingCompany = await query(
-//       `
-//       SELECT id
-//       FROM app_users
-//       WHERE LOWER(TRIM(company_name)) = LOWER(TRIM($1))
-//       `,
-//       [cleanedCompanyName]
-//     );
-
-//     if (existingCompany.rows.length > 0) {
-//       return NextResponse.json(
-//         {
-//           success: false,
-//           message: "Company name already registered.",
-//         },
-//         { status: 400 }
-//       );
-//     }
-
-    // Hash password
+    // Encrypt user password before storing it in the database.
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Store user in database
+   // Insert new user registration details into the app_users table.
     await query(
       `
       INSERT INTO app_users
@@ -161,38 +119,13 @@ if (existingCompany.rows.length > 0) {
       ]
     );
 
-    // Generate verification token
- //   const { token } = generateVerificationToken();
-
-    // const verificationLink =
-    //   `${process.env.NEXT_PUBLIC_APP_URL}/securityAgent/auth/verify?token=${token}`;
-
-    // const htmlTemplate = getVerificationEmailTemplate(
-    //   verificationLink,
-    //   fullName,
-    //   companyName || "Organization"
-    // );
-
-    // const textTemplate = getVerificationEmailPlainText(
-    //   verificationLink,
-    //   fullName,
-    //   companyName || "Organization"
-    // );
-
-    // await sendVerificationEmail(
-    //   email,
-    //   fullName,
-    //   companyName || "Organization",
-    //   verificationLink,
-    //   htmlTemplate,
-    //   textTemplate
-    // );
-
+    // Return success response after completing user registration.
     return NextResponse.json({
       success: true,
       message: "Registration successful.",
     });
-
+    
+    // Handle unexpected errors and return registration failure response.
   } catch (error) {
     console.error("Register Error:", error);
 

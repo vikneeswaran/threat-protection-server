@@ -4,44 +4,56 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
-
+//import shared layout components  
 import { Header } from "@/components/kuamini/header";
 import { Footer } from "@/components/kuamini/footer";
 import { register } from "@/app/services/authService";
 
-
+//Render the Security agent registration page
 export default function SecurityAgentRegisterPage() {
-  const router = useRouter(); 
-const [companyName, setCompanyName] = useState("");
-const [phoneNumber, setPhoneNumber] = useState("");
-const [confirmPassword, setConfirmPassword] = useState("");
-const [licenceType, setLicenceType] = useState("");  
-const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullNameError, setFullNameError] = useState("");
-const [emailError, setEmailError] = useState("");
-const [passwordError, setPasswordError] = useState("");
-const [confirmPasswordError, setConfirmPasswordError] = useState("");
-const [companyNameError, setCompanyNameError] = useState("");
-const [phoneError, setPhoneError] = useState("");
+    
+  //router instance used for navigation after successful registration
+    const router = useRouter(); 
+   
+    //Form input state variables
+    const [companyName, setCompanyName] = useState("");
+    const [phoneNumber, setPhoneNumber] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [licenceType, setLicenceType] = useState("");  
+    const [fullName, setFullName] = useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    //route state variables for form validation errors
+    const [fullNameError, setFullNameError] = useState("");
+    const [emailError, setEmailError] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+    const [confirmPasswordError, setConfirmPasswordError] = useState("");
+    const [companyNameError, setCompanyNameError] = useState("");
+    const [phoneError, setPhoneError] = useState("");
+    
+    //Track loading state for form submission 
+    const [loading, setLoading] = useState(false);
+    
+    // Regular expression to validate the password policy
+    const passwordRegex =
+    /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>[\]\\/'`~_+=-]).{8,}$/;
 
-  //const [showPasswordRules, setShowPasswordRules] = useState(false);
+    // Submit the registration form after validating user inputs
+    const handleRegister = async (event: React.FormEvent) => {
 
-  const [loading, setLoading] = useState(false);
+    // Prevent the browser from reloading the page on form submission
+    event.preventDefault();
 
-  const handleRegister = async (event: React.FormEvent) => {
-  event.preventDefault();
-  const cleanedFullName = fullName.trim().replace(/\s+/g, " ");
-const cleanedCompanyName = companyName.trim().replace(/\s+/g, " ");
-const cleanedPhoneNumber = phoneNumber.trim();
-const cleanedPassword = password.trim();
-const cleanedConfirmPassword = confirmPassword.trim();
-const cleanedLicenceType = licenceType.trim();
-
-  const cleanedEmail = email.trim().toLowerCase();
+    // Clean and normalize user input before validation and submission
+    const cleanedFullName = fullName.trim().replace(/\s+/g, " ");
+    const cleanedCompanyName = companyName.trim().replace(/\s+/g, " ");
+    const cleanedPhoneNumber = phoneNumber.trim();
+    const cleanedPassword = password.trim();
+    const cleanedConfirmPassword = confirmPassword.trim();
+    const cleanedLicenceType = licenceType.trim();
+    const cleanedEmail = email.trim().toLowerCase();
   
-
+  // Validate all required registration fields are filled before submitting the form.
   if (
   !fullName.trim() ||
   !cleanedEmail ||
@@ -53,34 +65,37 @@ const cleanedLicenceType = licenceType.trim();
   return toast.error("Please fill all required fields.");
 }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Validate email format using regex before submitting the form.
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   if (!emailRegex.test(cleanedEmail)) {
     return toast.error("Please enter a valid email address.");
   }
-  const passwordRegex =
-  /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>[\]\\/'`~_+=-]).{8,}$/;
-
-
-if (cleanedPhoneNumber && cleanedPhoneNumber.length < 10) {
-  setPhoneError("Phone number must be exactly 10 digits.");
+  
+// Validate phone number length to ensure it contains between 10 and 20 digits.
+if (
+  cleanedPhoneNumber &&
+  (cleanedPhoneNumber.length < 10 || cleanedPhoneNumber.length > 20)
+) {
+  setPhoneError("Phone number must be between 10 and 20 digits.");
   return;
 }
 
-
+// Validate password strength and confirm password match before registration.
 if (!passwordRegex.test(cleanedPassword)) {
   return toast.error(
     "Password must be at least 8 characters and contain at least one letter, one number, and one special character."
   );
 }
-
 if (cleanedPassword !== cleanedConfirmPassword) {
   return toast.error("Passwords do not match.");
 }
   try { 
+    
+    // Submit registration data to API and handle successful registration response.
     setLoading(true);
 
-   const response = await register({
+  const response = await register({
   fullName: cleanedFullName,
   companyName: cleanedCompanyName,
   phoneNumber: cleanedPhoneNumber,
@@ -93,9 +108,12 @@ if (cleanedPassword !== cleanedConfirmPassword) {
       response.data?.message || "Registration successful."
     );
 
+    // Redirect user to login page after successful registration.
     router.push("/securityAgent/auth/login");
 
  } catch (error: any) {
+  
+  // Handle API errors such as duplicate company name or email registration.
   const message = error?.response?.data?.message;
 
   if (
@@ -116,6 +134,8 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     toast.error(message || "Registration failed.");
   }
 } finally {
+    
+  // Stop loading state after API request completion.
     setLoading(false);
   }
 };
@@ -123,11 +143,15 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   return (
     
     <>
+      // Display toast notifications for success and error messages.
       <Toaster position="top-right" />
 
       <div className="min-h-screen flex flex-col">
+
+        // Header and registration page layout container.
         <Header />
 
+        // User input fields: name, email, company, phone, password, and license details.
         <section className="bg-gradient-to-br from-[#2f1c6a] via-[#36344d] to-[#1d1e20] text-white py-16 flex-1">
           <div className="container mx-auto px-6">
             <div className="max-w-md mx-auto bg-white/10 border border-white/20 rounded-xl p-8 backdrop-blur-sm">
@@ -139,13 +163,14 @@ if (cleanedPassword !== cleanedConfirmPassword) {
               <p className="text-center text-gray-300 mb-8">
                 Register for Kuamini Security Agent
               </p>
-
+              // Registration form UI with field validations, error messages, password rules, and account creation handling.
              <form onSubmit={handleRegister} className="space-y-4" autoComplete="off">
                <div>
                  <label className="block text-sm text-gray-200 mb-1">Full Name<span className="text-red-400"> * </span></label>
                 <input
   type="text"
   value={fullName}
+   maxLength={50}
   onChange={(e) => {
     const value = e.target.value
       .replace(/\s+/g, " ")
@@ -180,6 +205,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
                 <input
   type="email"
   value={email}
+   maxLength={50}
   onChange={(e) => setEmail(e.target.value)}
   onBlur={() => {
     const cleanedEmail = email.trim().toLowerCase();
@@ -205,7 +231,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     {emailError}
   </p>
 )}
-               </div>
+ </div>
 <div>
   <label className="block text-sm mb-1">
     Company Name<span className="text-red-400"> * </span>
@@ -214,6 +240,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   <input
     type="text"
     value={companyName}
+    maxLength={100}
     onChange={(e) => {
       const value = e.target.value
         .replace(/\s+/g, " ")
@@ -261,7 +288,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     onChange={(e) => {
       const value = e.target.value
         .replace(/\D/g, "")
-        .slice(0, 10);
+        .slice(0, 20);
 
       setPhoneNumber(value);
 
@@ -272,12 +299,12 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     }}
     onBlur={() => {
       if (phoneNumber.length > 0 && phoneNumber.length < 10) {
-        setPhoneError("Phone number must be exactly 10 digits.");
+        setPhoneError("Phone number must be at least 10 digits.");
       } else {
         setPhoneError("");
       }
     }}
-    maxLength={10}
+    maxLength={20}
     inputMode="numeric"
     placeholder="9876543210"
     className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
@@ -297,14 +324,14 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   <input
   type="password"
   value={password}
-  onChange={(e) => setPassword(e.target.value)}
-  onBlur={() => {
-    const passwordRegex =
-      /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>[\]\\/'`~_+=-]).{8,}$/;
+  onChange={(e) => {
+    const value = e.target.value;
 
-    if (!password) {
+    setPassword(value);
+
+    if (!value) {
       setPasswordError("Password is required.");
-    } else if (!passwordRegex.test(password)) {
+    } else if (!passwordRegex.test(value)) {
       setPasswordError(
         "Password must be at least 8 characters and contain at least one letter, one number, and one special character."
       );
@@ -330,6 +357,8 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   type="password"
   value={confirmPassword}
   onChange={(e) => setConfirmPassword(e.target.value)}
+  
+  // Password confirmation and matching validation field.
   onBlur={() => {
     if (!confirmPassword) {
       setConfirmPasswordError("Please confirm your password.");
@@ -420,7 +449,8 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   </div>
 </div>
 <div className="flex gap-3">
-  {/* Create Account Button - Left Side (3/4) */}
+ 
+ // Submit registration form and show loading state while creating account.
   <button
     type="submit"
     disabled={loading}
@@ -429,7 +459,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     {loading ? "Creating..." : "Create Account"}
   </button>
 
-  {/* Clear Button - Right Side (1/4) */}
+  // Clear all form values and validation errors.
   <button
     type="button"
     onClick={() => {
