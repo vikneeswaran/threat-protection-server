@@ -125,6 +125,27 @@ export async function ensureLocalAuthSchema() {
 
       IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'app_users' AND column_name = 'company_name'
+      ) THEN
+        ALTER TABLE app_users ADD COLUMN company_name TEXT;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'app_users' AND column_name = 'phone_number'
+      ) THEN
+        ALTER TABLE app_users ADD COLUMN phone_number TEXT;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'app_users' AND column_name = 'licence_type'
+      ) THEN
+        ALTER TABLE app_users ADD COLUMN licence_type INTEGER;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'app_sessions' AND column_name = 'ip_address'
       ) THEN
         ALTER TABLE app_sessions ADD COLUMN ip_address TEXT;

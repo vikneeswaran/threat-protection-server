@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS app_users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT,
   full_name TEXT,
+  company_name TEXT,
+  phone_number TEXT,
+  licence_type INTEGER,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   last_login_at TIMESTAMPTZ,
@@ -33,6 +36,31 @@ CREATE TABLE IF NOT EXISTS app_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_app_sessions_user_id ON app_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_expires_at ON app_sessions(expires_at);
+
+-- Ensure new app_users columns exist for older deployments.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'app_users' AND column_name = 'company_name'
+  ) THEN
+    ALTER TABLE app_users ADD COLUMN company_name TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'app_users' AND column_name = 'phone_number'
+  ) THEN
+    ALTER TABLE app_users ADD COLUMN phone_number TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'app_users' AND column_name = 'licence_type'
+  ) THEN
+    ALTER TABLE app_users ADD COLUMN licence_type INTEGER;
+  END IF;
+END $$;
 
 -- 3) Remove legacy auth FK on profiles and attach to app_users.
 DO $$

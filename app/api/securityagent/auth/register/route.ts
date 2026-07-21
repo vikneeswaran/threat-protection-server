@@ -85,6 +85,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
 import { query } from "@/lib/db";
+import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap";
 
 // import {
 //   generateVerificationToken,
@@ -96,6 +97,12 @@ import { query } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   try {
+    try {
+      await ensureLocalAuthSchema();
+    } catch (bootstrapError) {
+      console.warn("Auth schema bootstrap warning:", bootstrapError);
+    }
+
     const body = await request.json();
 
     const {
@@ -128,42 +135,59 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const columnsResult = await query<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'app_users'
+      `
+    );
+
+    const availableColumns = new Set(
+      columnsResult.rows.map((row) => row.column_name)
+    );
+
+    if (!availableColumns.has("email") || !availableColumns.has("password_hash")) {
+      throw new Error("app_users schema is missing required columns (email/password_hash)");
+    }
+
+    const payloadByColumn: Record<string, unknown> = {
+      email,
+      full_name: fullName,
+      company_name: companyName,
+      phone_number: phoneNumber,
+      password_hash: passwordHash,
+      licence_type: licenceType ? Number(licenceType) : null,
+      email_verified: false,
+      is_active: true,
+    };
+
+    const insertColumns = Object.keys(payloadByColumn).filter((columnName) =>
+      availableColumns.has(columnName)
+    );
+
+    const insertValues = insertColumns.map(
+      (columnName) => payloadByColumn[columnName]
+    );
+
+    const placeholders = insertColumns
+      .map((_, index) => `$${index + 1}`)
+      .join(", ");
+
     // Store user in database
     await query(
       `
       INSERT INTO app_users
       (
-        id,
-        email,
-        full_name,
-        company_name,
-        phone_number,
-        password_hash,
-        licence_type,
-        email_verified,
-        is_active
+        ${insertColumns.join(",\n        ")}
       )
       VALUES
       (
-        gen_random_uuid(),
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        false,
-        true
+        ${placeholders}
       )
       `,
-      [
-        email,
-        fullName,
-        companyName,
-        phoneNumber,
-        passwordHash,
-        licenceType,
-      ]
+      insertValues
     );
 
     // Generate verification token
@@ -205,6 +229,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         message: "Registration failed.",
+        error: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
