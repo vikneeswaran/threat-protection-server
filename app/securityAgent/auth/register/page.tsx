@@ -159,15 +159,15 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   return (
     
     <>
-      // Display toast notifications for success and error messages.
+      {/* // Display toast notifications for success and error messages. */}
       <Toaster position="top-right" />
 
       <div className="min-h-screen flex flex-col">
 
-        // Header and registration page layout container.
+        {/* // Header and registration page layout container. */}
         <Header />
 
-        // User input fields: name, email, company, phone, password, and license details.
+        {/* // User input fields: name, email, company, phone, password, and license details. */}
         <section className="bg-gradient-to-br from-[#2f1c6a] via-[#36344d] to-[#1d1e20] text-white py-16 flex-1">
           <div className="container mx-auto px-6">
             <div className="max-w-md mx-auto bg-white/10 border border-white/20 rounded-xl p-8 backdrop-blur-sm">
@@ -179,7 +179,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
               <p className="text-center text-gray-300 mb-8">
                 Register for Kuamini Security Agent
               </p>
-              // Registration form UI with field validations, error messages, password rules, and account creation handling.
+              {/* // Registration form UI with field validations, error messages, password rules, and account creation handling. */}
              <form onSubmit={handleRegister} className="space-y-4" autoComplete="off">
                <div>
                  <label className="block text-sm text-gray-200 mb-1">Full Name<span className="text-red-400"> * </span></label>
@@ -466,7 +466,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
 </div>
 <div className="flex gap-3">
  
- // Submit registration form and show loading state while creating account.
+ {/* // Submit registration form and show loading state while creating account. */}
   <button
     type="submit"
     disabled={loading}
@@ -475,7 +475,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     {loading ? "Creating..." : "Create Account"}
   </button>
 
-  // Clear all form values and validation errors.
+  {/* // Clear all form values and validation errors. */}
   <button
     type="button"
     onClick={() => {

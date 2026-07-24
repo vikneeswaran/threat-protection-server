@@ -7,7 +7,7 @@ import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap";
 // API endpoint to register a new user with validation, password encryption, duplicate checks, and database insertion.
 export async function POST(request: NextRequest) {
   try {
-   
+await ensureLocalAuthSchema();   
     // Extract registration details from the incoming request body.
     const body = await request.json();
 
@@ -81,7 +81,20 @@ if (existingCompany.rows.length > 0) {
 
     // Encrypt user password before storing it in the database.
     const passwordHash = await bcrypt.hash(password, 10);
+// Database columns for user registration
+const insertColumns = [
+  "email",
+  "full_name",
+  "company_name",
+  "phone_number",
+  "password_hash",
+  "licence_type",
+];
 
+// Generate SQL placeholders: $1, $2, $3...
+const placeholders = insertColumns
+  .map((_, index) => `$${index + 1}`)
+  .join(", ");
    // Insert new user registration details into the app_users table.
     await query(
       `
