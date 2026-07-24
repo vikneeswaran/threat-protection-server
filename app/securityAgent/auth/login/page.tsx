@@ -93,10 +93,10 @@ export default function SecurityAgentLoginPage() {
                 />
               </div>
 
-              // Show error message if login request fails.
+              
               {errorMessage ? <p className="text-sm text-red-300">{errorMessage}</p> : null}
               
-              // Submit login credentials and display loading status during authentication.
+              
               <button
                 type="submit"
                 disabled={isSubmitting}

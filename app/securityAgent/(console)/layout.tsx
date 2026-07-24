@@ -26,7 +26,7 @@ export default function SecurityAgentConsoleLayout({ children }: { children: Rea
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-1 py-4">{children}</main>
     </div>
   )
 }
