@@ -1,15 +1,8 @@
+// Auth service functions to handle registration, login, email verification, and password management APIs.
 import api from "./api";
 
-type RegisterPayload = {
-  fullName: string;
-  companyName: string;
-  phoneNumber: string;
-  email: string;
-  password: string;
-  licenceType: string;
-};
-
-export const register = async (data: RegisterPayload) => {
+// Send user registration details to registration API.
+export const register = async (data: any) => {
   const response = await api.post(
     "/api/securityagent/auth/register",
     data
@@ -18,6 +11,7 @@ export const register = async (data: RegisterPayload) => {
   return response.data;
 };
 
+// Send user login credentials to authentication API.
 export const login = async (data: {
   email: string;
   password: string;
@@ -30,17 +24,17 @@ export const login = async (data: {
   return response.data;
 };
 
-
+// Verify user email using verification token.
 export const verifyEmail = (token: string) => {
   return api.get(`/auth/verify?token=${token}`);
 };
 
-
+// Send email request for password reset link.
 export const forgotPassword = (data: { email: string }) => {
   return api.post("/auth/forgot-password", data);
 };
 
-
+// Update user password using reset token.
 export const resetPassword = (data: {
   token: string;
   password: string;

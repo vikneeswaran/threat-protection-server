@@ -9,16 +9,22 @@ type LoginUserRow = {
   password_hash: string;
 };
 
+// API endpoint to authenticate user login and create a session.
 export async function POST(request: Request) {
   try {
+
+    // Extract and clean login credentials from request body.
     const body = await request.json()
     const email = String(body?.email || "").trim().toLowerCase()
     const password = String(body?.password || "")
 
+    
+    // Validate that email and password are provided before login.
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
-
+    
+    // Fetch active user details and verify password from database.
     const result = await query<LoginUserRow>(
       `
         SELECT id, password_hash
@@ -34,6 +40,7 @@ export async function POST(request: Request) {
 
 const user = result.rows[0];
 
+// Return error response when user credentials are invalid.
 if (!user) {
   return NextResponse.json(
     { error: "Invalid email or password" },
@@ -41,6 +48,7 @@ if (!user) {
   );
 }
 
+// Compare entered password with stored hashed password.
 const passwordMatch = await bcrypt.compare(
   password,
   user.password_hash
@@ -52,6 +60,8 @@ if (!passwordMatch) {
     { status: 401 }
   );
 }
+
+    // Update user's last login time after successful authentication.
     await query(
       `
         UPDATE app_users
@@ -61,9 +71,12 @@ if (!passwordMatch) {
       [user.id]
     )
 
+    // Create user session after successful login.
     await createSession(user.id)
 
     return NextResponse.json({ success: true })
+  
+    // Handle unexpected errors during login process.
   } catch (error) {
     console.error("Security agent login error", error)
     return NextResponse.json({ error: "Login failed" }, { status: 500 })
