@@ -1,26 +1,33 @@
 "use client"
 
+import React from 'react';
 import type { FormEvent } from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/kuamini/header"
 import { Footer } from "@/components/kuamini/footer"
 
+// Login page for Security Agent authentication with API integration and user validation.
 export default function SecurityAgentLoginPage() {
   const router = useRouter()
+
+  // Store user input values and login process states.
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSignIn = (event: FormEvent<globalThis.HTMLFormElement>) => {
+   // Handle login submission, API request, error handling, and dashboard redirect.
+   const handleSignIn = (event: FormEvent<globalThis.HTMLFormElement>) => {
     event.preventDefault()
     void (async () => {
       setErrorMessage("")
       setIsSubmitting(true)
 
       try {
-        const response = await fetch("/api/securityagent/auth/login", {
+
+    // Send email and password credentials to login API endpoint.
+    const response = await fetch("/api/securityagent/auth/login", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -30,20 +37,27 @@ export default function SecurityAgentLoginPage() {
 
         const result = await response.json()
 
+        // Display login error message when authentication fails.
         if (!response.ok) {
           setErrorMessage(result?.error || "Invalid email or password")
           return
         }
 
+        // Redirect user to Security Agent dashboard after successful login.
         router.push("/securityAgent/dashboard")
+        
+      // Handle network or unexpected errors during login process.
       } catch {
         setErrorMessage("Unable to sign in right now. Please try again.")
+
+      // Enable login button after API request completion.
       } finally {
         setIsSubmitting(false)
       }
     })()
   }
 
+  // Render login form with email, password fields, validation message, and submit button.
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -79,8 +93,10 @@ export default function SecurityAgentLoginPage() {
                 />
               </div>
 
+              // Show error message if login request fails.
               {errorMessage ? <p className="text-sm text-red-300">{errorMessage}</p> : null}
-
+              
+              // Submit login credentials and display loading status during authentication.
               <button
                 type="submit"
                 disabled={isSubmitting}
