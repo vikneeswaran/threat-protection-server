@@ -4,18 +4,18 @@ import { useEffect, useState } from "react";
 import { getThreatSummary } from "@/app/services/threatService";
 
 interface Summary {
-  detected_today: number;
+  detected: number;
   critical: number;
   open_incidents: number;
-  resolved_today: number;
+  resolved: number;
 }
 
 export default function ThreatSummaryCards() {
   const [summary, setSummary] = useState<Summary>({
-    detected_today: 0,
+    detected: 0,
     critical: 0,
     open_incidents: 0,
-    resolved_today: 0,
+    resolved: 0,
   });
 
   useEffect(() => {
@@ -25,6 +25,7 @@ export default function ThreatSummaryCards() {
   const fetchSummary = async () => {
     try {
       const data = await getThreatSummary();
+      console.log(data);
       setSummary(data);
     } catch (err) {
       console.error(err);
@@ -33,8 +34,8 @@ export default function ThreatSummaryCards() {
 
   const cards = [
     {
-      title: "Detected Today",
-      value: summary.detected_today,
+      title: "Detected",
+      value: summary.detected,
       color: "text-white",
     },
     {
@@ -48,8 +49,8 @@ export default function ThreatSummaryCards() {
       color: "text-yellow-400",
     },
     {
-      title: "Resolved Today",
-      value: summary.resolved_today,
+      title: "Resolved",
+      value: summary.resolved,
       color: "text-green-400",
     },
   ];

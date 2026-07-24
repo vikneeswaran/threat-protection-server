@@ -50,6 +50,9 @@ const [severity, setSeverity] = useState("");
     // Tracks the currently displayed page
 const [currentPage, setCurrentPage] = useState(1);
 
+const [sortColumn, setSortColumn] = useState<keyof Threat | "">("");
+const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
 // Number of threats displayed per page
 const pageSize = 50;
 
@@ -59,10 +62,16 @@ const pageSize = 50;
   }, []);
 
     // Apply filters whenever search, severity, status, or data changes
-  useEffect(() => {
-    filterThreats();
-  }, [search, severity, status, threats]);
-
+ useEffect(() => {
+  filterThreats();
+}, [
+  search,
+  severity,
+  status,
+  threats,
+  sortColumn,
+  sortDirection,
+]);
   // Fetch threat data from the backend API
 const fetchThreats = async () => {
   try {
@@ -91,6 +100,7 @@ const threatsData = (response.threats ?? []).map((item: any) => ({
     item.status?.charAt(0).toUpperCase() +
     item.status?.slice(1).toLowerCase(),
 }));
+
  // Store original threat list
 setThreats(threatsData);
  // Initially display all threats
@@ -105,6 +115,43 @@ setFilteredThreats(threatsData);
      // Hide loading spinner
     setLoading(false);
   }
+};
+
+const sortThreats = (
+  data: Threat[],
+  column: keyof Threat,
+  direction: "asc" | "desc"
+) => {
+  return [...data].sort((a, b) => {
+    const valueA = String(a[column]).toLowerCase();
+    const valueB = String(b[column]).toLowerCase();
+
+   if (valueA < valueB) {
+  return direction === "asc" ? -1 : 1;
+}
+
+if (valueA > valueB) {
+  return direction === "asc" ? 1 : -1;
+}
+
+return 0;
+  });
+}; 
+const handleSort = (column: keyof Threat) => {
+  let direction: "asc" | "desc" = "asc";
+
+  if (sortColumn === column && sortDirection === "asc") {
+    direction = "desc";
+  }
+
+  setSortColumn(column);
+  setSortDirection(direction);
+};
+const getSortIcon = (column: keyof Threat) => {
+ if (sortColumn !== column) {
+  return "↕";
+}
+  return sortDirection === "asc" ? "▲" : "▼";
 };
  // Filters threats based on search text, severity, and status
   const filterThreats = () => {
@@ -134,6 +181,9 @@ setFilteredThreats(threatsData);
     (item) =>
       item.status.toLowerCase() === status.toLowerCase()
   );
+}
+if (sortColumn) {
+  filtered = sortThreats(filtered, sortColumn, sortDirection);
 }
  // Update filtered results
     setFilteredThreats(filtered);
@@ -188,14 +238,43 @@ setCurrentPage(1);
  {/* Table headers */}
           <thead className="border-b border-slate-700 text-slate-400">
   <tr>
-    <th className="w-[120px] py-4 px-3">Threat ID</th>
-    <th className="w-[260px] px-3">Threat Name</th>
-    <th className="w-[180px] px-3">Endpoint</th>
-    <th className="w-[150px] px-3">Threat Type</th>
-    <th className="w-[180px] px-3">Detected By</th>
-    <th className="w-[120px] px-3">Severity</th>
-    <th className="w-[180px] px-3">Detected</th>
-    <th className="w-[140px] px-3">Status</th>
+  <th
+  onClick={() => handleSort("id")}
+  className="w-[260px] px-3 cursor-pointer select-none"
+>
+  Threat id {getSortIcon("id")}
+</th>
+  <th
+  onClick={() => handleSort("name")}
+  className="w-[260px] px-3 cursor-pointer select-none"
+>
+  Threat Name {getSortIcon("name")}
+</th>
+   <th
+  onClick={() => handleSort("endpoint")}
+  className="w-[120px] py-4 px-3 cursor-pointer"
+>Endpoint
+{getSortIcon("endpoint")}</th>
+    <th
+  onClick={() => handleSort("threatType")}
+  className="w-[120px] py-4 px-3 cursor-pointer"
+>Threat Type{getSortIcon("threatType")}</th>
+   <th
+  onClick={() => handleSort("detectedBy")}
+  className="w-[120px] py-4 px-3 cursor-pointer"
+>Detected By{getSortIcon("detectedBy")}</th>
+   <th
+  onClick={() => handleSort("severity")}
+  className="w-[120px] py-4 px-3 cursor-pointer"
+>Severity{getSortIcon("severity")}</th>
+    <th
+  onClick={() => handleSort("detected")}
+  className="w-[120px] py-4 px-3 cursor-pointer"
+>Detected {getSortIcon("detected")}</th>
+    <th
+  onClick={() => handleSort("status")}
+  className="w-[120px] py-4 px-3 cursor-pointer"
+>Status{getSortIcon("status")}</th>
   </tr>
 </thead>
           <tbody>

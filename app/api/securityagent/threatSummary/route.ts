@@ -7,7 +7,7 @@ export async function GET() {
       SELECT
         COUNT(*) FILTER (
           WHERE DATE(detected_at) = CURRENT_DATE
-        ) AS detected_today,
+        ) AS detected,
 
         COUNT(*) FILTER (
           WHERE severity = 'critical'
@@ -19,7 +19,7 @@ export async function GET() {
 
         COUNT(*) FILTER (
           WHERE DATE(resolved_at) = CURRENT_DATE
-        ) AS resolved_today
+        ) AS resolved
       FROM threats;
     `);
 
