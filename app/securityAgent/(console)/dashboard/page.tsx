@@ -1,8 +1,24 @@
+import { requireSessionUser } from "@/lib/auth/session";
+import { getDashboardData } from "@/lib/dashboard/dashboard.service";
 export const metadata = {
   title: "Dashboard | Kuamini Security Agent",
 };
 
-export default function SecurityAgentDashboardPage() {
+export default async function SecurityAgentDashboardPage() {
+  
+  const user = await requireSessionUser();
+
+
+  if (!user) {
+    return (
+      <div className="text-white p-8">
+        User session not found
+      </div>
+    );
+  }
+
+const dashboard = await getDashboardData(user.account_id);
+
   return (
     <section className="space-y-8">
 
@@ -26,11 +42,11 @@ export default function SecurityAgentDashboardPage() {
           </p>
 
           <h3 className="mt-3 text-5xl font-bold text-emerald-400">
-            200
+            {dashboard.endpointHealth.online}
           </h3>
 
           <p className="mt-2 text-slate-300">
-            Online of 148 registered
+            Online of {dashboard.endpointHealth.total} registered endpoints
           </p>
         </div>
 
@@ -40,11 +56,11 @@ export default function SecurityAgentDashboardPage() {
           </p>
 
           <h3 className="mt-3 text-5xl font-bold text-rose-400">
-            36
+            {dashboard.threats.detected}
           </h3>
 
           <p className="mt-2 text-slate-300">
-            28 resolved, 8 quarantined
+            {dashboard.threats.resolved} resolved, {dashboard.threats.quarantined} quarantined
           </p>
         </div>
 
@@ -54,11 +70,11 @@ export default function SecurityAgentDashboardPage() {
           </p>
 
           <h3 className="mt-3 text-5xl font-bold text-indigo-400">
-            18
+            {dashboard.policies.total}
           </h3>
 
           <p className="mt-2 text-slate-300">
-            15 active, 2 draft
+            {dashboard.policies.active} active, {dashboard.policies.draft} draft
           </p>
         </div>
 
@@ -68,11 +84,11 @@ export default function SecurityAgentDashboardPage() {
           </p>
 
           <h3 className="mt-3 text-5xl font-bold text-amber-400">
-            248
+            {dashboard.licenses.used}
           </h3>
 
           <p className="mt-2 text-slate-300">
-            52 available
+            {dashboard.licenses.available} available
           </p>
         </div>
 
@@ -97,7 +113,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold">
-                248
+                {dashboard.endpointHealth.total}
               </h4>
             </div>
 
@@ -107,7 +123,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-emerald-400">
-                219
+                {dashboard.endpointHealth.online}
               </h4>
             </div>
 
@@ -117,7 +133,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-orange-400">
-                21
+                {dashboard.endpointHealth.offline}
               </h4>
             </div>
 
@@ -127,14 +143,14 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-pink-400">
-                5
+                {dashboard.endpointHealth.quarantined}
               </h4>
             </div>
 
           </div>
 
           <p className="mt-6 text-slate-400">
-            Pending setup: 3 endpoints
+            Pending setup: {dashboard.endpointHealth.pending} endpoints
           </p>
 
         </div>
@@ -169,27 +185,27 @@ export default function SecurityAgentDashboardPage() {
 
               <tr className="border-b border-slate-800">
                 <td className="py-4">Detected</td>
-                <td className="py-4 text-right">42</td>
+                <td className="py-4 text-right">{dashboard.threats.detected}</td>
               </tr>
 
               <tr className="border-b border-slate-800">
                 <td className="py-4">Resolved</td>
-                <td className="py-4 text-right">28</td>
+                <td className="py-4 text-right">{dashboard.threats.resolved}</td>
               </tr>
 
               <tr className="border-b border-slate-800">
                 <td className="py-4">Quarantined</td>
-                <td className="py-4 text-right">9</td>
+                <td className="py-4 text-right">{dashboard.threats.quarantined}</td>
               </tr>
 
               <tr className="border-b border-slate-800">
                 <td className="py-4">Deleted</td>
-                <td className="py-4 text-right">4</td>
+                <td className="py-4 text-right">{dashboard.threats.killed}</td>
               </tr>
 
               <tr>
                 <td className="pt-4">Allowed</td>
-                <td className="pt-4 text-right">1</td>
+                <td className="pt-4 text-right">{dashboard.threats.allowed}</td>
               </tr>
 
             </tbody>
@@ -219,7 +235,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold">
-                18
+                {dashboard.policies.total}
               </h4>
             </div>
 
@@ -229,7 +245,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-emerald-400">
-                15
+                {dashboard.policies.active}
               </h4>
             </div>
 
@@ -239,7 +255,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-amber-400">
-                2
+                {dashboard.policies.draft}
               </h4>
             </div>
 
@@ -249,7 +265,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold">
-                1
+                {dashboard.policies.disabled}
               </h4>
             </div>
 
@@ -277,7 +293,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold">
-                300
+                {dashboard.licenses.total}
               </h4>
             </div>
 
@@ -287,7 +303,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-rose-400">
-                248
+                {dashboard.licenses.used}
               </h4>
             </div>
 
@@ -297,7 +313,7 @@ export default function SecurityAgentDashboardPage() {
               </p>
 
               <h4 className="mt-2 text-4xl font-bold text-emerald-400">
-                52
+                {dashboard.licenses.available}
               </h4>
             </div>
 
@@ -307,14 +323,16 @@ export default function SecurityAgentDashboardPage() {
 
             <div className="mb-2 flex items-center justify-between text-sm text-slate-400">
               <span>Utilization</span>
-              <span>83%</span>
+              <span>{dashboard.licenses.utilization}%</span>
             </div>
 
             <div className="h-3 overflow-hidden rounded-full bg-slate-800">
 
               <div
                 className="h-full rounded-full bg-amber-400"
-                style={{ width: "83%" }}
+                style={{
+                     width: `${dashboard.licenses.utilization}%`,
+                  }}
               />
 
             </div>
