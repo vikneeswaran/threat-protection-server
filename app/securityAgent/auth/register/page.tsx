@@ -111,10 +111,25 @@ if (cleanedPassword !== cleanedConfirmPassword) {
     // Redirect user to login page after successful registration.
     router.push("/securityAgent/auth/login");
 
- } catch (error: any) {
+
+  } catch (error: any) {
+    const messages =
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      typeof (error as { response?: { data?: { messages?: string } } }).response?.data?.messages === "string"
+        ? (error as { response: { data: { messages: string } } }).response.data.messages
+        : "Registration failed.";
+    toast.error(
+      messages
+
+ 
+    );
+  
+ 
   
   // Handle API errors such as duplicate company name or email registration.
-  const message = error?.response?.data?.message;
+  const message : any  = error?.response?.data?.message;
 
   if (
     message?.toLowerCase().includes("company") &&
@@ -138,6 +153,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   // Stop loading state after API request completion.
     setLoading(false);
   }
+
 };
 
   return (

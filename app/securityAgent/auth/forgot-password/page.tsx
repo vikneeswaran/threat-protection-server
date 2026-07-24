@@ -32,10 +32,16 @@ export default function ForgotPasswordPage() {
       );
 
       setEmail("");
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error &&
+        typeof (error as { response?: { data?: { message?: string } } }).response?.data?.message === "string"
+          ? (error as { response: { data: { message: string } } }).response.data.message
+          : "Failed to send reset link.";
       toast.error(
-        error?.response?.data?.message ||
-          "Failed to send reset link."
+        message
       );
     } finally {
       setLoading(false);

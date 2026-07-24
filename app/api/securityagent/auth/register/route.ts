@@ -2,11 +2,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
+import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap";
 
 // API endpoint to register a new user with validation, password encryption, duplicate checks, and database insertion.
 export async function POST(request: NextRequest) {
   try {
-   
+await ensureLocalAuthSchema();   
     // Extract registration details from the incoming request body.
     const body = await request.json();
 
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
       licenceType,
     } = body;
 
-    console.log("Register Request:", body);
+    console.info("Register Request:", body);
 
     // Normalize user input by trimming spaces and converting email to lowercase.
     const cleanedEmail = email?.trim().toLowerCase();
@@ -80,6 +81,41 @@ if (existingCompany.rows.length > 0) {
 
     // Encrypt user password before storing it in the database.
     const passwordHash = await bcrypt.hash(password, 10);
+// Database columns for user registration
+const insertColumns = [
+  "email",
+  "full_name",
+  "company_name",
+  "phone_number",
+  "password_hash",
+  "licence_type",
+];
+
+// Generate SQL placeholders: $1, $2, $3...
+const placeholders = insertColumns
+  .map((_, index) => `$${index + 1}`)
+  .join(", ");
+   // Insert new user registration details into the app_users table.
+    await query(
+      `
+      INSERT INTO app_users
+      (
+        ${insertColumns.join(",\n        ")}
+      )
+      VALUES
+      (
+        ${placeholders}
+      )
+      `,
+       [
+        cleanedEmail,
+        cleanedFullName,
+        cleanedCompanyName,
+        cleanedPhoneNumber || null,
+        passwordHash,
+        licenceType,
+      ]
+    );
 // Generate one User ID
 const userIdResult = await query(
   `SELECT gen_random_uuid() AS id`
@@ -205,6 +241,7 @@ await query(
       {
         success: false,
         message: "Registration failed.",
+        error: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
