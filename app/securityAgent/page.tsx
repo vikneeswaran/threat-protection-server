@@ -134,71 +134,75 @@ export default function SecurityAgentPage() {
           </a>
         </div>
       </section>
-      <section className="bg-gradient-to-br from-[#2f1c6a] via-[#36344d] to-[#1d1e20] text-white py-20">
-        <div className="container mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto items-center">
-            {/* Left: Info & Call-to-Action */}
-            <div>
-              <div className="mb-4 text-5xl">🛡️</div>
-              <h1 className="text-4xl md:text-5xl font-semibold mb-4">
-                Kuamini Security Agent
-              </h1>
-              <p className="text-gray-300 text-lg mb-8">
-                AI-powered endpoint threat protection for Windows, macOS, and Linux.
-                Lightweight. Always-on. Built for organisations that take security seriously.
-              </p>
-            </div>
+      <section className="bg-gradient-to-br from-[#2f1c6a] via-[#36344d] to-[#1d1e20] text-white py-8">
+  <div className="container mx-auto px-6 text-center">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-5xl mx-auto items-center">
+      {/* Left: Info & Call-to-Action */}
+      <div>
+        <div className="mb-4 text-5xl">🛡️</div>
+        <h1 className="text-4xl md:text-5xl font-semibold mb-3">
+          Kuamini Security Agent
+        </h1>
+        <p className="text-gray-300 max-w-2xl text-lg mb-8">
+          AI-powered endpoint threat protection for Windows, macOS, and Linux.
+          Lightweight. Always-on. Built for organisations that take security seriously.
+        </p>
+      </div>
 
-            {/* Right: Login/Registration & Access Section */}
-            <div className="bg-white bg-opacity-10 backdrop-blur-md rounded-lg p-8 border border-white border-opacity-20">
-              <h2 className="text-2xl font-semibold mb-6 text-center">Access Your Console</h2>
-              
-              <div className="space-y-4 mb-8">
-                {/* Login Button */}
-                <a
-                  href="/securityAgent/auth/login"
-                  className="block w-full text-center bg-white text-[#2f1c6a] font-semibold px-6 py-3 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  Login to Console
-                </a>
+      {/* Right: Login/Registration & Access Section */}
+      <div className="bg-white bg-opacity-10 backdrop-blur-md rounded-lg p-4 border border-white border-opacity-20">
+        <h2 className="text-2xl font-semibold mb-0 mt-0 text-center text-gray-500">
+          Access Your Console
+        </h2>
 
-                {/* Register Button */}
-                <a
-                  href="/securityAgent/auth/register"
-                  className="block w-full text-center border-2 border-white text-white font-semibold px-6 py-3 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors"
-                >
-                  Create Account
-                </a>
-              </div>
+        <div className="space-y-2 mb-3">
+          {/* Login Button */}
+          <a
+            href="/securityAgent/auth/login"
+            className="block w-full text-center text-xl bg-white text-[#2f1c6a] font-semibold px-6 py-3 mt-4 rounded-lg hover:bg-gray-200  transition-colors"
+          >
+            Login to Console
+          </a>
 
-              <div className="space-y-2 text-sm text-gray-200 mb-8">
-                <p className="flex items-center gap-2">
-                  <span className="text-lg">📊</span> Dashboard — Real-time threat monitoring
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="text-lg">🖥️</span> Endpoints — Manage all protected devices
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="text-lg">⚠️</span> Threats — View and respond to incidents
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="text-lg">📦</span> Installers — Download agent software
-                </p>
-              </div>
-
-              <div className="border-t border-white border-opacity-20 pt-6">
-                <p className="text-sm text-gray-300 text-center mb-3">Need Help?</p>
-                <a
-                  href="/contact"
-                  className="block text-center text-[#a8f7ff] hover:text-white font-medium transition-colors"
-                >
-                  Contact Support →
-                </a>
-              </div>
-            </div>
-          </div>
+          {/* Register Button */}
+          <a
+            href="/securityAgent/auth/register"
+            className="block w-full text-center border-2 border-white text-white font-semibold px-6 py-3 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors"
+          >
+            Create Account
+          </a>
         </div>
-      </section>
+
+          <div className="space-y-1 text-lg text-gray-500 mb-3 pl-8 -mt-8">
+          <p className="flex items-center gap-2">
+            <span className="text-lg">📊</span> Dashboard — Real-time threat monitoring
+          </p>
+          <p className="flex items-center gap-2">
+            <span className="text-lg">🖥️</span> Endpoints — Manage all protected devices
+          </p>
+          <p className="flex items-center gap-2">
+            <span className="text-lg">⚠️</span> Threats — View and respond to incidents
+          </p>
+          <p className="flex items-center gap-2">
+            <span className="text-lg">📦</span> Installers — Download agent software
+          </p>
+        </div>
+
+        <div className="border-t border-white border-opacity-20 pt-3">
+          <p className="text-sm text-gray-500 text-center mb-1">
+            Need Help?
+          </p>
+          <a
+            href="/contact"
+            className="block text-center text-[#5fd9e6] hover:text-white font-medium transition-colors"
+          >
+            Contact Support →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
       {/* Features Section */}
       <section className="py-16 bg-white">
