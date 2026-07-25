@@ -34,8 +34,7 @@ export default function AccountDropdown() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="rounded-md border border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-800"
-      >
+     className="flex h-12 items-center rounded-lg border border-slate-700 px-6 text-sm font-medium hover:bg-slate-800 transition-colors" >
         Account ▾
       </button>
 
@@ -55,13 +54,12 @@ export default function AccountDropdown() {
             Settings
           </Link>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-800"
-          >
-            Logout
-          </button>
+       <button
+  onClick={handleLogout}
+  className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-800"
+>
+  Logout
+</button>
         </div>
       )}
     </div>

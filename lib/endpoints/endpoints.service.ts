@@ -13,15 +13,22 @@ export interface EndpointSummary {
 
 export interface Endpoint {
   id: string;
+  account_id: string;
   hostname: string;
-  ip_address: string;
-  public_ip: string;
   os: string;
   os_version: string;
   agent_version: string;
+  ip_address: string;
+  mac_address: string;
   status: string;
-  infected: boolean;
+  last_seen_at: string;
+  registered_at: string;
+  created_at: string;
+  updated_at: string;
+  agent_id: string;
+  public_ip: string;
   secured_by_kuamini: boolean;
+  infected: boolean;
 }
 
 export interface EndpointsData {
@@ -33,7 +40,7 @@ export async function getEndpointsData(
   accountId: string
 ): Promise<EndpointsData> {
   const [summaryResult, endpointResult] = await Promise.all([
-    query(
+    query<EndpointSummary>(
       `
       SELECT
           COUNT(*)::int AS total,
@@ -50,22 +57,29 @@ export async function getEndpointsData(
       [accountId]
     ),
 
-    query(
+    query<Endpoint>(
       `
-      SELECT
-          id,
-          hostname,
-          ip_address,
-          public_ip,
-          os,
-          os_version,
-          agent_version,
-          status,
-          infected,
-          secured_by_kuamini
-      FROM endpoints
-      WHERE account_id = $1
-      ORDER BY created_at DESC;
+     SELECT
+    id,
+    account_id,
+    hostname,
+    os,
+    os_version,
+    agent_version,
+    ip_address,
+    mac_address,
+    status,
+    last_seen_at,
+    registered_at,
+    created_at,
+    updated_at,
+    agent_id,
+    public_ip,
+    secured_by_kuamini,
+    infected
+    FROM endpoints
+    WHERE account_id = $1
+  ORDER BY created_at DESC;
       `,
       [accountId]
     ),
@@ -75,4 +89,37 @@ export async function getEndpointsData(
     summary: summaryResult.rows[0],
     endpoints: endpointResult.rows,
   };
+}
+export async function getEndpointById(
+  id: string,
+  accountId: string
+): Promise<Endpoint | null> {
+  const result = await query<Endpoint>(
+    `
+    SELECT
+        id,
+        account_id,
+        hostname,
+        os,
+        os_version,
+        agent_version,
+        ip_address,
+        mac_address,
+        status,
+        last_seen_at,
+        registered_at,
+        created_at,
+        updated_at,
+        agent_id,
+        public_ip,
+        secured_by_kuamini,
+        infected
+    FROM endpoints
+    WHERE id = $1
+      AND account_id = $2;
+    `,
+    [id, accountId]
+  );
+
+  return result.rows[0] ?? null;
 }
