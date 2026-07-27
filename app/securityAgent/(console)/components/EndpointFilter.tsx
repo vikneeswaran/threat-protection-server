@@ -43,11 +43,12 @@ const buttonRef = useRef<HTMLButtonElement>(null);
     setMounted(true);
   }, []);
 
- useEffect(() => {
+useEffect(() => {
   function handleClickOutside(event: MouseEvent) {
-    const target = event.target as Node;
+    const target = event.target;
 
     if (
+      target instanceof globalThis.Node &&
       popupRef.current &&
       !popupRef.current.contains(target) &&
       buttonRef.current &&
