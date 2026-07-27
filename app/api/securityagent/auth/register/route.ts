@@ -81,41 +81,7 @@ if (existingCompany.rows.length > 0) {
 
     // Encrypt user password before storing it in the database.
     const passwordHash = await bcrypt.hash(password, 10);
-// Database columns for user registration
-const insertColumns = [
-  "email",
-  "full_name",
-  "company_name",
-  "phone_number",
-  "password_hash",
-  "licence_type",
-];
 
-// Generate SQL placeholders: $1, $2, $3...
-const placeholders = insertColumns
-  .map((_, index) => `$${index + 1}`)
-  .join(", ");
-   // Insert new user registration details into the app_users table.
-    await query(
-      `
-      INSERT INTO app_users
-      (
-        ${insertColumns.join(",\n        ")}
-      )
-      VALUES
-      (
-        ${placeholders}
-      )
-      `,
-       [
-        cleanedEmail,
-        cleanedFullName,
-        cleanedCompanyName,
-        cleanedPhoneNumber || null,
-        passwordHash,
-        licenceType,
-      ]
-    );
 // Generate one User ID
 const userIdResult = await query(
   `SELECT gen_random_uuid() AS id`
