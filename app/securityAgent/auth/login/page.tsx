@@ -6,7 +6,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/kuamini/header"
 import { Footer } from "@/components/kuamini/footer"
-
+import toast, { Toaster } from "react-hot-toast";
 // Login page for Security Agent authentication with API integration and user validation.
 export default function SecurityAgentLoginPage() {
   const router = useRouter()
@@ -44,8 +44,11 @@ export default function SecurityAgentLoginPage() {
         }
 
         // Redirect user to Security Agent dashboard after successful login.
-        router.push("/securityAgent/dashboard")
-        
+        toast.success("Login successful!");
+
+setTimeout(() => {
+  router.push("/securityAgent/dashboard");
+}, 2000);        
       // Handle network or unexpected errors during login process.
       } catch {
         setErrorMessage("Unable to sign in right now. Please try again.")
@@ -61,7 +64,7 @@ export default function SecurityAgentLoginPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-
+      <Toaster position="top-right" />
       <section className="bg-gradient-to-br from-[#2f1c6a] via-[#36344d] to-[#1d1e20] text-white py-16 flex-1">
         <div className="container mx-auto px-6">
           <div className="max-w-md mx-auto bg-white/10 border border-white/20 rounded-xl p-8 backdrop-blur-sm">

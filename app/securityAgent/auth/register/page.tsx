@@ -104,12 +104,11 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   licenceType: cleanedLicenceType,
 });
 
-    toast.success(
-      response.data?.message || "Registration successful."
-    );
+   toast.success(response.data?.message || "Registration successful.");
 
-    // Redirect user to login page after successful registration.
-    router.push("/securityAgent/auth/login");
+setTimeout(() => {
+  router.push("/securityAgent/auth/login");
+}, 2000);
 
 
   } catch (error: any) {
