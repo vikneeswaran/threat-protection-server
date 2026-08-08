@@ -55,42 +55,47 @@ export default function HomePage() {
       </section>
 
       {/* About Section */}
-      <section className="py-16 bg-white">
+      <section className="py-8 bg-white">
         <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-semibold text-gray-800 mb-8 text-center">About Kuamini Systems</h2>
+          <h2 className="text-3xl font-semibold text-gray-800 mb-6 text-center">About Kuamini Systems</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Our Mission</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                At Kuamini Systems Private Limited, we specialize in providing AI powered innovative solutions tailored
-                to meet the unique needs of Web and Mobile Application Development, Testing and Cloud Integration.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Our Vision</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Our mission is to empower businesses with cutting-edge technology and exceptional service, while our
-                vision is to be a leader in delivering transformative solutions that drive success and sustainability.
-              </p>
-            </div>
-          </div>
+          <div className="max-w-5xl mx-auto">
+            <div className="grid grid-cols-3 gap-6 items-start">
+              {/* Our Mission - Left */}
+              <div className="flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Our Mission</h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  At Kuamini Systems Private Limited, we specialize in providing AI powered innovative solutions tailored
+                  to meet the unique needs of Web and Mobile Application Development, Testing and Cloud Integration.
+                </p>
+              </div>
 
-          {/* Image */}
-          <div className="mt-12 max-w-4xl mx-auto">
-            <img
-              src="/laptop-with-code-charts-analytics-dark-theme.jpg"
-              alt="Kuamini Systems workspace"
-              className="w-full rounded-lg shadow-lg"
-            />
+              {/* Image - Center (aligned with first line of text sections) */}
+              <div className="flex justify-center max-w-[260px] w-full">
+                <img
+                  src="/laptop-with-code-charts-analytics-dark-theme.jpg"
+                  alt="Kuamini Systems workspace"
+                  className="w-full rounded-lg shadow-lg max-h-[507px] object-contain"
+                />
+              </div>
+
+              {/* Our Vision - Right */}
+              <div className="flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Our Vision</h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  Our mission is to empower businesses with cutting-edge technology and exceptional service, while our
+                  vision is to be a leader in delivering transformative solutions that drive success and sustainability.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Partners Section */}
-      <section className="py-16 bg-gray-50">
+      <section className="py-8 bg-gray-50">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-8">Partners Who Trust Us</h2>
+          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Partners Who Trust Us</h2>
           <div className="mx-auto flex max-w-[600px] justify-center">
             <PartnerLogo />
           </div>

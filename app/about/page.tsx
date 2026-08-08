@@ -62,7 +62,8 @@ export default function AboutPage() {
             <img
               src="/multiple-monitors-showing-code-and-dashboard-profe.jpg"
               alt="Kuamini Systems workspace"
-              className="w-full rounded-lg shadow-lg"
+
+              className="w-full rounded-lg shadow-lg scale-90" // Reduced image size by 10%
             />
           </div>
         </div>
@@ -88,3 +89,4 @@ export default function AboutPage() {
     </div>
   )
 }
+

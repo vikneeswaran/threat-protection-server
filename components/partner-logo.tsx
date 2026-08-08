@@ -13,7 +13,7 @@ export function PartnerLogo() {
     <img
       src="/partners/cintelligence-logo.png"
       alt="cIntelligence Partner"
-      className="h-auto w-full max-w-[568px] object-contain"
+      className="h-auto w-full max-w-[140px] max-h-[144px] object-contain"
       onError={() => setHasError(true)}
     />
   )
