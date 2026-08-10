@@ -21,6 +21,39 @@ await ensureLocalAuthSchema();
     } = body;
 
     console.info("Register Request:", body);
+    let total_Licenses: number;
+
+switch (String(licenceType)) {
+  case "1":
+    total_Licenses = 5;
+    break;
+
+  case "2":
+    total_Licenses = 50;
+    break;
+
+  case "3":
+    total_Licenses = 100;
+    break;
+
+  case "4":
+    total_Licenses = 500;
+    break;
+
+  case "5":
+    // Decide your business rule for 500+
+    total_Licenses = 501;
+    break;
+
+  default:
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Invalid license type.",
+      },
+      { status: 400 }
+    );
+}
 
     // Normalize user input by trimming spaces and converting email to lowercase.
     const cleanedEmail = email?.trim().toLowerCase();
@@ -94,7 +127,7 @@ const accountResult = await query(
       id,
       name,
       level,
-      total_licenses,
+      total_Licenses,
       allocated_licenses,
       used_licenses,
       is_active
@@ -104,7 +137,7 @@ const accountResult = await query(
       gen_random_uuid(),
       $1,
       1,
-      2,
+      $2,
       0,
       0,
       true
@@ -113,6 +146,7 @@ const accountResult = await query(
   `,
   [
     cleanedCompanyName,
+    total_Licenses
   ]
 );
 

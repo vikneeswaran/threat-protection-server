@@ -12,6 +12,7 @@ function hashToken(token: string) {
 
 export type AuthUser = {
   id: string
+  uuid: string
   email: string
   full_name: string | null
   role: "super_admin" | "admin" | "operator" | "viewer"
