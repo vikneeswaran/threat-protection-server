@@ -9,17 +9,27 @@ import { Header } from "@/components/kuamini/header";
 import { Footer } from "@/components/kuamini/footer";
 import { register } from "@/app/services/authService";
 
+
 // Render the Security agent registration page
 export default function SecurityAgentRegisterPage() {
     
   // router instance used for navigation after successful registration
     const router = useRouter(); 
+    const licenseRanges: Record<string, { min: number; max: number | null }> = {
+  "1": { min: 1, max: 5 },
+  "2": { min: 1, max: 50 },
+  "3": { min: 51, max: 100 },
+  "4": { min: 101, max: 500 },
+  "5": { min: 501, max: null },
+};
    
     // Form input state variables
     const [companyName, setCompanyName] = useState("");
     const [phoneNumber, setPhoneNumber] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [licenceType, setLicenceType] = useState("");  
+    const [licenceType, setLicenceType] = useState(""); 
+    const [licenseCount, setLicenseCount] = useState("");
+const [licenseCountError, setLicenseCountError] = useState(""); 
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -60,7 +70,8 @@ export default function SecurityAgentRegisterPage() {
   !password.trim() ||
   !confirmPassword.trim() ||
   !companyName.trim() ||
-  !licenceType.trim()
+  !licenceType.trim() ||
+  !licenseCount.trim()
 ) {
   return toast.error("Please fill all required fields.");
 }
@@ -102,6 +113,7 @@ if (cleanedPassword !== cleanedConfirmPassword) {
   email: cleanedEmail,
   password: cleanedPassword,
   licenceType: cleanedLicenceType,
+  licenseCount: Number(licenseCount),
 });
 
    toast.success(response.data?.message || "Registration successful.");
@@ -408,19 +420,26 @@ setTimeout(() => {
     placeholder="Confirm Password"
     className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
   />
-</div><div>
-  <label className="block text-sm mb-1">
-    License Type <span className="text-red-400">*</span>
+</div>
+{/* License Type */}
+<div>
+  <label className="block text-sm text-gray-200 mb-1">
+    License Type
+    <span className="text-red-400"> *</span>
   </label>
 
   <div className="relative">
     <select
       value={licenceType}
-      onChange={(e) => setLicenceType(e.target.value)}
+      onChange={(e) => {
+        setLicenceType(e.target.value);
+        setLicenseCount("");
+        setLicenseCountError("");
+      }}
       required
-      className="w-full appearance-none rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white focus:outline-none"
+      className="w-full appearance-none rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white outline-none focus:border-white/60 focus:ring-1 focus:ring-white/40"
     >
-      <option value="" disabled className="bg-white text-gray-900">
+      <option value="" className="bg-white text-gray-900">
         Select License Type
       </option>
 
@@ -445,7 +464,7 @@ setTimeout(() => {
       </option>
     </select>
 
-    {/* Custom dropdown arrow */}
+    {/* Dropdown arrow */}
     <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
       <svg
         className="h-5 w-5 text-white"
@@ -462,6 +481,58 @@ setTimeout(() => {
       </svg>
     </div>
   </div>
+</div>
+
+{/* Number of Licences */}
+<div>
+  <label className="block text-sm text-gray-200 mb-1">
+    Number of Licences
+    <span className="text-red-400"> *</span>
+  </label>
+
+  <input
+  type="text"
+  inputMode="numeric"
+  value={licenseCount}
+  disabled={!licenceType}
+  placeholder="Enter number of licences"
+  onChange={(e) => {
+  const value = e.target.value.replace(/\D/g, "");
+
+  setLicenseCount(value);
+
+  if (!value) {
+    setLicenseCountError("");
+    return;
+  }
+
+  const count = Number(value);
+  const range = licenseRanges[licenceType];
+
+  if (!range) {
+    setLicenseCountError("");
+    return;
+  }
+
+  if (count < range.min) {
+    setLicenseCountError(
+      `This license type requires at least ${range.min} licence${range.min > 1 ? "s" : ""}.`
+    );
+  } else if (range.max !== null && count > range.max) {
+    setLicenseCountError(
+      `This license type allows a maximum of ${range.max} licences.`
+    );
+  } else {
+    setLicenseCountError("");
+  }
+}}
+  className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-white"
+/>
+  {licenseCountError && (
+    <p className="mt-1 text-sm text-red-400">
+      {licenseCountError}
+    </p>
+  )}
 </div>
 <div className="flex gap-3">
  
@@ -485,12 +556,14 @@ setTimeout(() => {
       setPassword("");
       setConfirmPassword("");
       setLicenceType("");
+      setLicenseCount("");
       setFullNameError("");
       setEmailError("");
       setCompanyNameError("");
       setPhoneError("");
       setPasswordError("");
       setConfirmPasswordError("");
+      setLicenseCountError("");
     }}
     disabled={loading}
     className="w-200 rounded-lg border border-white/30 bg-white/10 py-2.5 font-semibold text-white hover:bg-white/20"

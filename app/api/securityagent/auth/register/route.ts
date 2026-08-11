@@ -12,37 +12,90 @@ await ensureLocalAuthSchema();
     const body = await request.json();
 
     const {
-      fullName,
-      companyName,
-      email,
-      phoneNumber,
-      password,
-      licenceType,
-    } = body;
+  fullName,
+  companyName,
+  email,
+  phoneNumber,
+  password,
+  licenceType,
+  licenseCount,
+} = body;
 
-    console.info("Register Request:", body);
-    let total_Licenses: number;
+console.info("Register Request:", body);
 
+const total_Licenses = Number(licenseCount);
+
+// Validate license count
+if (!Number.isInteger(total_Licenses) || total_Licenses <= 0) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Please enter a valid number of licenses.",
+    },
+    { status: 400 }
+  );
+}
+
+// Validate license count against selected license type
 switch (String(licenceType)) {
   case "1":
-    total_Licenses = 5;
+    if (total_Licenses < 1 || total_Licenses > 5) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Trial License allows 1 to 5 licenses.",
+        },
+        { status: 400 }
+      );
+    }
     break;
 
   case "2":
-    total_Licenses = 50;
+    if (total_Licenses < 1 || total_Licenses > 50) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User License allows 1 to 50 licenses.",
+        },
+        { status: 400 }
+      );
+    }
     break;
 
   case "3":
-    total_Licenses = 100;
+    if (total_Licenses < 51 || total_Licenses > 100) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User License allows 51 to 100 licenses.",
+        },
+        { status: 400 }
+      );
+    }
     break;
 
   case "4":
-    total_Licenses = 500;
+    if (total_Licenses < 101 || total_Licenses > 500) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User License allows 101 to 500 licenses.",
+        },
+        { status: 400 }
+      );
+    }
     break;
 
   case "5":
-    // Decide your business rule for 500+
-    total_Licenses = 501;
+    if (total_Licenses < 501) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User License requires at least 501 licenses.",
+        },
+        { status: 400 }
+      );
+    }
     break;
 
   default:
