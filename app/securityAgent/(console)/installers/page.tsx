@@ -45,7 +45,7 @@ const installerData = await getInstallerData(
       Download and install the Kuamini Security Agent on your endpoints.
     </p>
   </div>
-  <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+ <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-6">
   <h3 className="text-2xl font-semibold">
     License Status
   </h3>
