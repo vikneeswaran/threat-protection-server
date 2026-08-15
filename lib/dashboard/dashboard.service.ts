@@ -94,6 +94,7 @@ export async function getDashboardData(
           total_licenses,
           allocated_licenses,
           used_licenses,
+          available_licenses,
           license_expires_at
       FROM accounts
       WHERE id = $1;
@@ -107,18 +108,41 @@ export async function getDashboardData(
   const policy = policyResult.rows[0];
   const account = accountResult.rows[0];
 
-  const totalLicenses = account?.total_licenses ?? 0;
-  const allocatedLicenses = account?.allocated_licenses ?? 0;
-  const usedLicenses = account?.used_licenses ?? 0;
+  // --------------------------------------------------
+  // LICENSE DATA
+  //
+  // These values are read directly from the database.
+  //
+  // The 50% child-allocation rule is NOT applied here.
+  // It is handled when creating a child account.
+  // --------------------------------------------------
 
-  const availableLicenses = Math.max(
-    totalLicenses - usedLicenses,
-    0
-  );
+  const totalLicenses =
+    Number(account?.total_licenses ?? 0);
+
+  const allocatedLicenses =
+    Number(account?.allocated_licenses ?? 0);
+
+  const usedLicenses =
+    Number(account?.used_licenses ?? 0);
+
+  const availableLicenses =
+    Number(account?.available_licenses ?? 0);
+
+  // --------------------------------------------------
+  // License utilization
+  //
+  // Used / Allocated * 100
+  // --------------------------------------------------
 
   const utilization =
-    totalLicenses > 0
-      ? Number(((usedLicenses / totalLicenses) * 100).toFixed(2))
+    allocatedLicenses > 0
+      ? Number(
+          (
+            (usedLicenses / allocatedLicenses) *
+            100
+          ).toFixed(2)
+        )
       : 0;
 
   return {
@@ -153,7 +177,8 @@ export async function getDashboardData(
       used: usedLicenses,
       available: availableLicenses,
       utilization,
-      expiresAt: account?.license_expires_at ?? null,
+      expiresAt:
+        account?.license_expires_at ?? null,
     },
   };
 }

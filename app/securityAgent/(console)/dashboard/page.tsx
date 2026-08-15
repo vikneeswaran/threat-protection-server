@@ -285,39 +285,56 @@ const dashboard = await getDashboardData(user.account_id);
             4. License Status
           </h3>
 
-          <div className="grid grid-cols-3 gap-4">
+          
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
-              <p className="text-slate-400">
-                Total
-              </p>
+  {/* Total */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Total
+    </p>
 
-              <h4 className="mt-2 text-4xl font-bold">
-                {dashboard.licenses.total}
-              </h4>
-            </div>
+    <h4 className="mt-2 text-4xl font-bold">
+      {dashboard.licenses.total}
+    </h4>
+  </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
-              <p className="text-slate-400">
-                Used
-              </p>
 
-              <h4 className="mt-2 text-4xl font-bold text-rose-400">
-                {dashboard.licenses.used}
-              </h4>
-            </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
-              <p className="text-slate-400">
-                Available
-              </p>
+  {/* Allocated */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Allocated
+    </p>
 
-              <h4 className="mt-2 text-4xl font-bold text-emerald-400">
-                {dashboard.licenses.available}
-              </h4>
-            </div>
+    <h4 className="mt-2 text-4xl font-bold text-blue-400">
+      {dashboard.licenses.allocated}
+    </h4>
+  </div>
 
-          </div>
+    {/* Used */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Used
+    </p>
+
+    <h4 className="mt-2 text-4xl font-bold text-rose-400">
+      {dashboard.licenses.used}
+    </h4>
+  </div>
+
+  {/* Available */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Available
+    </p>
+
+    <h4 className="mt-2 text-4xl font-bold text-emerald-400">
+      {dashboard.licenses.available} 
+    </h4>
+  </div>
+
+</div>
 
           <div className="mt-8">
 

@@ -9,8 +9,9 @@ export async function getInstallerData(
     `
     SELECT
       total_licenses,
+      allocated_licenses,
       used_licenses,
-      (total_licenses - used_licenses) AS available
+      available_licenses
     FROM accounts
     WHERE id = $1
     `,
@@ -19,33 +20,40 @@ export async function getInstallerData(
 
   // Get latest active installer
   const installerResult = await query(
-  `
-  SELECT
-    version,
-    platform,
-    file_name,
-    file_size,
-    download_url
-  FROM installers
-  WHERE
-    is_active = true
-    AND LOWER(platform) = LOWER($1)
-  ORDER BY created_at DESC
-  LIMIT 1
-  `,
-  [platform]
-);
-  const account = accountResult.rows[0];
-const installer = installerResult.rows[0];
+    `
+    SELECT
+      version,
+      platform,
+      file_name,
+      file_size,
+      download_url
+    FROM installers
+    WHERE
+      is_active = true
+      AND LOWER(platform) = LOWER($1)
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [platform]
+  );
 
-if (!installer) {
-  throw new Error("No active installer found.");
-}
+  const account = accountResult.rows[0];
+  const installer = installerResult.rows[0];
+
+  if (!account) {
+    throw new Error("Account not found.");
+  }
+
+  if (!installer) {
+    throw new Error("No active installer found.");
+  }
+
   return {
     license: {
-      total: account.total_licenses,
-      used: account.used_licenses,
-      available: account.available,
+      total: Number(account.total_licenses),
+      allocated: Number(account.allocated_licenses),
+      used: Number(account.used_licenses),
+      available: Number(account.available_licenses),
     },
 
     installer: {
