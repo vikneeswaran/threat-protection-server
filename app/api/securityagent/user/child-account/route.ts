@@ -72,6 +72,18 @@ export async function POST(request: Request) {
 
     const requestedLicenses = Number(licenses);
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+if (!emailRegex.test(cleanedEmail)) {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Please enter a valid email address.",
+    },
+    { status: 400 }
+  );
+}
+
     // -----------------------------------
     // 3. Validate input
     // -----------------------------------
@@ -182,6 +194,7 @@ export async function POST(request: Request) {
           total_licenses,
           allocated_licenses,
           used_licenses,
+          available_licenses,
           is_active
         FROM accounts
         WHERE id = $1
@@ -269,10 +282,8 @@ const usedLicenses =
   Number(parentAccount.used_licenses || 0);
 
 // Current licenses available to this parent
-const availableLicenses = Math.max(
-  allocatedLicenses - usedLicenses,
-  0
-);
+const availableLicenses =
+  Number(parentAccount.available_licenses || 0);
 
 // Maximum this parent can give to THIS child.
 // This is 50% of the parent's total licenses.

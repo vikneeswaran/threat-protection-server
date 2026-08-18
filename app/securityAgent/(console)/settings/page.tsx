@@ -308,6 +308,19 @@ async function handleCreateUser() {
   }
 }
 
+const maxChildLicenses = accountData
+  ? Math.min(
+      Math.floor(
+        Number(accountData.totalLicenses || 0) * 0.5
+      ),
+      Number(accountData.availableLicenses || 0)
+    )
+  : 0;
+
+const licenseAllocationInvalid =
+  childLicenses !== "" &&
+  Number(childLicenses) > maxChildLicenses;
+
 
   return (
     <>
@@ -567,54 +580,35 @@ if (maxChildLicenses <= 0) {
             type="number"
             min="1"
             value={childLicenses}
-   onChange={(e) => {
-  const value = Number(e.target.value);
 
-  if (accountData) {
-    const totalLicenses = Number(
-      accountData.totalLicenses || 0
-    );
 
-    const availableLicenses = Number(
-      accountData.availableLicenses || 0
-    );
-
-    const maxBy50Percent = Math.floor(
-      totalLicenses * 0.5
-    );
-
-    const maxChildLicenses = Math.min(
-      maxBy50Percent,
-      availableLicenses
-    );
-
-    if (value > maxChildLicenses) {
-      toast.error(
-        `You can allocate a maximum of ${maxChildLicenses} license(s) to this child account.`
-      );
-      return;
-    }
-  }
-
+onChange={(e) => {
   setChildLicenses(e.target.value);
 }}
+
             placeholder="Enter number of licenses"
             className="w-full appearance-none rounded-lg border border-slate-600 bg-slate-800 px-4 py-3 focus:border-blue-500 focus:outline-none"
           />
+         
 
-   {accountData && (
+
+
+
+{accountData && (
   <div className="mt-2 space-y-1">
     <p className="text-sm text-slate-400">
       Maximum licenses for child:{" "}
       <span className="font-semibold text-blue-400">
-        {Math.min(
-          Math.floor(
-            Number(accountData.totalLicenses || 0) * 0.5
-          ),
-          Number(accountData.availableLicenses || 0)
-        )}
+        {maxChildLicenses}
       </span>
     </p>
+
+    {licenseAllocationInvalid && (
+      <p className="text-sm text-red-400">
+        You cannot allocate more than{" "}
+        {maxChildLicenses} license(s) to this child account.
+      </p>
+    )}
   </div>
 )}
         </div>
@@ -622,7 +616,14 @@ if (maxChildLicenses <= 0) {
         <button
           type="button"
           onClick={handleCreateChildAccount}
-          disabled={loading}
+          
+disabled={
+  loading ||
+  !childLicenses ||
+  Number(childLicenses) < 1 ||
+  licenseAllocationInvalid
+}
+
           className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
         >
           {loading ? "Creating..." : "Create Account"}
