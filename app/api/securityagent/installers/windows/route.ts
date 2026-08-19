@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/session";
 import { getInstallerData } from "@/lib/installers/installer.service";
+import { getInstallationToken } from "@/lib/installation-token";
+
 
 export async function GET() {
   try {
@@ -18,10 +20,15 @@ export async function GET() {
   "Windows"
 );
 
+ const installationToken = await getInstallationToken(
+      user.account_id
+    );
+
     return NextResponse.json({
       success: true,
       license: data.license,
       installer: data.installer,
+      installationToken,
     });
   } catch (error) {
     console.error(error);

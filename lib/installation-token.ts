@@ -7,10 +7,20 @@ function generateInstallationToken(): string {
     .slice(0, 128);
 }
 
+function getTokenExpiry(): Date {
+  const expiry = new Date();
+  // Token is valid for 1 year
+  expiry.setFullYear(expiry.getFullYear() + 1);
+  return expiry;
+}
+
 export async function getInstallationToken(accountId: string) {
   const existing = await query(
     `
-      SELECT installation_token
+      SELECT
+        id,
+        installation_token,
+        expires_at
       FROM installation_tokens
       WHERE account_id = $1
       LIMIT 1
@@ -20,41 +30,65 @@ export async function getInstallationToken(accountId: string) {
 
   // Existing token found
   if (existing.rows.length > 0) {
-    const currentToken = existing.rows[0].installation_token;
+    const tokenRecord = existing.rows[0];
 
-    // Existing token is old format
-    if (currentToken.length !== 128) {
+    // Token format is invalid
+    if (tokenRecord.installation_token.length !== 128) {
       const newToken = generateInstallationToken();
+      const expiresAt = getTokenExpiry();
 
       await query(
         `
           UPDATE installation_tokens
-          SET installation_token = $1
-          WHERE account_id = $2
+          SET
+            installation_token = $1,
+            expires_at = $2
+          WHERE account_id = $3
         `,
-        [newToken, accountId]
+        [newToken, expiresAt, accountId]
       );
 
       return newToken;
     }
 
-    // Existing token is already correct
-    return currentToken;
+    // Token is still valid
+    if (new Date(tokenRecord.expires_at) > new Date()) {
+      return tokenRecord.installation_token;
+    }
+
+    // Token expired → generate a new token
+    const newToken = generateInstallationToken();
+    const expiresAt = getTokenExpiry();
+
+    await query(
+      `
+        UPDATE installation_tokens
+        SET
+          installation_token = $1,
+          expires_at = $2
+        WHERE account_id = $3
+      `,
+      [newToken, expiresAt, accountId]
+    );
+
+    return newToken;
   }
 
-  // No token exists for this account
+  // No token exists → create one
   const newToken = generateInstallationToken();
+  const expiresAt = getTokenExpiry();
 
   await query(
     `
       INSERT INTO installation_tokens
       (
         account_id,
-        installation_token
+        installation_token,
+        expires_at
       )
-      VALUES ($1, $2)
+      VALUES ($1, $2, $3)
     `,
-    [accountId, newToken]
+    [accountId, newToken, expiresAt]
   );
 
   return newToken;

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { ensureLocalAuthSchema } from "@/lib/auth/bootstrap";
+import { getInstallationToken } from "@/lib/installation-token";
 
 // API endpoint to register a new user with validation, password encryption, duplicate checks, and database insertion.
 export async function POST(request: NextRequest) {
@@ -206,7 +207,13 @@ const accountResult = await query(
 const accountId = accountResult.rows[0].id;
 console.log("Account Result:", accountResult.rows);
 console.log("Account ID:", accountId);
+
+const installationToken = await getInstallationToken(accountId);
+
+console.log("Installation Token created for account:", accountId);
 const userId = userIdResult.rows[0].id;
+
+
 
 // Insert into app_users
 await query(
@@ -278,13 +285,15 @@ await query(
     cleanedFullName,
 ]
 );
-    
 
     // Return success response after completing user registration.
-    return NextResponse.json({
-      success: true,
-      message: "Registration successful.",
-    });
+   return NextResponse.json({
+  success: true,
+  message: "Registration successful.",
+  accountId,
+  userId,
+  installationToken,
+});
     
     // Handle unexpected errors and return registration failure response.
   } catch (error) {
