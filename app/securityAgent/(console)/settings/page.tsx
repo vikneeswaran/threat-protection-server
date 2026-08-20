@@ -28,8 +28,8 @@ export default function SettingsPage() {
   const [childPassword, setChildPassword] = useState("");
   const [childConfirmPassword, setChildConfirmPassword] = useState("");
   const [accountData, setAccountData] = useState<any>(null);
-  const [accountLoading, setAccountLoading] = useState(false);
-  const [accountError, setAccountError] = useState("");
+  //const [accountLoading, setAccountLoading] = useState(false);
+  //const [accountError, setAccountError] = useState("");
   const [childLicenses, setChildLicenses] = useState("");
   const [noLicensesMessage, setNoLicensesMessage] = useState(false);
   const [userFullName, setUserFullName] = useState("");
