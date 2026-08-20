@@ -272,36 +272,56 @@ export default async function SecurityAgentDashboardPage() {
             4. License Status
           </h3>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-            {/* Total */}
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 sm:p-5">
-              <p className="text-sm text-slate-400 sm:text-base">Total</p>
+          
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
 
-              <h4 className="mt-2 text-3xl font-bold text-white sm:text-4xl">
-                {dashboard.licenses.total}
-              </h4>
-            </div>
+  {/* Total */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Total
+    </p>
 
-            {/* Used */}
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 sm:p-5">
-              <p className="text-sm text-slate-400 sm:text-base">Used</p>
+    <h4 className="mt-2 text-4xl font-bold">
+      {dashboard.licenses.total}
+    </h4>
+  </div>
 
-              <h4 className="mt-2 text-3xl font-bold text-rose-400 sm:text-4xl">
-                {dashboard.licenses.used}
-              </h4>
-            </div>
 
-            {/* Available */}
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 sm:p-5">
-              <p className="text-sm text-slate-400 sm:text-base">
-                Available
-              </p>
 
-              <h4 className="mt-2 text-3xl font-bold text-emerald-400 sm:text-4xl">
-                {dashboard.licenses.available}
-              </h4>
-            </div>
-          </div>
+  {/* Allocated */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Allocated
+    </p>
+
+    <h4 className="mt-2 text-4xl font-bold text-blue-400">
+      {dashboard.licenses.allocated}
+    </h4>
+  </div>
+
+    {/* Used */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Used
+    </p>
+
+    <h4 className="mt-2 text-4xl font-bold text-rose-400">
+      {dashboard.licenses.used}
+    </h4>
+  </div>
+
+  {/* Available */}
+  <div className="rounded-xl border border-slate-800 bg-slate-950 p-5">
+    <p className="text-slate-400">
+      Available
+    </p>
+
+    <h4 className="mt-2 text-4xl font-bold text-emerald-400">
+      {dashboard.licenses.available} 
+    </h4>
+  </div>
+
+</div>
 
           {/* Utilization */}
           <div className="mt-6 sm:mt-8">

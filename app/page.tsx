@@ -1,14 +1,19 @@
 import { Header } from "@/components/kuamini/header"
 import { Footer } from "@/components/kuamini/footer"
 import { PartnerLogo } from "@/components/partner-logo"
-
+import Link from "next/link";
 export const metadata = {
   title: "Innovative Software Solutions for Business | Kuamini Systems",
   description:
     "Welcome to Kuamini Systems Private Limited, your trusted partner in delivering innovative business solutions. We specialize in enhancing operational efficiency and driving growth for businesses of all sizes.",
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+//   const response = await fetch("http://localhost:3001/api/server-info", {
+//   cache: "no-store",
+//   });
+
+// const apiData = await response.json();
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -21,6 +26,49 @@ export default function HomePage() {
             <br />
             Technology. Powered by AI
           </h1>
+
+          {/* {api data} */}
+
+<Link
+  href="/server2"
+  className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
+>
+  Server 2 (Port 3001)
+</Link>
+
+{/* serverinfo message from server 2 api */}
+    {/* <section className="py-10">
+  <div className="container mx-auto px-6">
+    <div className="max-w-xl mx-auto bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-8 text-center">
+
+      <h2 className="text-3xl font-bold text-white mb-6">
+        Data from Server 2
+      </h2>
+
+      <div className="space-y-3 text-lg">
+        <p>
+          <span className="font-semibold text-white">Server:</span>{" "}
+          <span className="text-gray-200">{apiData.server}</span>
+        </p>
+
+        <p>
+          <span className="font-semibold text-white">Status:</span>{" "}
+          <span className="text-green-400">{apiData.status}</span>
+        </p>
+
+        <p>
+          <span className="font-semibold text-white">Message:</span>{" "}
+          <span className="text-gray-200">{apiData.message}</span>
+        </p>
+
+        <p className="text-sm text-gray-400">
+          {apiData.timestamp}
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section> */}
 
           {/* Service Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto mt-8">

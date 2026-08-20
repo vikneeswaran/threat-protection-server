@@ -191,7 +191,7 @@ const accountResult = await query(
       $1,
       1,
       $2,
-      0,
+      $2,
       0,
       true
   )
