@@ -28,8 +28,6 @@ export default function SettingsPage() {
   const [childPassword, setChildPassword] = useState("");
   const [childConfirmPassword, setChildConfirmPassword] = useState("");
   const [accountData, setAccountData] = useState<any>(null);
-  //const [accountLoading, setAccountLoading] = useState(false);
-  //const [accountError, setAccountError] = useState("");
   const [childLicenses, setChildLicenses] = useState("");
   const [noLicensesMessage, setNoLicensesMessage] = useState(false);
   const [userFullName, setUserFullName] = useState("");
@@ -91,11 +89,8 @@ export default function SettingsPage() {
     }
   }
 
-  async function loadAccountData() {
+async function loadAccountData() {
   try {
-    setAccountLoading(true);
-    setAccountError("");
-
     const response = await fetch(
       "/api/securityagent/user/account",
       {
@@ -107,37 +102,25 @@ export default function SettingsPage() {
     const result = await response.json();
 
     if (!response.ok) {
-      setAccountError(
-        result.error ||
-          "Failed to load account information."
+      console.error(
+        "Failed to load account information:",
+        result.error
       );
-
       return null;
     }
 
     setAccountData(result.account);
 
-    // IMPORTANT:
-    // Return the account data to the caller.
     return result.account;
-
   } catch (error) {
     console.error(
       "Account information error:",
       error
     );
 
-    setAccountError(
-      "Unable to load account information."
-    );
-
     return null;
-
-  } finally {
-    setAccountLoading(false);
   }
 }
-
 async function handleCreateChildAccount() {
   if (!childFullName || !childEmail || !childPassword || !childConfirmPassword) {
     toast.error("Please fill all required fields.");
