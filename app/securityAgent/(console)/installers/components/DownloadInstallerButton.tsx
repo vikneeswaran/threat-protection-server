@@ -11,13 +11,13 @@ export default function DownloadInstallerButton() {
 
     const data = await response.json();
 
-    console.log(data);
+    console.log("Installer data:", data);
 
     // Start download
-    window.location.href = `/installers/${data.installer.fileName}`;
+    window.location.href = data.installer.downloadUrl;
 
   } catch (error) {
-    console.error(error);
+    console.error("Download error:", error);
     alert("Unable to download installer.");
   }
 }
