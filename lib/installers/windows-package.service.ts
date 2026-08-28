@@ -1,14 +1,13 @@
-import { createWriteStream, promises as fs } from "fs";
+import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import { pipeline } from "stream/promises";
+import { createWriteStream } from "fs";
 import { ZipArchive } from "archiver";
 import AdmZip from "adm-zip";
 
 interface WindowsPackageOptions {
   downloadUrl: string;
   version: string;
-  fileName: string;
   installationToken: string;
 }
 
@@ -43,7 +42,6 @@ function createZip(
 export async function createWindowsInstallerPackage({
   downloadUrl,
   version,
-  fileName,
   installationToken,
 }: WindowsPackageOptions): Promise<{
   packagePath: string;
@@ -83,12 +81,16 @@ export async function createWindowsInstallerPackage({
   try {
     await fs.mkdir(
       extractedDirectory,
-      { recursive: true }
+      {
+        recursive: true,
+      }
     );
 
     await fs.mkdir(
       packageDirectory,
-      { recursive: true }
+      {
+        recursive: true,
+      }
     );
 
     // --------------------------------------------------
@@ -109,9 +111,26 @@ export async function createWindowsInstallerPackage({
       );
     }
 
-    await pipeline(
-      response.body as unknown as NodeJS.ReadableStream,
-      createWriteStream(sourceZipPath)
+    /*
+     * Use arrayBuffer() instead of Readable.fromWeb().
+     *
+     * This avoids the Node.js Web ReadableStream type
+     * incompatibility between different TypeScript typings.
+     */
+
+    const installerBuffer = Buffer.from(
+      await response.arrayBuffer()
+    );
+
+    if (installerBuffer.length === 0) {
+      throw new Error(
+        "Installer download returned an empty file."
+      );
+    }
+
+    await fs.writeFile(
+      sourceZipPath,
+      installerBuffer
     );
 
     // --------------------------------------------------
@@ -135,7 +154,9 @@ export async function createWindowsInstallerPackage({
     ): Promise<void> {
       await fs.mkdir(
         destination,
-        { recursive: true }
+        {
+          recursive: true,
+        }
       );
 
       const entries = await fs.readdir(

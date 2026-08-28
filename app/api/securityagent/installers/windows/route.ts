@@ -46,7 +46,6 @@ export async function GET() {
       await createWindowsInstallerPackage({
         downloadUrl: data.installer.downloadUrl,
         version: data.installer.version,
-        fileName: data.installer.fileName,
         installationToken,
       });
 
