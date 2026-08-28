@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+
+interface JWTPayload {
+  accountId: string;
+  iat: number;
+  exp: number;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,28 +16,25 @@ export async function POST(request: NextRequest) {
 
     const {
       installationToken,
+      registrationToken,
       installerVersion,
       platform,
+      agentId,
+      hostname,
+      os,
+      osVersion,
     } = body;
 
     // -----------------------------------------
     // 1. Validate request
     // -----------------------------------------
-    if (!installationToken || typeof installationToken !== "string") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Installation token is required.",
-        },
-        { status: 400 }
-      );
-    }
+    const token = installationToken || registrationToken;
 
-    if (installationToken.length !== 128) {
+    if (!token || typeof token !== "string") {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid installation token.",
+          message: "Installation token or registration token is required.",
         },
         { status: 400 }
       );
@@ -55,48 +61,89 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 2. Find installation token
+    // 2. Validate token format (JWT or legacy)
     // -----------------------------------------
-    const tokenResult = await query(
-      `
-      SELECT
-        id,
-        account_id,
-        installation_token,
-        expires_at
-      FROM installation_tokens
-      WHERE installation_token = $1
-      LIMIT 1
-      `,
-      [installationToken]
-    );
+    let accountId: string | null = null;
+    let tokenRecord: any = null;
 
-    if (tokenResult.rows.length === 0) {
+    // Try JWT token first
+    if (token.includes(".")) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+        accountId = decoded.accountId;
+        
+        console.info(
+          `[Agent Register] JWT token validated for account: ${accountId}`
+        );
+      } catch (jwtError) {
+        console.warn("[Agent Register] JWT verification failed, trying legacy token");
+        // Fall through to legacy token check
+      }
+    }
+
+    // If JWT didn't work, try legacy token lookup
+    if (!accountId) {
+      if (token.length !== 128) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Invalid installation token format.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const legacyTokenResult = await query(
+        `
+        SELECT
+          id,
+          account_id,
+          installation_token,
+          expires_at
+        FROM installation_tokens
+        WHERE installation_token = $1
+        LIMIT 1
+        `,
+        [token]
+      );
+
+      if (legacyTokenResult.rows.length === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Invalid installation token.",
+          },
+          { status: 401 }
+        );
+      }
+
+      tokenRecord = legacyTokenResult.rows[0];
+
+      // -----------------------------------------
+      // 3. Check token expiry (legacy)
+      // -----------------------------------------
+      if (new Date(tokenRecord.expires_at) <= new Date()) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Installation token has expired.",
+          },
+          { status: 401 }
+        );
+      }
+
+      accountId = tokenRecord.account_id;
+    }
+
+    if (!accountId) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid installation token.",
+          message: "Unable to resolve account from token.",
         },
         { status: 401 }
       );
     }
-
-    const tokenRecord = tokenResult.rows[0];
-
-    // -----------------------------------------
-    // 3. Check token expiry
-    // -----------------------------------------
-    if (new Date(tokenRecord.expires_at) <= new Date()) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Installation token has expired.",
-        },
-        { status: 401 }
-      );
-    }
-
-    const accountId = tokenRecord.account_id;
 
     // -----------------------------------------
     // 4. Check account
@@ -155,7 +202,6 @@ export async function POST(request: NextRequest) {
     );
 
     const activeInstances = activeInstancesResult.rows[0].count;
-
     const totalLicenses = Number(account.total_licenses);
 
     if (activeInstances >= totalLicenses) {
@@ -205,18 +251,18 @@ export async function POST(request: NextRequest) {
       `,
       [
         accountId,
-        installationToken,
+        token,
         installerVersion,
         platform,
-        tokenRecord.expires_at,
-        tokenRecord.id,
+        tokenRecord ? tokenRecord.expires_at : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        tokenRecord ? tokenRecord.id : null,
       ]
     );
 
     const instance = instanceResult.rows[0];
 
     // -----------------------------------------
-    // 8. Return success
+    // 8. Return success with account_id
     // -----------------------------------------
     return NextResponse.json({
       success: true,
