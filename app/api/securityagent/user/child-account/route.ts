@@ -217,7 +217,7 @@ if (!emailRegex.test(cleanedEmail)) {
       );
     }
 
-    const parentAccount = parentResult.rows[0];
+    const parentAccount = parentResult.rows[0] as Record<string, unknown>;
 
     // -----------------------------------
     // 8. Check maximum hierarchy level
@@ -444,7 +444,7 @@ await client.query(
     // -----------------------------------
 
     const childAccountId =
-      accountResult.rows[0].id;
+      (accountResult.rows[0] as Record<string, unknown>).id;
 
     // -----------------------------------
     // 15. Create / retrieve installation
@@ -453,15 +453,15 @@ await client.query(
 
     const childInstallationToken =
       await getInstallationToken(
-        childAccountId
+        childAccountId as string
       );
 
-    console.log(
+    console.info(
       "Child Account ID:",
       childAccountId
     );
 
-    console.log(
+    console.info(
       "Child Installation Token:",
       childInstallationToken
     );
@@ -500,14 +500,14 @@ await client.query(
         [
           cleanedEmail,
           cleanedFullName,
-          parentAccount.name,
+          (parentAccount.name as string),
           passwordHash,
           licenceType,
         ]
       );
 
     const childUserId =
-      userResult.rows[0].id;
+      (userResult.rows[0] as Record<string, unknown>).id;
 
     // -----------------------------------
     // 17. Create child profile
@@ -565,120 +565,120 @@ await client.query(
           "Child account created successfully.",
 
       account: {
-  id: childAccountId,
+   id: childAccountId,
 
-  name: cleanedFullName,
+   name: cleanedFullName,
 
-  parentAccountId:
-    parentAccount.id,
+   parentAccountId:
+     parentAccount.id,
 
-  level: childLevel,
+   level: childLevel,
 
-  totalLicenses:
-    requestedLicenses,
+   totalLicenses:
+     requestedLicenses,
 
-  allocatedLicenses:
-    requestedLicenses,
+   allocatedLicenses:
+     requestedLicenses,
 
-  usedLicenses: 0,
+   usedLicenses: 0,
 
-  availableLicenses:
-    requestedLicenses,
+   availableLicenses:
+     requestedLicenses,
 
-  maxChildAllocation:
-    Math.floor(requestedLicenses * 0.5),
+   maxChildAllocation:
+     Math.floor(requestedLicenses * 0.5),
 
-  licenceType,
+   licenceType,
 },
 
-        user: {
-          id: childUserId,
+         user: {
+           id: childUserId,
 
-          fullName:
-            cleanedFullName,
+           fullName:
+             cleanedFullName,
 
-          email:
-            cleanedEmail,
+           email:
+             cleanedEmail,
 
-          companyName:
-            parentAccount.name,
-        },
+           companyName:
+             parentAccount.name,
+         },
 
-        installation: {
-          installationToken:
-            childInstallationToken,
-        },
-      
-parent: {
-  accountId:
-    parentAccount.id,
+         installation: {
+           installationToken:
+             childInstallationToken,
+         },
+       
+ parent: {
+   accountId:
+     parentAccount.id,
 
-  totalLicenses:
-    totalLicenses,
+   totalLicenses:
+     totalLicenses,
 
-  previousAllocatedLicenses:
-    allocatedLicenses,
+   previousAllocatedLicenses:
+     allocatedLicenses,
 
-  usedLicenses:
-    usedLicenses,
+   usedLicenses:
+     usedLicenses,
 
-  previousAvailableLicenses:
-    availableLicenses,
+   previousAvailableLicenses:
+     availableLicenses,
 
-  allocatedToChild:
-    requestedLicenses,
+   allocatedToChild:
+     requestedLicenses,
 
-  remainingAllocatedLicenses:
-    allocatedLicenses -
-    requestedLicenses,
+   remainingAllocatedLicenses:
+     allocatedLicenses -
+     requestedLicenses,
 
-  remainingAvailableLicenses:
-    Math.max(
-      availableLicenses -
-        requestedLicenses,
-      0
-    ),
+   remainingAvailableLicenses:
+     Math.max(
+       availableLicenses -
+         requestedLicenses,
+       0
+     ),
 },
-      },
+       },
 { status: 201 }
 );
  } catch (error) {
-    // -----------------------------------
-    // Rollback if anything fails
-    // -----------------------------------
+     // -----------------------------------
+     // Rollback if anything fails
+     // -----------------------------------
 
-    if (transactionStarted) {
-      try {
-        await client.query("ROLLBACK");
-      } catch (rollbackError) {
-        console.error(
-          "Rollback failed:",
-          rollbackError
-        );
-      }
-    }
+     if (transactionStarted) {
+       try {
+         await client.query("ROLLBACK");
+       } catch (rollbackError) {
+         console.error(
+           "Rollback failed:",
+           rollbackError
+         );
+       }
+     }
 
-    console.error(
-      "Create Child Account Error:",
-      error
-    );
+     console.error(
+       "Create Child Account Error:",
+       error
+     );
 
-    return NextResponse.json(
-      {
-        success: false,
+     return NextResponse.json(
+       {
+         success: false,
 
-        message:
-          "Failed to create child account.",
+         message:
+           "Failed to create child account.",
 
-        error:
-          error instanceof Error
-            ? error.message
-            : String(error),
-      },
-      { status: 500 }
-    );
-  } finally {
-    // Release database connection
-    client.release();
-  }
+         error:
+           error instanceof Error
+             ? error.message
+             : String(error),
+       },
+       { status: 500 }
+     );
+   } finally {
+     // Release database connection
+     client.release();
+   }
 }

@@ -8,12 +8,12 @@ export default function SessionSecurityGuard() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log("🔐 SessionSecurityGuard started");
+    console.info("🔐 SessionSecurityGuard started");
 
     let inactivityTimer: ReturnType<typeof setTimeout>;
 
     const logout = async () => {
-      console.log("⏰ Inactivity timeout reached. Logging out...");
+      console.info("⏰ Inactivity timeout reached. Logging out...");
 
       try {
         const response = await fetch(
@@ -24,11 +24,11 @@ export default function SessionSecurityGuard() {
           }
         );
 
-        console.log("Logout API status:", response.status);
+        console.info("Logout API status:", response.status);
 
         const data = await response.json();
 
-        console.log("Logout API response:", data);
+        console.info("Logout API response:", data);
       } catch (error) {
         console.error("❌ Logout API error:", error);
       }
@@ -37,7 +37,7 @@ export default function SessionSecurityGuard() {
     };
 
     const resetInactivityTimer = () => {
-      console.log("👆 User activity detected");
+      console.info("👆 User activity detected");
 
       clearTimeout(inactivityTimer);
 
@@ -45,7 +45,7 @@ export default function SessionSecurityGuard() {
         logout();
       }, INACTIVITY_TIMEOUT);
 
-      console.log("⏱️ Timer reset. Logout in 60 seconds.");
+      console.info("⏱️ Timer reset. Logout in 60 seconds.");
     };
 
     const activityEvents = [

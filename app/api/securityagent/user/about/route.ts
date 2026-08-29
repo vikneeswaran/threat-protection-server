@@ -25,7 +25,7 @@ export async function GET() {
     const cookieStore = await cookies();
     const token = cookieStore.get("kta_session")?.value;
 
-    console.log("Cookie:", token);
+    console.info("Cookie:", token);
     
 
     if (!token) {
@@ -33,10 +33,10 @@ export async function GET() {
     }
 
     const tokenHash = hashToken(token);
-    // console.log("Cookie:", token);
-    //    console.log("Hash:", tokenHash);
+    // console.info("Cookie:", token);
+    //    console.info("Hash:", tokenHash);
 
-    // console.log("Token Hash:", tokenHash);
+    // console.info("Token Hash:", tokenHash);
 
     const result = await query<AboutUserRow>(
       `
@@ -63,7 +63,7 @@ export async function GET() {
       [tokenHash]
     );
 
-    console.log("Rows Found:", result.rows);
+    console.info("Rows Found:", result.rows);
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
