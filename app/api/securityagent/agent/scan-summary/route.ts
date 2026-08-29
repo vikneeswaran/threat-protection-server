@@ -9,31 +9,17 @@ export async function POST(request: NextRequest) {
       agent_id,
       account_id,
       endpoint_id,
-      threat_name,
-      threat_type,
-      severity,
-      file_path,
-      file_hash,
-      process_name,
-      process_id,
-      detection_engine,
-      details,
-      detected_at,
+      scan_id,
+      scan_type,
+      start_time,
+      end_time,
+      total_threats,
+      severity_breakdown,
     } = body;
 
     // -----------------------------------------
     // 1. Validate required fields
     // -----------------------------------------
-    if (!agent_id || typeof agent_id !== "string") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Agent ID is required.",
-        },
-        { status: 400 }
-      );
-    }
-
     if (!account_id || typeof account_id !== "string") {
       return NextResponse.json(
         {
@@ -44,42 +30,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!threat_name || typeof threat_name !== "string") {
+    if (!scan_id || typeof scan_id !== "string") {
       return NextResponse.json(
         {
           success: false,
-          message: "Threat name is required.",
+          message: "Scan ID is required.",
         },
         { status: 400 }
       );
     }
 
-    if (!severity || typeof severity !== "string") {
+    if (!scan_type || typeof scan_type !== "string") {
       return NextResponse.json(
         {
           success: false,
-          message: "Severity is required.",
+          message: "Scan type is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (total_threats === undefined || typeof total_threats !== "number") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Total threats count is required.",
         },
         { status: 400 }
       );
     }
 
     // -----------------------------------------
-    // 2. Validate severity levels
-    // -----------------------------------------
-    const validSeverities = ["critical", "high", "medium", "low"];
-    if (!validSeverities.includes(severity.toLowerCase())) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid severity level.",
-        },
-        { status: 400 }
-      );
-    }
-
-    // -----------------------------------------
-    // 3. Verify account exists and is active
+    // 2. Verify account exists and is active
     // -----------------------------------------
     const accountResult = await query(
       `
@@ -116,11 +98,11 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 4. Find or create endpoint from agent_id
+    // 3. Find or create endpoint from agent_id
     // -----------------------------------------
     let endpointIdToUse = endpoint_id;
 
-    if (!endpointIdToUse) {
+    if (!endpointIdToUse && agent_id) {
       const endpointResult = await query(
         `
         SELECT id
@@ -138,25 +120,32 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 5. Insert threat record
+    // 4. Parse severity breakdown
     // -----------------------------------------
-    const threatResult = await query(
+    const critical = severity_breakdown?.critical || 0;
+    const high = severity_breakdown?.high || 0;
+    const medium = severity_breakdown?.medium || 0;
+    const low = severity_breakdown?.low || 0;
+
+    // -----------------------------------------
+    // 5. Insert scan summary record
+    // -----------------------------------------
+    const scanResult = await query(
       `
-      INSERT INTO threats
+      INSERT INTO scan_summaries
       (
         account_id,
         endpoint_id,
         agent_id,
-        threat_name,
-        threat_type,
-        severity,
-        file_path,
-        file_hash,
-        process_name,
-        process_id,
-        detection_engine,
-        details,
-        detected_at,
+        scan_id,
+        scan_type,
+        start_time,
+        end_time,
+        total_threats,
+        critical_count,
+        high_count,
+        medium_count,
+        low_count,
         status,
         created_at,
         updated_at
@@ -175,8 +164,7 @@ export async function POST(request: NextRequest) {
         $10,
         $11,
         $12,
-        $13,
-        'detected',
+        'completed',
         NOW(),
         NOW()
       )
@@ -184,36 +172,38 @@ export async function POST(request: NextRequest) {
         id,
         account_id,
         endpoint_id,
-        agent_id,
-        threat_name,
-        severity,
+        scan_id,
+        scan_type,
+        total_threats,
+        critical_count,
+        high_count,
+        medium_count,
+        low_count,
         status,
-        detected_at,
         created_at
       `,
       [
         account_id,
         endpointIdToUse || null,
-        agent_id,
-        threat_name,
-        threat_type || "unknown",
-        severity.toLowerCase(),
-        file_path || null,
-        file_hash || null,
-        process_name || null,
-        process_id || null,
-        detection_engine || "signature",
-        JSON.stringify(details || {}),
-        detected_at || new Date().toISOString(),
+        agent_id || null,
+        scan_id,
+        scan_type,
+        start_time || new Date().toISOString(),
+        end_time || new Date().toISOString(),
+        total_threats,
+        critical,
+        high,
+        medium,
+        low,
       ]
     );
 
-    const threat = threatResult.rows[0];
+    const scan = scanResult.rows[0];
 
     // -----------------------------------------
-    // 6. Update endpoint threat status if exists
+    // 6. Update endpoint threat status if threats found
     // -----------------------------------------
-    if (endpointIdToUse) {
+    if (endpointIdToUse && total_threats > 0) {
       await query(
         `
         UPDATE endpoints
@@ -227,10 +217,10 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 7. Log threat event
+    // 7. Log scan summary event
     // -----------------------------------------
     console.info(
-      `[Threat Reported] Account: ${account_id}, Threat: ${threat_name}, Severity: ${severity}`
+      `[Scan Summary Reported] Account: ${account_id}, Scan: ${scan_type}, Threats: ${total_threats}`
     );
 
     // -----------------------------------------
@@ -238,22 +228,27 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     return NextResponse.json({
       success: true,
-      message: "Threat reported successfully.",
-      threatId: threat.id,
-      accountId: threat.account_id,
-      agentId: threat.agent_id,
-      threatName: threat.threat_name,
-      severity: threat.severity,
-      status: threat.status,
-      detectedAt: threat.detected_at,
+      message: "Scan summary reported successfully.",
+      scanId: scan.id,
+      accountId: scan.account_id,
+      scanType: scan.scan_type,
+      totalThreats: scan.total_threats,
+      severityBreakdown: {
+        critical: scan.critical_count,
+        high: scan.high_count,
+        medium: scan.medium_count,
+        low: scan.low_count,
+      },
+      status: scan.status,
+      createdAt: scan.created_at,
     });
   } catch (error) {
-    console.error("Threat Report Error:", error);
+    console.error("Scan Summary Report Error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to report threat.",
+        message: "Failed to report scan summary.",
         error: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
