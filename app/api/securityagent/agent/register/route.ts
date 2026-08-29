@@ -19,10 +19,8 @@ export async function POST(request: NextRequest) {
       registrationToken,
       installerVersion,
       platform,
-      agentId,
-      hostname,
-      os,
-      osVersion,
+      // agentId, hostname, os, osVersion are accepted but not used yet
+      // They may be used in future updates for endpoint registration
     } = body;
 
     // -----------------------------------------
@@ -64,7 +62,7 @@ export async function POST(request: NextRequest) {
     // 2. Validate token format (JWT or legacy)
     // -----------------------------------------
     let accountId: string | null = null;
-    let tokenRecord: any = null;
+    let tokenRecord: Record<string, unknown> | null = null;
 
     // Try JWT token first
     if (token.includes(".")) {
@@ -75,7 +73,7 @@ export async function POST(request: NextRequest) {
         console.info(
           `[Agent Register] JWT token validated for account: ${accountId}`
         );
-      } catch (jwtError) {
+      } catch {
         console.warn("[Agent Register] JWT verification failed, trying legacy token");
         // Fall through to legacy token check
       }
@@ -117,12 +115,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      tokenRecord = legacyTokenResult.rows[0];
+      tokenRecord = legacyTokenResult.rows[0] as Record<string, unknown>;
 
       // -----------------------------------------
       // 3. Check token expiry (legacy)
       // -----------------------------------------
-      if (new Date(tokenRecord.expires_at) <= new Date()) {
+      if (new Date(tokenRecord.expires_at as string) <= new Date()) {
         return NextResponse.json(
           {
             success: false,
@@ -132,7 +130,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      accountId = tokenRecord.account_id;
+      accountId = tokenRecord.account_id as string;
     }
 
     if (!accountId) {
@@ -173,7 +171,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const account = accountResult.rows[0];
+    const account = accountResult.rows[0] as Record<string, unknown>;
 
     // -----------------------------------------
     // 5. Check account status
@@ -201,7 +199,7 @@ export async function POST(request: NextRequest) {
       [accountId]
     );
 
-    const activeInstances = activeInstancesResult.rows[0].count;
+    const activeInstances = (activeInstancesResult.rows[0] as Record<string, number>).count;
     const totalLicenses = Number(account.total_licenses);
 
     if (activeInstances >= totalLicenses) {
@@ -259,7 +257,7 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    const instance = instanceResult.rows[0];
+    const instance = instanceResult.rows[0] as Record<string, unknown>;
 
     // -----------------------------------------
     // 8. Return success with account_id
