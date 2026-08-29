@@ -25,7 +25,7 @@ export default function ThreatSummaryCards() {
   const fetchSummary = async () => {
     try {
       const data = await getThreatSummary();
-      console.log(data);
+      console.info(data);
       setSummary(data);
     } catch (err) {
       console.error(err);
