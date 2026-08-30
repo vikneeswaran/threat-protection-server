@@ -285,7 +285,113 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 5. Create final account-specific ZIP
+    // 5. Create install-windows.cmd batch file
+    // --------------------------------------------------
+
+    const installCmdPath = path.join(
+      packageDirectory,
+      "install-windows.cmd"
+    );
+
+    const installCmdContent = `@echo off
+REM Kuamini Security Client Installer v${version}
+REM This script runs the PowerShell helper script with administrative privileges
+
+setlocal enabledelayedexpansion
+
+REM Get the directory where this script is located
+set SCRIPT_DIR=%~dp0
+
+REM Check if PowerShell helper exists
+if not exist "%SCRIPT_DIR%install-helper.ps1" (
+    echo.
+    echo ERROR: install-helper.ps1 not found!
+    echo Expected location: %SCRIPT_DIR%install-helper.ps1
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Run PowerShell script with administrator privileges
+echo Running Kuamini Security Client Installer...
+echo.
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-helper.ps1"
+
+exit /b %ERRORLEVEL%
+`;
+
+    await fs.writeFile(
+      installCmdPath,
+      installCmdContent,
+      "utf8"
+    );
+
+    // --------------------------------------------------
+    // 6. Create README.txt for user guidance
+    // --------------------------------------------------
+
+    const readmePath = path.join(
+      packageDirectory,
+      "README.txt"
+    );
+
+    const readmeContent = `================================================================================
+  KUAMINI SECURITY CLIENT v${version} - WINDOWS INSTALLATION
+================================================================================
+
+QUICK START:
+  1. Extract this ZIP to a folder
+  2. Right-click "install-windows.cmd" and select "Run as administrator"
+  3. Follow the installation wizard
+  4. Agent will start automatically and appear in your dashboard
+
+CONTENTS:
+  - install-windows.cmd        : Run this to install (requires admin)
+  - install-helper.ps1         : PowerShell helper script (auto-executed)
+  - KuaminiSecurityClient-*.msi : Windows installer package
+  - config.json                : Account-specific configuration (auto-generated)
+  - README.txt                 : This file
+
+SYSTEM REQUIREMENTS:
+  - Windows 10 or later
+  - Administrator privileges required for installation
+  - .NET Framework 4.6+ (usually pre-installed)
+
+INSTALLATION STEPS:
+  1. Right-click "install-windows.cmd"
+  2. Select "Run as administrator"
+  3. Accept any security prompts
+  4. Installation will complete in 2-5 minutes
+  5. Tray icon will appear in system tray (bottom-right corner)
+
+VERIFICATION:
+  - Open Windows Task Manager (Ctrl+Shift+Esc)
+  - Look for "KuaminiSecurityClient" in Processes tab
+  - Check logs: %LOCALAPPDATA%\\KuaminiSecurityClient\\agent.log
+  - Visit dashboard: https://kuaminisystems.com/securityAgent
+
+TROUBLESHOOTING:
+  - If installation fails, check the MSI log file for details
+  - Ensure you have administrator privileges
+  - Try running as administrator again
+  - Check firewall settings to allow Kuamini application
+
+FOR SUPPORT:
+  - Email: support@kuaminisystems.com
+  - Dashboard: https://kuaminisystems.com/securityAgent
+
+================================================================================
+`;
+
+    await fs.writeFile(
+      readmePath,
+      readmeContent,
+      "utf8"
+    );
+
+    // --------------------------------------------------
+    // 7. Create final account-specific ZIP
     // --------------------------------------------------
 
     await createZip(
@@ -294,7 +400,7 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 6. Return package
+    // 8. Return package
     // --------------------------------------------------
 
     return {
