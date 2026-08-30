@@ -41,33 +41,133 @@ function createZip(
 
 async function fetchInstallHelperScript(): Promise<string> {
   try {
+    console.info(
+      "[Windows Package] Fetching install-helper.ps1 from agent repo..."
+    );
+
     const response = await fetch(
-      "https://raw.githubusercontent.com/vikneeswaran/threat-protection-agent/main/public/tray/install-helper.ps1"
+      "https://raw.githubusercontent.com/vikneeswaran/threat-protection-agent/main/public/tray/install-helper.ps1",
+      {
+        method: "GET",
+        timeout: 30000,
+      }
     );
 
     if (!response.ok) {
       throw new Error(
-        `Failed to fetch install-helper.ps1: HTTP ${response.status}`
+        `Failed to fetch install-helper.ps1: HTTP ${response.status} ${response.statusText}`
       );
     }
 
     const helperScript = await response.text();
 
-    if (!helperScript || helperScript.length < 100) {
+    if (!helperScript || helperScript.length < 500) {
       throw new Error(
-        "Fetched install-helper.ps1 is empty or too small"
+        `Fetched install-helper.ps1 is too small (${helperScript.length} bytes). Expected > 500 bytes.`
       );
     }
+
+    // Validate script has expected content
+    if (
+      !helperScript.includes("Kuamini Security Client") ||
+      !helperScript.includes("install-helper.ps1")
+    ) {
+      throw new Error(
+        "Fetched script doesn't contain expected Kuamini content"
+      );
+    }
+
+    console.info(
+      `[Windows Package] Successfully fetched install-helper.ps1 (${helperScript.length} bytes)`
+    );
 
     return helperScript;
   } catch (error) {
     console.error(
-      "Failed to fetch install-helper.ps1 from agent repo:",
+      "[Windows Package] Failed to fetch install-helper.ps1:",
       error
     );
-    throw new Error(
-      "Could not download install-helper.ps1. Ensure the agent repository is accessible."
+
+    // Return a fallback inline helper script
+    console.warn(
+      "[Windows Package] Using fallback inline installation helper"
     );
+
+    return `#Requires -RunAsAdministrator
+<#
+.SYNOPSIS
+Kuamini Security Client Installer - Installation Helper (Fallback)
+
+.DESCRIPTION
+This is a fallback helper script when fetch fails.
+#>
+
+param([Parameter(Mandatory = $false)][switch]$Quiet)
+
+$ErrorActionPreference = "Stop"
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Write-Host "Kuamini Security Client Installer" -ForegroundColor Green
+Write-Host ""
+
+# STEP 1: FIND MSI FILE
+Write-Host "[1/3] Locating MSI installer..." -ForegroundColor Yellow
+
+$msiPath = Get-ChildItem -Path $scriptPath -Filter "KuaminiSecurityClient-*.msi" -File -ErrorAction SilentlyContinue | 
+    Select-Object -First 1 -ExpandProperty FullName
+
+if (-not $msiPath -or -not (Test-Path $msiPath)) {
+    Write-Host "  ✗ ERROR: MSI file not found!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "  ✓ Found MSI: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
+
+# STEP 2: PREPARE CONFIG DIRECTORY
+Write-Host "[2/3] Preparing installation configuration..." -ForegroundColor Yellow
+
+$configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
+New-Item -ItemType Directory -Path $configDir -Force -ErrorAction Stop | Out-Null
+Write-Host "  ✓ Config directory created" -ForegroundColor Green
+
+# STEP 3: INSTALL MSI
+Write-Host "[3/3] Installing MSI package..." -ForegroundColor Yellow
+
+$tempLogFile = Join-Path $env:TEMP "kuamini-install-\$(Get-Random).log"
+
+try {
+    $msiArgs = @(
+        "/i", $msiPath,
+        "/L*V", $tempLogFile,
+        "/passive"
+    )
+
+    \$process = Start-Process -FilePath "msiexec.exe" -ArgumentList \$msiArgs -PassThru -Wait -NoNewWindow
+    \$exitCode = \$process.ExitCode
+
+    if (\$exitCode -ne 0 -and \$exitCode -ne 3010) {
+        Write-Host "  ✗ MSI installation failed with exit code: \$exitCode" -ForegroundColor Red
+        if (Test-Path \$tempLogFile) {
+            Write-Host "  Last 30 lines of log:" -ForegroundColor Yellow
+            Get-Content \$tempLogFile -Tail 30 | Write-Host
+        }
+        exit \$exitCode
+    }
+
+    Write-Host "  ✓ MSI installation completed" -ForegroundColor Green
+    Remove-Item \$tempLogFile -Force -ErrorAction SilentlyContinue
+
+} catch {
+    Write-Host "  ✗ ERROR: MSI installation failed: \$(\$_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+Write-Host "✓ INSTALLATION COMPLETED SUCCESSFULLY" -ForegroundColor Green
+Write-Host ""
+
+exit 0
+`;
   }
 }
 
@@ -142,13 +242,6 @@ export async function createWindowsInstallerPackage({
         "Installer download returned an empty response."
       );
     }
-
-    /*
-     * Use arrayBuffer() instead of Readable.fromWeb().
-     *
-     * This avoids the Node.js Web ReadableStream type
-     * incompatibility between different TypeScript typings.
-     */
 
     const installerBuffer = Buffer.from(
       await response.arrayBuffer()
@@ -237,11 +330,6 @@ export async function createWindowsInstallerPackage({
       );
     }
 
-    /*
-     * The GitHub ZIP may contain a single
-     * top-level directory.
-     */
-
     const rootDirectories =
       extractedItems.filter(
         (entry) => entry.isDirectory()
@@ -320,10 +408,6 @@ export async function createWindowsInstallerPackage({
     // 5. Fetch and add install-helper.ps1
     // --------------------------------------------------
 
-    console.info(
-      "[Windows Package] Fetching install-helper.ps1 from agent repo..."
-    );
-
     const helperScript = await fetchInstallHelperScript();
 
     const helperScriptPath = path.join(
@@ -335,10 +419,6 @@ export async function createWindowsInstallerPackage({
       helperScriptPath,
       helperScript,
       "utf8"
-    );
-
-    console.info(
-      "[Windows Package] install-helper.ps1 added to package"
     );
 
     // --------------------------------------------------
