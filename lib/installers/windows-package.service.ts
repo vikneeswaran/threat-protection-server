@@ -39,6 +39,38 @@ function createZip(
   });
 }
 
+async function fetchInstallHelperScript(): Promise<string> {
+  try {
+    const response = await fetch(
+      "https://raw.githubusercontent.com/vikneeswaran/threat-protection-agent/main/public/tray/install-helper.ps1"
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch install-helper.ps1: HTTP ${response.status}`
+      );
+    }
+
+    const helperScript = await response.text();
+
+    if (!helperScript || helperScript.length < 100) {
+      throw new Error(
+        "Fetched install-helper.ps1 is empty or too small"
+      );
+    }
+
+    return helperScript;
+  } catch (error) {
+    console.error(
+      "Failed to fetch install-helper.ps1 from agent repo:",
+      error
+    );
+    throw new Error(
+      "Could not download install-helper.ps1. Ensure the agent repository is accessible."
+    );
+  }
+}
+
 export async function createWindowsInstallerPackage({
   downloadUrl,
   version,
@@ -285,7 +317,32 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 5. Create install-windows.cmd batch file
+    // 5. Fetch and add install-helper.ps1
+    // --------------------------------------------------
+
+    console.info(
+      "[Windows Package] Fetching install-helper.ps1 from agent repo..."
+    );
+
+    const helperScript = await fetchInstallHelperScript();
+
+    const helperScriptPath = path.join(
+      packageDirectory,
+      "install-helper.ps1"
+    );
+
+    await fs.writeFile(
+      helperScriptPath,
+      helperScript,
+      "utf8"
+    );
+
+    console.info(
+      "[Windows Package] install-helper.ps1 added to package"
+    );
+
+    // --------------------------------------------------
+    // 6. Create install-windows.cmd batch file
     // --------------------------------------------------
 
     const installCmdPath = path.join(
@@ -328,7 +385,7 @@ exit /b %ERRORLEVEL%
     );
 
     // --------------------------------------------------
-    // 6. Create README.txt for user guidance
+    // 7. Create README.txt for user guidance
     // --------------------------------------------------
 
     const readmePath = path.join(
@@ -391,7 +448,7 @@ FOR SUPPORT:
     );
 
     // --------------------------------------------------
-    // 7. Create final account-specific ZIP
+    // 8. Create final account-specific ZIP
     // --------------------------------------------------
 
     await createZip(
@@ -400,7 +457,7 @@ FOR SUPPORT:
     );
 
     // --------------------------------------------------
-    // 8. Return package
+    // 9. Return package
     // --------------------------------------------------
 
     return {
