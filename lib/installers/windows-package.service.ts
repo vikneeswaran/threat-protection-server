@@ -39,137 +39,145 @@ function createZip(
   });
 }
 
-async function fetchInstallHelperScript(): Promise<string> {
-  try {
-    console.info(
-      "[Windows Package] Fetching install-helper.ps1 from agent repo..."
-    );
-
-    const response = await fetch(
-      "https://raw.githubusercontent.com/vikneeswaran/threat-protection-agent/main/public/tray/install-helper.ps1",
-      {
-        method: "GET",
-        signal: AbortSignal.timeout(30000),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch install-helper.ps1: HTTP ${response.status} ${response.statusText}`
-      );
-    }
-
-    const helperScript = await response.text();
-
-    if (!helperScript || helperScript.length < 500) {
-      throw new Error(
-        `Fetched install-helper.ps1 is too small (${helperScript.length} bytes). Expected > 500 bytes.`
-      );
-    }
-
-    // Validate script has expected content
-    if (
-      !helperScript.includes("Kuamini Security Client") ||
-      !helperScript.includes("install-helper.ps1")
-    ) {
-      throw new Error(
-        "Fetched script doesn't contain expected Kuamini content"
-      );
-    }
-
-    console.info(
-      `[Windows Package] Successfully fetched install-helper.ps1 (${helperScript.length} bytes)`
-    );
-
-    return helperScript;
-  } catch (error) {
-    console.error(
-      "[Windows Package] Failed to fetch install-helper.ps1:",
-      error
-    );
-
-    // Return a fallback inline helper script
-    console.warn(
-      "[Windows Package] Using fallback inline installation helper"
-    );
-
-    // eslint-disable-next-line no-useless-escape
-    return `#Requires -RunAsAdministrator
+function createEmbeddedInstallHelperScript(): string {
+  // Built-in PowerShell script - no external fetch needed
+  return `#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-Kuamini Security Client Installer - Installation Helper (Fallback)
+Kuamini Security Client Installer v1.0.28 - Installation Helper
+This is a built-in helper script with no external dependencies.
 
 .DESCRIPTION
-This is a fallback helper script when fetch fails.
+Installs Kuamini Security Client by running the MSI with proper configuration.
 #>
 
-param([Parameter(Mandatory = $false)][switch]$Quiet)
+param(
+    [Parameter(Mandatory = $false)]
+    [switch]$Quiet
+)
 
 $ErrorActionPreference = "Stop"
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+Write-Host "======================================" -ForegroundColor Green
 Write-Host "Kuamini Security Client Installer" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Green
 Write-Host ""
 
 # STEP 1: FIND MSI FILE
-Write-Host "[1/3] Locating MSI installer..." -ForegroundColor Yellow
+Write-Host "[1/4] Locating MSI installer..." -ForegroundColor Yellow
 
-$msiPath = Get-ChildItem -Path $scriptPath -Filter "KuaminiSecurityClient-*.msi" -File -ErrorAction SilentlyContinue | 
-    Select-Object -First 1 -ExpandProperty FullName
+$msiFiles = @(Get-ChildItem -Path $scriptPath -Filter "KuaminiSecurityClient-*.msi" -File -ErrorAction SilentlyContinue)
 
-if (-not $msiPath -or -not (Test-Path $msiPath)) {
-    Write-Host "  X ERROR: MSI file not found!" -ForegroundColor Red
+if ($msiFiles.Count -eq 0) {
+    Write-Host "ERROR: No MSI file found in $scriptPath" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "  + Found MSI: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
+$msiPath = $msiFiles[0].FullName
+Write-Host "  ✓ Found: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
 
-# STEP 2: PREPARE CONFIG DIRECTORY
-Write-Host "[2/3] Preparing installation configuration..." -ForegroundColor Yellow
+# STEP 2: CREATE CONFIG DIRECTORY
+Write-Host "[2/4] Creating configuration directory..." -ForegroundColor Yellow
 
 $configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
-New-Item -ItemType Directory -Path $configDir -Force -ErrorAction Stop | Out-Null
-Write-Host "  + Config directory created" -ForegroundColor Green
+
+try {
+    if (-not (Test-Path $configDir)) {
+        New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+    }
+    Write-Host "  ✓ Config directory ready: $configDir" -ForegroundColor Green
+} catch {
+    Write-Host "  ⚠ Warning: Could not create config directory" -ForegroundColor Yellow
+}
 
 # STEP 3: INSTALL MSI
-Write-Host "[3/3] Installing MSI package..." -ForegroundColor Yellow
+Write-Host "[3/4] Running MSI installation..." -ForegroundColor Yellow
 
-$tempLogFile = Join-Path $env:TEMP "kuamini-install-$(Get-Random).log"
+$logFile = Join-Path $env:TEMP ("kuamini-install-" + (Get-Random) + ".log")
 
 try {
     $msiArgs = @(
         "/i", $msiPath,
-        "/L*V", $tempLogFile,
-        "/passive"
+        "/L*V", $logFile,
+        "/passive",
+        "/norestart"
     )
 
+    Write-Host "  Installing package..." -ForegroundColor Cyan
     $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -PassThru -Wait -NoNewWindow
     $exitCode = $process.ExitCode
 
-    if ($exitCode -ne 0 -and $exitCode -ne 3010) {
-        Write-Host "  X MSI installation failed with exit code: $exitCode" -ForegroundColor Red
-        if (Test-Path $tempLogFile) {
-            Write-Host "  Last 30 lines of log:" -ForegroundColor Yellow
-            Get-Content $tempLogFile -Tail 30 | Write-Host
+    if ($exitCode -eq 0 -or $exitCode -eq 3010) {
+        Write-Host "  ✓ MSI installation completed successfully" -ForegroundColor Green
+    } else {
+        Write-Host "  ✗ MSI installation failed with exit code: $exitCode" -ForegroundColor Red
+        if (Test-Path $logFile) {
+            Write-Host ""
+            Write-Host "MSI Log (last 20 lines):" -ForegroundColor Yellow
+            Get-Content $logFile -Tail 20 | Write-Host
         }
         exit $exitCode
     }
 
-    Write-Host "  + MSI installation completed" -ForegroundColor Green
-    Remove-Item $tempLogFile -Force -ErrorAction SilentlyContinue
+    # Cleanup temp log
+    if (Test-Path $logFile) {
+        Remove-Item $logFile -Force -ErrorAction SilentlyContinue
+    }
 
 } catch {
-    Write-Host "  X ERROR: MSI installation failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  ✗ Installation error: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 
+# STEP 4: VERIFY AND START AGENT
+Write-Host "[4/4] Verifying installation and starting agent..." -ForegroundColor Yellow
+
+$installDir = "C:\Program Files\Kuamini Security Client"
+$exePath = Join-Path $installDir "KuaminiSecurityClient.exe"
+
+if (-not (Test-Path $exePath)) {
+    Write-Host "  ✗ Error: Agent executable not found at $exePath" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "  ✓ Installation verified" -ForegroundColor Green
+
+# Start the agent
+try {
+    Write-Host "  Starting agent..." -ForegroundColor Cyan
+    Start-Process $exePath -ErrorAction Stop
+    Start-Sleep -Seconds 2
+    
+    if (Get-Process KuaminiSecurityClient -ErrorAction SilentlyContinue) {
+        Write-Host "  ✓ Agent started successfully" -ForegroundColor Green
+    } else {
+        Write-Host "  ⚠ Agent process not immediately visible (may start shortly)" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "  ⚠ Could not start agent: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  Agent will start automatically on next login" -ForegroundColor Cyan
+}
+
+# SUMMARY
 Write-Host ""
-Write-Host "+ INSTALLATION COMPLETED SUCCESSFULLY" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Green
+Write-Host "✓ INSTALLATION COMPLETE" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next Steps:" -ForegroundColor Cyan
+Write-Host "  1. Open Kuamini Console: https://kuaminisystems.com/securityAgent" -ForegroundColor Gray
+Write-Host "  2. Login to your account" -ForegroundColor Gray
+Write-Host "  3. Verify the new endpoint appears in your dashboard" -ForegroundColor Gray
+Write-Host "  4. Check System Tray for the Kuamini icon" -ForegroundColor Gray
+Write-Host ""
+Write-Host "Logs:" -ForegroundColor Cyan
+Write-Host "  Agent log: $configDir\agent.log" -ForegroundColor Gray
+Write-Host "  Config: $configDir\config.json" -ForegroundColor Gray
 Write-Host ""
 
 exit 0
 `;
-  }
 }
 
 export async function createWindowsInstallerPackage({
@@ -230,6 +238,8 @@ export async function createWindowsInstallerPackage({
     // 1. Download original installer ZIP
     // --------------------------------------------------
 
+    console.info("[Windows Package] Downloading installer from agent repo...");
+
     const response = await fetch(downloadUrl);
 
     if (!response.ok) {
@@ -254,6 +264,10 @@ export async function createWindowsInstallerPackage({
       );
     }
 
+    console.info(
+      `[Windows Package] Downloaded installer (${installerBuffer.length} bytes)`
+    );
+
     await fs.writeFile(
       sourceZipPath,
       installerBuffer
@@ -262,6 +276,8 @@ export async function createWindowsInstallerPackage({
     // --------------------------------------------------
     // 2. Extract original installer ZIP
     // --------------------------------------------------
+
+    console.info("[Windows Package] Extracting installer contents...");
 
     const zip = new AdmZip(sourceZipPath);
 
@@ -363,6 +379,8 @@ export async function createWindowsInstallerPackage({
     // 4. Create account-specific config.json
     // --------------------------------------------------
 
+    console.info("[Windows Package] Creating account-specific config...");
+
     const configPath = path.join(
       packageDirectory,
       "config.json"
@@ -406,15 +424,17 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 5. Fetch and add install-helper.ps1
+    // 5. Create built-in install-helper.ps1 (no external fetch)
     // --------------------------------------------------
 
-    const helperScript = await fetchInstallHelperScript();
+    console.info("[Windows Package] Creating built-in installation helper...");
 
     const helperScriptPath = path.join(
       packageDirectory,
       "install-helper.ps1"
     );
+
+    const helperScript = createEmbeddedInstallHelperScript();
 
     await fs.writeFile(
       helperScriptPath,
@@ -422,9 +442,15 @@ export async function createWindowsInstallerPackage({
       "utf8"
     );
 
+    console.info(
+      `[Windows Package] Created install-helper.ps1 (${helperScript.length} bytes)`
+    );
+
     // --------------------------------------------------
     // 6. Create install-windows.cmd batch file
     // --------------------------------------------------
+
+    console.info("[Windows Package] Creating batch file launcher...");
 
     const installCmdPath = path.join(
       packageDirectory,
@@ -433,25 +459,22 @@ export async function createWindowsInstallerPackage({
 
     const installCmdContent = `@echo off
 REM Kuamini Security Client Installer v${version}
-REM This script runs the PowerShell helper script with administrative privileges
+REM This script runs the PowerShell helper with administrator privileges
 
 setlocal enabledelayedexpansion
 
-REM Get the directory where this script is located
 set SCRIPT_DIR=%~dp0
 
-REM Check if PowerShell helper exists
 if not exist "%SCRIPT_DIR%install-helper.ps1" (
     echo.
     echo ERROR: install-helper.ps1 not found!
-    echo Expected location: %SCRIPT_DIR%install-helper.ps1
+    echo Expected: %SCRIPT_DIR%install-helper.ps1
     echo.
     pause
     exit /b 1
 )
 
-REM Run PowerShell script with administrator privileges
-echo Running Kuamini Security Client Installer...
+echo Running Kuamini Security Client Installer v${version}...
 echo.
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-helper.ps1"
@@ -466,7 +489,7 @@ exit /b %ERRORLEVEL%
     );
 
     // --------------------------------------------------
-    // 7. Create README.txt for user guidance
+    // 7. Create README.txt
     // --------------------------------------------------
 
     const readmePath = path.join(
@@ -480,42 +503,35 @@ exit /b %ERRORLEVEL%
 
 QUICK START:
   1. Extract this ZIP to a folder
-  2. Right-click "install-windows.cmd" and select "Run as administrator"
-  3. Follow the installation wizard
-  4. Agent will start automatically and appear in your dashboard
+  2. Right-click "install-windows.cmd" → "Run as administrator"
+  3. Follow the installer
+  4. Agent starts automatically
 
 CONTENTS:
-  - install-windows.cmd        : Run this to install (requires admin)
-  - install-helper.ps1         : PowerShell helper script (auto-executed)
-  - KuaminiSecurityClient-*.msi : Windows installer package
-  - config.json                : Account-specific configuration (auto-generated)
+  - install-windows.cmd        : Launcher (requires admin)
+  - install-helper.ps1         : Built-in helper script
+  - KuaminiSecurityClient-*.msi : Windows installer
+  - config.json                : Account-specific configuration
   - README.txt                 : This file
 
 SYSTEM REQUIREMENTS:
   - Windows 10 or later
-  - Administrator privileges required for installation
-  - .NET Framework 4.6+ (usually pre-installed)
+  - Administrator privileges
+  - .NET Framework 4.6+
 
-INSTALLATION STEPS:
-  1. Right-click "install-windows.cmd"
+INSTALLATION:
+  1. Right-click install-windows.cmd
   2. Select "Run as administrator"
-  3. Accept any security prompts
-  4. Installation will complete in 2-5 minutes
-  5. Tray icon will appear in system tray (bottom-right corner)
+  3. Accept prompts
+  4. Completes in 2-5 minutes
+  5. Look for Kuamini icon in system tray
 
 VERIFICATION:
-  - Open Windows Task Manager (Ctrl+Shift+Esc)
-  - Look for "KuaminiSecurityClient" in Processes tab
-  - Check logs: %LOCALAPPDATA%\\KuaminiSecurityClient\\agent.log
-  - Visit dashboard: https://kuaminisystems.com/securityAgent
+  - Check: %LOCALAPPDATA%\\KuaminiSecurityClient\\agent.log
+  - Dashboard: https://kuaminisystems.com/securityAgent
+  - Task Manager: Look for KuaminiSecurityClient process
 
-TROUBLESHOOTING:
-  - If installation fails, check the MSI log file for details
-  - Ensure you have administrator privileges
-  - Try running as administrator again
-  - Check firewall settings to allow Kuamini application
-
-FOR SUPPORT:
+SUPPORT:
   - Email: support@kuaminisystems.com
   - Dashboard: https://kuaminisystems.com/securityAgent
 
@@ -529,13 +545,17 @@ FOR SUPPORT:
     );
 
     // --------------------------------------------------
-    // 8. Create final account-specific ZIP
+    // 8. Create final ZIP
     // --------------------------------------------------
+
+    console.info("[Windows Package] Creating final package...");
 
     await createZip(
       packageDirectory,
       packagePath
     );
+
+    console.info("[Windows Package] Package created successfully");
 
     // --------------------------------------------------
     // 9. Return package
@@ -556,6 +576,8 @@ FOR SUPPORT:
       },
     };
   } catch (error) {
+    console.error("[Windows Package] Error creating package:", error);
+
     await fs.rm(
       tempRoot,
       {
