@@ -49,7 +49,7 @@ async function fetchInstallHelperScript(): Promise<string> {
       "https://raw.githubusercontent.com/vikneeswaran/threat-protection-agent/main/public/tray/install-helper.ps1",
       {
         method: "GET",
-        timeout: 30000,
+        signal: AbortSignal.timeout(30000),
       }
     );
 
