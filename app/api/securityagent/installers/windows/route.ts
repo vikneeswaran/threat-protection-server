@@ -4,19 +4,39 @@ import { getInstallerData } from "@/lib/installers/installer.service";
 import { getInstallationToken } from "@/lib/installation-token";
 import { createWindowsInstallerPackage } from "@/lib/installers/windows-package.service";
 
-export async function GET() {
+export async function GET(request: Request) {
   let cleanup: (() => Promise<void>) | undefined;
 
   try {
     // --------------------------------------------------
-    // 1. Authenticate current user
+    // 1. Try to authenticate from session OR URL params
     // --------------------------------------------------
 
-    const user = await requireSessionUser();
+    let accountId: string | null = null;
+    let installationToken: string | null = null;
 
-    if (!user) {
+    // Check for session user first
+    const user = await requireSessionUser().catch(() => null);
+
+    if (user) {
+      // User is authenticated via session
+      accountId = user.account_id;
+      installationToken = await getInstallationToken(accountId);
+    } else {
+      // Try to get from URL parameters (for direct downloads)
+      const { searchParams } = new URL(request.url);
+      const paramAccountId = searchParams.get("accountId");
+      const paramToken = searchParams.get("token");
+
+      if (paramAccountId && paramToken) {
+        accountId = paramAccountId;
+        installationToken = paramToken;
+      }
+    }
+
+    if (!accountId || !installationToken) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized: Missing authentication" },
         { status: 401 }
       );
     }
@@ -26,20 +46,12 @@ export async function GET() {
     // --------------------------------------------------
 
     const data = await getInstallerData(
-      user.account_id,
+      accountId,
       "Windows"
     );
 
     // --------------------------------------------------
-    // 3. Get account-specific installation token
-    // --------------------------------------------------
-
-    const installationToken = await getInstallationToken(
-      user.account_id
-    );
-
-    // --------------------------------------------------
-    // 4. Create account-specific installer package
+    // 3. Create account-specific installer package
     // --------------------------------------------------
 
     const packageResult =
@@ -52,7 +64,7 @@ export async function GET() {
     cleanup = packageResult.cleanup;
 
     // --------------------------------------------------
-    // 5. Read generated package
+    // 4. Read generated package
     // --------------------------------------------------
 
     const packageBuffer = await (
@@ -60,7 +72,7 @@ export async function GET() {
     ).readFile(packageResult.packagePath);
 
     // --------------------------------------------------
-    // 6. Return ZIP as download
+    // 5. Return ZIP as download
     // --------------------------------------------------
 
     return new NextResponse(packageBuffer, {
@@ -88,7 +100,7 @@ export async function GET() {
     );
   } finally {
     // --------------------------------------------------
-    // 7. Always remove temporary files
+    // 6. Always remove temporary files
     // --------------------------------------------------
 
     if (cleanup) {
