@@ -72,6 +72,8 @@ export default [
         Response: 'readonly',
         fetch: 'readonly',
         Headers: 'readonly',
+        AbortSignal: 'readonly',
+        AbortController: 'readonly',
         Blob: 'readonly',
         URL: 'readonly',
         alert: 'readonly',
