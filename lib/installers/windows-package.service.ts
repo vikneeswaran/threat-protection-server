@@ -93,6 +93,7 @@ async function fetchInstallHelperScript(): Promise<string> {
       "[Windows Package] Using fallback inline installation helper"
     );
 
+    // eslint-disable-next-line no-useless-escape
     return `#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
@@ -117,23 +118,23 @@ $msiPath = Get-ChildItem -Path $scriptPath -Filter "KuaminiSecurityClient-*.msi"
     Select-Object -First 1 -ExpandProperty FullName
 
 if (-not $msiPath -or -not (Test-Path $msiPath)) {
-    Write-Host "  ✗ ERROR: MSI file not found!" -ForegroundColor Red
+    Write-Host "  X ERROR: MSI file not found!" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "  ✓ Found MSI: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
+Write-Host "  + Found MSI: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
 
 # STEP 2: PREPARE CONFIG DIRECTORY
 Write-Host "[2/3] Preparing installation configuration..." -ForegroundColor Yellow
 
 $configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
 New-Item -ItemType Directory -Path $configDir -Force -ErrorAction Stop | Out-Null
-Write-Host "  ✓ Config directory created" -ForegroundColor Green
+Write-Host "  + Config directory created" -ForegroundColor Green
 
 # STEP 3: INSTALL MSI
 Write-Host "[3/3] Installing MSI package..." -ForegroundColor Yellow
 
-$tempLogFile = Join-Path $env:TEMP "kuamini-install-\$(Get-Random).log"
+$tempLogFile = Join-Path $env:TEMP "kuamini-install-$(Get-Random).log"
 
 try {
     $msiArgs = @(
@@ -142,28 +143,28 @@ try {
         "/passive"
     )
 
-    \$process = Start-Process -FilePath "msiexec.exe" -ArgumentList \$msiArgs -PassThru -Wait -NoNewWindow
-    \$exitCode = \$process.ExitCode
+    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -PassThru -Wait -NoNewWindow
+    $exitCode = $process.ExitCode
 
-    if (\$exitCode -ne 0 -and \$exitCode -ne 3010) {
-        Write-Host "  ✗ MSI installation failed with exit code: \$exitCode" -ForegroundColor Red
-        if (Test-Path \$tempLogFile) {
+    if ($exitCode -ne 0 -and $exitCode -ne 3010) {
+        Write-Host "  X MSI installation failed with exit code: $exitCode" -ForegroundColor Red
+        if (Test-Path $tempLogFile) {
             Write-Host "  Last 30 lines of log:" -ForegroundColor Yellow
-            Get-Content \$tempLogFile -Tail 30 | Write-Host
+            Get-Content $tempLogFile -Tail 30 | Write-Host
         }
-        exit \$exitCode
+        exit $exitCode
     }
 
-    Write-Host "  ✓ MSI installation completed" -ForegroundColor Green
-    Remove-Item \$tempLogFile -Force -ErrorAction SilentlyContinue
+    Write-Host "  + MSI installation completed" -ForegroundColor Green
+    Remove-Item $tempLogFile -Force -ErrorAction SilentlyContinue
 
 } catch {
-    Write-Host "  ✗ ERROR: MSI installation failed: \$(\$_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  X ERROR: MSI installation failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
-Write-Host "✓ INSTALLATION COMPLETED SUCCESSFULLY" -ForegroundColor Green
+Write-Host "+ INSTALLATION COMPLETED SUCCESSFULLY" -ForegroundColor Green
 Write-Host ""
 
 exit 0
