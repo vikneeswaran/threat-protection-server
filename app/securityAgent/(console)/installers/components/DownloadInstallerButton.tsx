@@ -2,15 +2,28 @@
 
 import { useState } from "react";
 
-export default function DownloadInstallerButton() {
-  const [downloading, setDownloading] = useState(false);
+type Platform = "windows" | "macos" | "linux";
 
-  async function handleDownload() {
+const PLATFORMS: {
+  id: Platform;
+  label: string;
+}[] = [
+  { id: "windows", label: "🪟 Windows" },
+  { id: "macos", label: "🍎 macOS" },
+  { id: "linux", label: "🐧 Linux" },
+];
+
+export default function DownloadInstallerButton() {
+  const [downloading, setDownloading] = useState<Platform | null>(
+    null
+  );
+
+  async function handleDownload(platform: Platform) {
     try {
-      setDownloading(true);
+      setDownloading(platform);
 
       const response = await fetch(
-        "/api/securityagent/installers/windows"
+        `/api/securityagent/installers/${platform}`
       );
 
       if (!response.ok) {
@@ -31,8 +44,7 @@ export default function DownloadInstallerButton() {
 
       // The server already provides Content-Disposition,
       // but setting a filename here gives the browser a safe fallback.
-      link.download =
-        "KuaminiSecurityClient-windows-account.zip";
+      link.download = `KuaminiSecurityClient-${platform}-account.zip`;
 
       document.body.appendChild(link);
       link.click();
@@ -44,19 +56,24 @@ export default function DownloadInstallerButton() {
       console.error("Download error:", error);
       alert("Unable to generate and download installer.");
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   }
 
   return (
-    <button
-      onClick={handleDownload}
-      disabled={downloading}
-      className="mt-8 rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {downloading
-        ? "Preparing Installer..."
-        : "Download Installer"}
-    </button>
+    <div className="mt-8 flex flex-wrap gap-4">
+      {PLATFORMS.map((platform) => (
+        <button
+          key={platform.id}
+          onClick={() => handleDownload(platform.id)}
+          disabled={downloading !== null}
+          className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {downloading === platform.id
+            ? "Preparing Installer..."
+            : `Download ${platform.label}`}
+        </button>
+      ))}
+    </div>
   );
 }
