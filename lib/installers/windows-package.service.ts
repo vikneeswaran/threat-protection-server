@@ -1,8 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import { createWriteStream } from "fs";
-import { ZipArchive } from "archiver";
 import AdmZip from "adm-zip";
 
 interface WindowsPackageOptions {
@@ -11,31 +9,27 @@ interface WindowsPackageOptions {
   installationToken: string;
 }
 
+const REQUIRED_WINDOWS_FILES = [
+  "install-helper.ps1",
+  "install-windows.cmd",
+  "uninstall-kuamini-windows.ps1",
+  "uninstall-windows.cmd",
+] as const;
+
 function createZip(
   sourceDirectory: string,
   outputPath: string
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const output = createWriteStream(outputPath);
-
-    const archive = new ZipArchive({
-      zlib: {
-        level: 9,
-      },
+    const archive = new AdmZip();
+    archive.addLocalFolder(sourceDirectory);
+    archive.writeZip(outputPath, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     });
-
-    output.on("close", () => {
-      resolve();
-    });
-
-    output.on("error", reject);
-    archive.on("error", reject);
-
-    archive.pipe(output);
-
-    archive.directory(sourceDirectory, false);
-
-    archive.finalize().catch(reject);
   });
 }
 
@@ -239,8 +233,57 @@ export async function createWindowsInstallerPackage({
     }
 
     // --------------------------------------------------
-    // 4. Create account-specific config.json
+    // 4. Add required installer scripts when the source
+    //    archive does not already contain them
     // --------------------------------------------------
+
+    for (const requiredFile of REQUIRED_WINDOWS_FILES) {
+      const destinationPath = path.join(
+        packageDirectory,
+        requiredFile
+      );
+
+      try {
+        await fs.access(destinationPath);
+        continue;
+      } catch {
+        // Download from the same published artifact directory.
+      }
+
+      const requiredFileUrl = new URL(
+        requiredFile,
+        downloadUrl
+      );
+      const requiredFileResponse = await fetch(requiredFileUrl);
+
+      if (!requiredFileResponse.ok) {
+        throw new Error(
+          `Required installer file ${requiredFile} is unavailable: HTTP ${requiredFileResponse.status}`
+        );
+      }
+
+      await fs.writeFile(
+        destinationPath,
+        Buffer.from(await requiredFileResponse.arrayBuffer())
+      );
+    }
+
+    // --------------------------------------------------
+    // 5. Create account-specific token and config files
+    // --------------------------------------------------
+
+    await Promise.all([
+      fs.writeFile(
+        path.join(packageDirectory, "registration.token"),
+        installationToken,
+        "utf8"
+      ),
+      fs.writeFile(
+        path.join(packageDirectory, "registration_token.txt"),
+        installationToken,
+        "utf8"
+      ),
+    ]);
 
     const configPath = path.join(
       packageDirectory,
@@ -285,7 +328,7 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 5. Create final account-specific ZIP
+    // 6. Create final account-specific ZIP
     // --------------------------------------------------
 
     await createZip(
@@ -294,7 +337,7 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 6. Return package
+    // 7. Return package
     // --------------------------------------------------
 
     return {
