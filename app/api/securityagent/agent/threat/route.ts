@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import {
+  normalizeAgentIdentity,
+  normalizeThreat,
+  resolveInstallationInstance,
+} from "@/lib/agent/agent-request";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    const identity = normalizeAgentIdentity(body);
+
     const {
-      installationInstanceId,
-      endpointId,
-      agentId,
-      accountId,
       name,
       description,
       severity,
@@ -20,13 +23,15 @@ export async function POST(request: NextRequest) {
       processId,
       detectionEngine,
       detectionSource,
-    } = body;
+    } = normalizeThreat(body);
+
+    const { agentId, accountId, endpointId } = identity;
 
     // --------------------------------------------------
     // 1. Validate required threat information
     // --------------------------------------------------
 
-    if (!name || typeof name !== "string") {
+    if (!name) {
       return NextResponse.json(
         {
           success: false,
@@ -36,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!severity || typeof severity !== "string") {
+    if (!severity) {
       return NextResponse.json(
         {
           success: false,
@@ -47,38 +52,12 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // 2. Validate installation instance
+    // 2. Resolve the installation instance
     // --------------------------------------------------
 
-    if (
-      !installationInstanceId ||
-      typeof installationInstanceId !== "string"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Installation instance ID is required.",
-        },
-        { status: 400 }
-      );
-    }
+    const instance = await resolveInstallationInstance(identity);
 
-    const instanceResult = await query(
-      `
-      SELECT
-        id,
-        account_id,
-        endpoint_id,
-        status,
-        expires_at
-      FROM installation_instances
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [installationInstanceId]
-    );
-
-    if (instanceResult.rows.length === 0) {
+    if (!instance) {
       return NextResponse.json(
         {
           success: false,
@@ -87,8 +66,6 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-
-    const instance = instanceResult.rows[0];
 
     // --------------------------------------------------
     // 3. Validate installation instance status
@@ -175,7 +152,29 @@ export async function POST(request: NextRequest) {
     // 6. Resolve endpoint
     // --------------------------------------------------
 
-    const resolvedEndpointId = endpointId || instance.endpoint_id;
+    let resolvedEndpointId = endpointId || instance.endpoint_id;
+
+    if (!resolvedEndpointId && agentId) {
+      /*
+       * Agents that report a threat before the console linked their
+       * endpoint are matched through their agent id.
+       */
+      const agentEndpointResult = await query(
+        `
+        SELECT id
+        FROM endpoints
+        WHERE account_id = $1
+          AND agent_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+        `,
+        [resolvedAccountId, agentId]
+      );
+
+      if (agentEndpointResult.rows.length > 0) {
+        resolvedEndpointId = agentEndpointResult.rows[0].id;
+      }
+    }
 
     if (!resolvedEndpointId) {
       return NextResponse.json(
