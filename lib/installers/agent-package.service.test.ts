@@ -7,13 +7,13 @@ import {
 } from "@/lib/installers/agent-package.service";
 
 const ARTIFACT_BASE =
-  "https://example.com/tray/KuaminiSecurityClient-1.0.29";
+  "https://example.com/tray/KuaminiSecurityClient-1.0.30";
 
 function createWindowsArtifact(): Buffer {
   const zip = new AdmZip();
 
   zip.addFile(
-    "KuaminiSecurityClient-1.0.29.msi",
+    "KuaminiSecurityClient-1.0.30.msi",
     Buffer.from("msi-content")
   );
 
@@ -47,7 +47,7 @@ async function readPackageEntries(
   const result = await createAgentInstallerPackage({
     platform,
     downloadUrl,
-    version: "1.0.29",
+    version: "1.0.30",
     installationToken: "t".repeat(128),
     accountId: "11111111-1111-1111-1111-111111111111",
     accountName: "Kuamini QA",
@@ -95,12 +95,12 @@ describe("createAgentInstallerPackage", () => {
       );
 
     expect(packageName).toBe(
-      "KuaminiSecurityClient-1.0.29-windows-account.zip"
+      "KuaminiSecurityClient-1.0.30-windows-account.zip"
     );
 
     expect(entries).toEqual(
       expect.arrayContaining([
-        "KuaminiSecurityClient-1.0.29.msi",
+        "KuaminiSecurityClient-1.0.30.msi",
         "README.txt",
         "config.json",
         "install-helper.ps1",
@@ -119,7 +119,7 @@ describe("createAgentInstallerPackage", () => {
     expect(config).toMatchObject({
       account_id: "11111111-1111-1111-1111-111111111111",
       account_name: "Kuamini QA",
-      agent_version: "1.0.29",
+      agent_version: "1.0.30",
       registration_token: "t".repeat(128),
     });
 
@@ -145,12 +145,12 @@ describe("createAgentInstallerPackage", () => {
     );
 
     expect(packageName).toBe(
-      "KuaminiSecurityClient-1.0.29-macos-account.zip"
+      "KuaminiSecurityClient-1.0.30-macos-account.zip"
     );
 
     expect(entries).toEqual(
       expect.arrayContaining([
-        "KuaminiSecurityClient-1.0.29.pkg",
+        "KuaminiSecurityClient-1.0.30.pkg",
         "README.txt",
         "config.json",
         "install-kuamini-macos.sh",
@@ -174,12 +174,12 @@ describe("createAgentInstallerPackage", () => {
     );
 
     expect(packageName).toBe(
-      "KuaminiSecurityClient-1.0.29-linux-account.zip"
+      "KuaminiSecurityClient-1.0.30-linux-account.zip"
     );
 
     expect(entries).toEqual(
       expect.arrayContaining([
-        "KuaminiSecurityClient-1.0.29-linux.tar.gz",
+        "KuaminiSecurityClient-1.0.30-linux.tar.gz",
         "README.txt",
         "config.json",
         "install-kuamini-linux.sh",
@@ -219,7 +219,7 @@ describe("createAgentInstallerPackage", () => {
       createAgentInstallerPackage({
         platform: "windows",
         downloadUrl: `${ARTIFACT_BASE}-windows.zip`,
-        version: "1.0.29",
+        version: "1.0.30",
         installationToken: "t".repeat(128),
         accountId: "11111111-1111-1111-1111-111111111111",
         accountName: "Kuamini QA",
@@ -231,7 +231,7 @@ describe("createAgentInstallerPackage", () => {
 describe("getAssetBaseUrls", () => {
   it("looks next to the artifact before the published fallback", () => {
     const bases = getAssetBaseUrls(
-      "https://example.com/tray/KuaminiSecurityClient-1.0.29-windows.zip"
+      "https://example.com/tray/KuaminiSecurityClient-1.0.30-windows.zip"
     );
 
     expect(bases[0]).toBe("https://example.com/tray");

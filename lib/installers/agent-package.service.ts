@@ -13,8 +13,13 @@ import {
   buildWindowsInstallCommand,
   buildWindowsUninstallCommand,
 } from "./agent-package.scripts";
+import {
+  DEFAULT_AGENT_ASSET_BASE_URL,
+  getPackagedArtifactFileName,
+} from "./agent-release";
+import type { AgentPlatform } from "./agent-package.types";
 
-export type AgentPlatform = "windows" | "macos" | "linux";
+export type { AgentPlatform };
 
 interface AgentPackageOptions {
   platform: AgentPlatform;
@@ -44,8 +49,7 @@ const CONSOLE_URL =
  * artifacts. They are not part of the artifact itself, therefore they
  * have to be added to every account specific package.
  */
-const DEFAULT_ASSET_BASE_URL =
-  "https://raw.githubusercontent.com/vikneeswaran/threat-protection-agent/main/public/tray";
+const DEFAULT_ASSET_BASE_URL = DEFAULT_AGENT_ASSET_BASE_URL;
 
 const COMPANION_SCRIPTS: Record<AgentPlatform, string[]> = {
   windows: [
@@ -190,12 +194,7 @@ function getArtifactFileName(
   platform: AgentPlatform,
   version: string
 ): string {
-  const fallback =
-    platform === "windows"
-      ? `KuaminiSecurityClient-${version}.msi`
-      : platform === "macos"
-        ? `KuaminiSecurityClient-${version}.pkg`
-        : `KuaminiSecurityClient-${version}-linux.tar.gz`;
+  const fallback = getPackagedArtifactFileName(platform, version);
 
   try {
     const name = path.posix.basename(
