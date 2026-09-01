@@ -51,6 +51,12 @@ export async function GET() {
       { status: 500 }
     );
   } finally {
-    await cleanup?.();
+    if (cleanup) {
+      try {
+        await cleanup();
+      } catch (cleanupError) {
+        console.error("macOS installer cleanup error:", cleanupError);
+      }
+    }
   }
 }

@@ -21,6 +21,60 @@ const PLATFORM_SCRIPTS: Record<Platform, readonly string[]> = {
   linux: ["uninstall-kuamini-linux.sh"],
 };
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function createMacosLauncher(fileName: string): string {
+  return `#!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOKEN="$(tr -d '\\r\\n' < "$SCRIPT_DIR/registration.token")"
+exec "$SCRIPT_DIR/install-kuamini-macos.sh" "$TOKEN" "$SCRIPT_DIR"/${shellQuote(fileName)}
+`;
+}
+
+function createLinuxInstaller(fileName: string): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+if [ "$EUID" -ne 0 ]; then
+  exec sudo "$0" "$@"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONSOLE_USER="\${SUDO_USER:-$(id -un)}"
+USER_HOME="$(getent passwd "$CONSOLE_USER" | cut -d: -f6)"
+INSTALL_DIR="/opt/kuamini-security-client"
+CONFIG_DIR="$USER_HOME/.kuamini"
+AUTOSTART_DIR="$USER_HOME/.config/autostart"
+
+rm -rf "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$AUTOSTART_DIR"
+tar -xzf "$SCRIPT_DIR"/${shellQuote(fileName)} -C "$INSTALL_DIR"
+cp "$SCRIPT_DIR/config.json" "$SCRIPT_DIR/registration.token" "$CONFIG_DIR/"
+
+EXECUTABLE="$(find "$INSTALL_DIR" -type f -name KuaminiSecurityClient -perm -u+x -print -quit)"
+if [ -z "$EXECUTABLE" ]; then
+  echo "Kuamini Security Client executable was not found in the archive." >&2
+  exit 1
+fi
+
+cat > "$AUTOSTART_DIR/kuamini-security-client.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Kuamini Security Client
+Exec=$EXECUTABLE
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+chown -R "$CONSOLE_USER":"$CONSOLE_USER" "$CONFIG_DIR" "$AUTOSTART_DIR"
+sudo -u "$CONSOLE_USER" env HOME="$USER_HOME" DISPLAY="\${DISPLAY:-:0}" "$EXECUTABLE" >/dev/null 2>&1 &
+echo "Kuamini Security Client installed and started."
+`;
+}
+
 function createZip(sourceDirectory: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const archive = new AdmZip();
@@ -87,12 +141,29 @@ export async function createPlatformInstallerPackage({
     for (const scriptName of PLATFORM_SCRIPTS[platform]) {
       const scriptUrl = new URL(scriptName, downloadUrl);
       const scriptPath = path.join(packageDirectory, scriptName);
+      const script = (
+        await download(scriptUrl, scriptName)
+      ).toString("utf8").replaceAll(
+        "https://kuaminisystems.com/api/agent",
+        "https://kuaminisystems.com/api/securityagent/agent"
+      );
       await fs.writeFile(
         scriptPath,
-        await download(scriptUrl, scriptName)
+        script,
+        "utf8"
       );
       await fs.chmod(scriptPath, 0o755);
     }
+
+    const launcherName =
+      platform === "macos" ? "install-macos.command" : "install-linux.sh";
+    const launcher =
+      platform === "macos"
+        ? createMacosLauncher(safeFileName)
+        : createLinuxInstaller(safeFileName);
+    const launcherPath = path.join(packageDirectory, launcherName);
+    await fs.writeFile(launcherPath, launcher, "utf8");
+    await fs.chmod(launcherPath, 0o755);
 
     const config = {
       api_base: "https://kuaminisystems.com/api/securityagent/agent",

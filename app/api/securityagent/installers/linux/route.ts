@@ -48,6 +48,12 @@ export async function GET() {
       { status: 500 }
     );
   } finally {
-    await cleanup?.();
+    if (cleanup) {
+      try {
+        await cleanup();
+      } catch (cleanupError) {
+        console.error("Linux installer cleanup error:", cleanupError);
+      }
+    }
   }
 }

@@ -86,6 +86,7 @@ describe("account installer packages", () => {
       platform: "macos" as const,
       fileName: "KuaminiSecurityClient-1.0.29.pkg",
       scripts: [
+        "install-macos.command",
         "install-kuamini-macos.sh",
         "uninstall-kuamini-macos.sh",
       ],
@@ -93,7 +94,7 @@ describe("account installer packages", () => {
     {
       platform: "linux" as const,
       fileName: "KuaminiSecurityClient-1.0.29-linux.tar.gz",
-      scripts: ["uninstall-kuamini-linux.sh"],
+      scripts: ["install-linux.sh", "uninstall-kuamini-linux.sh"],
     },
   ])("creates a populated $platform account package", async ({
     platform,
@@ -124,5 +125,8 @@ describe("account installer packages", () => {
       ])
     );
     expect(readEntry(archive, "registration.token")).toBe(TOKEN);
+    const launcher =
+      platform === "macos" ? "install-macos.command" : "install-linux.sh";
+    expect(readEntry(archive, launcher)).toContain("registration.token");
   });
 });
