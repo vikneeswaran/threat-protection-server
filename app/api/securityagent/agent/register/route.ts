@@ -1,34 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-
-interface JWTPayload {
-  accountId: string;
-  iat: number;
-  exp: number;
-}
+import {
+  normalizeAgentIdentity,
+  resolveRegistrationInstance,
+  type InstallationInstance,
+} from "@/lib/agent/agent-request";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const {
-      installationToken,
-      registrationToken,
-      installerVersion,
-      platform,
-      // agentId, hostname, os, osVersion are accepted but not used yet
-      // They may be used in future updates for endpoint registration
-    } = body;
+    const identity = normalizeAgentIdentity(body);
+
+    const installationToken = identity.installationToken;
+
+    const installerVersion =
+      typeof body.installerVersion === "string"
+        ? body.installerVersion
+        : typeof body.installer_version === "string"
+          ? body.installer_version
+          : typeof body.agentVersion === "string"
+            ? body.agentVersion
+            : body.agent_version;
+
+    const platform =
+      typeof body.platform === "string" ? body.platform : body.os;
 
     // -----------------------------------------
     // 1. Validate request
     // -----------------------------------------
-    const token = installationToken || registrationToken;
+    if (!installationToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Installation token is required.",
+        },
+        { status: 400 }
+      );
+    }
 
-    if (!token || typeof token !== "string") {
+    if (installationToken.length !== 128) {
       return NextResponse.json(
         {
           success: false,
@@ -150,6 +161,7 @@ export async function POST(request: NextRequest) {
       `
       SELECT
         id,
+        name,
         total_licenses,
         allocated_licenses,
         used_licenses,
@@ -187,7 +199,63 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 6. Check license availability
+    // 6. Reuse an existing registration
+    //
+    // Agents register on every start up. Without this the console
+    // would consume one license per restart.
+    // -----------------------------------------
+    const existingInstance = await resolveRegistrationInstance({
+      installationInstanceId: identity.installationInstanceId,
+      endpointId: identity.endpointId,
+      agentId: identity.agentId,
+      accountId,
+      installationToken,
+    });
+
+    if (existingInstance && existingInstance.account_id === accountId) {
+      const refreshedResult = await query<InstallationInstance>(
+        `
+        UPDATE installation_instances
+        SET
+          installer_version = $1,
+          platform = $2,
+          installation_token = $3,
+          expires_at = $4
+        WHERE id = $5
+        RETURNING
+          id,
+          account_id,
+          installer_version,
+          platform,
+          status,
+          endpoint_id
+        `,
+        [
+          installerVersion,
+          platform,
+          installationToken,
+          tokenRecord.expires_at,
+          existingInstance.id,
+        ]
+      );
+
+      const refreshed = refreshedResult.rows[0];
+
+      return NextResponse.json({
+        success: true,
+        message: "Agent registration successful.",
+        accountId,
+        accountName: account.name,
+        installationInstanceId: refreshed.id,
+        endpointId: refreshed.endpoint_id,
+        installerVersion: refreshed.installer_version,
+        platform: refreshed.platform,
+        status: refreshed.status,
+      });
+    }
+
+    // -----------------------------------------
+    // 7. Check license availability
     // -----------------------------------------
     const activeInstancesResult = await query(
       `
@@ -195,6 +263,10 @@ export async function POST(request: NextRequest) {
       FROM installation_instances
       WHERE account_id = $1
         AND status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+        AND (
+          endpoint_id IS NOT NULL
+          OR created_at > NOW() - INTERVAL '1 day'
+        )
       `,
       [accountId]
     );
@@ -213,7 +285,7 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 7. Create installation instance
+    // 8. Create installation instance
     // -----------------------------------------
     const instanceResult = await query(
       `
@@ -260,12 +332,13 @@ export async function POST(request: NextRequest) {
     const instance = instanceResult.rows[0] as Record<string, unknown>;
 
     // -----------------------------------------
-    // 8. Return success with account_id
+    // 9. Return success
     // -----------------------------------------
     return NextResponse.json({
       success: true,
       message: "Agent registration successful.",
       accountId,
+      accountName: account.name,
       installationInstanceId: instance.id,
       installerVersion: instance.installer_version,
       platform: instance.platform,
