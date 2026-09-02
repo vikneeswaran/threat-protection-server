@@ -39,12 +39,12 @@ function createZip(
   });
 }
 
-function createEmbeddedInstallHelperScript(): string {
+function createEmbeddedInstallHelperScript(version: string): string {
   // Built-in PowerShell script - no external fetch needed
   return `#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-Kuamini Security Client Installer v1.0.28 - Installation Helper
+Kuamini Security Client Installer v${version} - Installation Helper
 This is a built-in helper script with no external dependencies.
 
 .DESCRIPTION
@@ -78,7 +78,7 @@ $msiPath = $msiFiles[0].FullName
 Write-Host "  ✓ Found: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
 
 # STEP 2: CREATE CONFIG DIRECTORY
-Write-Host "[2/4] Creating configuration directory..." -ForegroundColor Yellow
+Write-Host "[2/5] Creating configuration directory..." -ForegroundColor Yellow
 
 $configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
 
@@ -91,8 +91,31 @@ try {
     Write-Host "  ⚠ Warning: Could not create config directory" -ForegroundColor Yellow
 }
 
-# STEP 3: INSTALL MSI
-Write-Host "[3/4] Running MSI installation..." -ForegroundColor Yellow
+# STEP 3: COPY CONFIG AND REGISTRATION TOKEN
+Write-Host "[3/5] Copying configuration and registration token..." -ForegroundColor Yellow
+
+try {
+    $configSource = Join-Path $scriptPath "config.json"
+
+    if (Test-Path $configSource) {
+        Copy-Item -Path $configSource -Destination (Join-Path $configDir "config.json") -Force
+    }
+
+    foreach ($tokenFile in @("registration.token", "registration_token.txt")) {
+        $tokenSource = Join-Path $scriptPath $tokenFile
+
+        if (Test-Path $tokenSource) {
+            Copy-Item -Path $tokenSource -Destination (Join-Path $configDir $tokenFile) -Force
+        }
+    }
+
+    Write-Host "  ✓ Configuration and registration token copied" -ForegroundColor Green
+} catch {
+    Write-Host "  ⚠ Warning: Could not copy configuration files" -ForegroundColor Yellow
+}
+
+# STEP 4: INSTALL MSI
+Write-Host "[4/5] Running MSI installation..." -ForegroundColor Yellow
 
 $logFile = Join-Path $env:TEMP ("kuamini-install-" + (Get-Random) + ".log")
 
@@ -130,8 +153,8 @@ try {
     exit 1
 }
 
-# STEP 4: VERIFY AND START AGENT
-Write-Host "[4/4] Verifying installation and starting agent..." -ForegroundColor Yellow
+# STEP 5: VERIFY AND START AGENT
+Write-Host "[5/5] Verifying installation and starting agent..." -ForegroundColor Yellow
 
 $installDir = "C:\Program Files\Kuamini Security Client"
 $exePath = Join-Path $installDir "KuaminiSecurityClient.exe"
@@ -174,6 +197,80 @@ Write-Host ""
 Write-Host "Logs:" -ForegroundColor Cyan
 Write-Host "  Agent log: $configDir\agent.log" -ForegroundColor Gray
 Write-Host "  Config: $configDir\config.json" -ForegroundColor Gray
+Write-Host ""
+
+exit 0
+`;
+}
+
+function createEmbeddedUninstallHelperScript(version: string): string {
+  // Built-in PowerShell script - no external fetch needed
+  return `#Requires -RunAsAdministrator
+<#
+.SYNOPSIS
+Kuamini Security Client Uninstaller v${version} - Uninstallation Helper
+This is a built-in helper script with no external dependencies.
+
+.DESCRIPTION
+Uninstalls Kuamini Security Client by removing the MSI product and local configuration.
+#>
+
+param(
+    [Parameter(Mandatory = $false)]
+    [switch]$Quiet
+)
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "======================================" -ForegroundColor Green
+Write-Host "Kuamini Security Client Uninstaller" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Green
+Write-Host ""
+
+# STEP 1: STOP RUNNING AGENT
+Write-Host "[1/3] Stopping running agent..." -ForegroundColor Yellow
+
+try {
+    Get-Process KuaminiSecurityClient -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host "  ✓ Agent stopped" -ForegroundColor Green
+} catch {
+    Write-Host "  ⚠ Warning: Could not stop running agent" -ForegroundColor Yellow
+}
+
+# STEP 2: UNINSTALL MSI PRODUCT
+Write-Host "[2/3] Removing installed product..." -ForegroundColor Yellow
+
+try {
+    $product = Get-CimInstance -ClassName Win32_Product -Filter "Name = 'Kuamini Security Client'" -ErrorAction SilentlyContinue
+
+    if ($product) {
+        $product | Invoke-CimMethod -MethodName Uninstall | Out-Null
+        Write-Host "  ✓ Product removed" -ForegroundColor Green
+    } else {
+        Write-Host "  ⚠ Product not found; skipping MSI removal" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "  ✗ Uninstall error: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+# STEP 3: REMOVE CONFIGURATION
+Write-Host "[3/3] Removing local configuration..." -ForegroundColor Yellow
+
+$configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
+
+try {
+    if (Test-Path $configDir) {
+        Remove-Item -Path $configDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "  ✓ Local configuration removed" -ForegroundColor Green
+} catch {
+    Write-Host "  ⚠ Warning: Could not remove local configuration" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "======================================" -ForegroundColor Green
+Write-Host "✓ UNINSTALLATION COMPLETE" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Green
 Write-Host ""
 
 exit 0
@@ -397,6 +494,8 @@ export async function createWindowsInstallerPackage({
 
       account_id: "",
 
+      agent_version: version,
+
       console_url:
         "https://kuaminisystems.com/securityAgent",
 
@@ -424,6 +523,30 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
+    // 4b. Create registration token files
+    // --------------------------------------------------
+
+    console.info("[Windows Package] Writing registration token files...");
+
+    await fs.writeFile(
+      path.join(
+        packageDirectory,
+        "registration.token"
+      ),
+      installationToken,
+      "utf8"
+    );
+
+    await fs.writeFile(
+      path.join(
+        packageDirectory,
+        "registration_token.txt"
+      ),
+      installationToken,
+      "utf8"
+    );
+
+    // --------------------------------------------------
     // 5. Create built-in install-helper.ps1 (no external fetch)
     // --------------------------------------------------
 
@@ -434,7 +557,7 @@ export async function createWindowsInstallerPackage({
       "install-helper.ps1"
     );
 
-    const helperScript = createEmbeddedInstallHelperScript();
+    const helperScript = createEmbeddedInstallHelperScript(version);
 
     await fs.writeFile(
       helperScriptPath,
@@ -444,6 +567,29 @@ export async function createWindowsInstallerPackage({
 
     console.info(
       `[Windows Package] Created install-helper.ps1 (${helperScript.length} bytes)`
+    );
+
+    // --------------------------------------------------
+    // 5b. Create built-in uninstall-kuamini-windows.ps1
+    // --------------------------------------------------
+
+    console.info("[Windows Package] Creating built-in uninstallation helper...");
+
+    const uninstallScriptPath = path.join(
+      packageDirectory,
+      "uninstall-kuamini-windows.ps1"
+    );
+
+    const uninstallScript = createEmbeddedUninstallHelperScript(version);
+
+    await fs.writeFile(
+      uninstallScriptPath,
+      uninstallScript,
+      "utf8"
+    );
+
+    console.info(
+      `[Windows Package] Created uninstall-kuamini-windows.ps1 (${uninstallScript.length} bytes)`
     );
 
     // --------------------------------------------------
@@ -489,6 +635,48 @@ exit /b %ERRORLEVEL%
     );
 
     // --------------------------------------------------
+    // 6b. Create uninstall-windows.cmd batch file
+    // --------------------------------------------------
+
+    console.info("[Windows Package] Creating uninstall batch file launcher...");
+
+    const uninstallCmdPath = path.join(
+      packageDirectory,
+      "uninstall-windows.cmd"
+    );
+
+    const uninstallCmdContent = `@echo off
+REM Kuamini Security Client Uninstaller v${version}
+REM This script runs the PowerShell helper with administrator privileges
+
+setlocal enabledelayedexpansion
+
+set SCRIPT_DIR=%~dp0
+
+if not exist "%SCRIPT_DIR%uninstall-kuamini-windows.ps1" (
+    echo.
+    echo ERROR: uninstall-kuamini-windows.ps1 not found!
+    echo Expected: %SCRIPT_DIR%uninstall-kuamini-windows.ps1
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Running Kuamini Security Client Uninstaller v${version}...
+echo.
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%uninstall-kuamini-windows.ps1"
+
+exit /b %ERRORLEVEL%
+`;
+
+    await fs.writeFile(
+      uninstallCmdPath,
+      uninstallCmdContent,
+      "utf8"
+    );
+
+    // --------------------------------------------------
     // 7. Create README.txt
     // --------------------------------------------------
 
@@ -508,11 +696,15 @@ QUICK START:
   4. Agent starts automatically
 
 CONTENTS:
-  - install-windows.cmd        : Launcher (requires admin)
-  - install-helper.ps1         : Built-in helper script
-  - KuaminiSecurityClient-*.msi : Windows installer
-  - config.json                : Account-specific configuration
-  - README.txt                 : This file
+  - install-windows.cmd             : Install launcher (requires admin)
+  - install-helper.ps1               : Built-in install helper script
+  - uninstall-windows.cmd            : Uninstall launcher (requires admin)
+  - uninstall-kuamini-windows.ps1    : Built-in uninstall helper script
+  - KuaminiSecurityClient-*.msi      : Windows installer
+  - config.json                      : Account-specific configuration
+  - registration.token               : Account registration token
+  - registration_token.txt           : Account registration token (text copy)
+  - README.txt                       : This file
 
 SYSTEM REQUIREMENTS:
   - Windows 10 or later
@@ -525,6 +717,10 @@ INSTALLATION:
   3. Accept prompts
   4. Completes in 2-5 minutes
   5. Look for Kuamini icon in system tray
+
+UNINSTALLATION:
+  1. Right-click uninstall-windows.cmd
+  2. Select "Run as administrator"
 
 VERIFICATION:
   - Check: %LOCALAPPDATA%\\KuaminiSecurityClient\\agent.log
