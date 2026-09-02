@@ -156,7 +156,7 @@ try {
 # STEP 5: VERIFY AND START AGENT
 Write-Host "[5/5] Verifying installation and starting agent..." -ForegroundColor Yellow
 
-$installDir = "C:\Program Files\Kuamini Security Client"
+$installDir = "C:\\Program Files\\Kuamini Security Client"
 $exePath = Join-Path $installDir "KuaminiSecurityClient.exe"
 
 if (-not (Test-Path $exePath)) {
@@ -195,8 +195,8 @@ Write-Host "  3. Verify the new endpoint appears in your dashboard" -ForegroundC
 Write-Host "  4. Check System Tray for the Kuamini icon" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Logs:" -ForegroundColor Cyan
-Write-Host "  Agent log: $configDir\agent.log" -ForegroundColor Gray
-Write-Host "  Config: $configDir\config.json" -ForegroundColor Gray
+Write-Host "  Agent log: $configDir\\agent.log" -ForegroundColor Gray
+Write-Host "  Config: $configDir\\config.json" -ForegroundColor Gray
 Write-Host ""
 
 exit 0
