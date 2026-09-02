@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import {
-  normalizeAgentIdentity,
-  normalizeSystemInfo,
-  resolveInstallationInstance,
-} from "@/lib/agent/agent-request";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const identity = normalizeAgentIdentity(body);
-
     const {
+      installationInstanceId,
       hostname,
       os,
       osVersion,
@@ -20,14 +14,29 @@ export async function POST(request: NextRequest) {
       ipAddress,
       macAddress,
       publicIp,
-    } = normalizeSystemInfo(body);
-
-    const agentId = identity.agentId;
+      agentId,
+    } = body;
 
     // -----------------------------------------
-    // 1. Validate OS
+    // 1. Validate installation instance ID
     // -----------------------------------------
-    if (!os || !["windows", "macos", "linux"].includes(os)) {
+    if (
+      !installationInstanceId ||
+      typeof installationInstanceId !== "string"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Installation instance ID is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // -----------------------------------------
+    // 2. Validate OS
+    // -----------------------------------------
+    if (!["windows", "macos", "linux"].includes(os)) {
       return NextResponse.json(
         {
           success: false,
@@ -38,15 +47,27 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 2. Resolve the installation instance
-    //
-    // Agents identify themselves with the installation instance id
-    // when they know it, otherwise with the endpoint, agent, account
-    // or installation token information they hold.
+    // 3. Find installation instance
     // -----------------------------------------
-    const instance = await resolveInstallationInstance(identity);
+    const instanceResult = await query(
+      `
+      SELECT
+        id,
+        account_id,
+        installation_token,
+        installer_version,
+        platform,
+        status,
+        expires_at,
+        endpoint_id
+      FROM installation_instances
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [installationInstanceId]
+    );
 
-    if (!instance) {
+    if (instanceResult.rows.length === 0) {
       return NextResponse.json(
         {
           success: false,
@@ -56,15 +77,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const installationInstanceId = instance.id;
+    const instance = instanceResult.rows[0];
 
     // -----------------------------------------
-    // 3. Check installation expiry
+    // 4. Check installation expiry
     // -----------------------------------------
-    if (
-      instance.expires_at &&
-      new Date(instance.expires_at) <= new Date()
-    ) {
+    if (new Date(instance.expires_at) <= new Date()) {
       return NextResponse.json(
         {
           success: false,
@@ -75,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 4. Check account
+    // 5. Check account
     // -----------------------------------------
     const accountResult = await query(
       `
@@ -112,32 +130,9 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 5. Existing endpoint
+    // 6. Existing endpoint
     // -----------------------------------------
     let endpointId = instance.endpoint_id;
-
-    if (!endpointId && agentId) {
-      /*
-       * The agent registered again (for example after a restart) while
-       * an endpoint already exists for it. Reuse that endpoint instead
-       * of creating a duplicate one in the console.
-       */
-      const existingEndpoint = await query(
-        `
-        SELECT id
-        FROM endpoints
-        WHERE account_id = $1
-          AND agent_id = $2
-        ORDER BY created_at DESC
-        LIMIT 1
-        `,
-        [instance.account_id, agentId]
-      );
-
-      if (existingEndpoint.rows.length > 0) {
-        endpointId = existingEndpoint.rows[0].id;
-      }
-    }
 
     if (endpointId) {
       const endpointResult = await query(
@@ -182,7 +177,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // -----------------------------------------
-      // 6. First heartbeat - create endpoint
+      // 7. First heartbeat - create endpoint
       // -----------------------------------------
       const endpointResult = await query(
         `
@@ -243,7 +238,7 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 7. Link endpoint to installation instance
+    // 8. Link endpoint to installation instance
     // -----------------------------------------
     await query(
       `
@@ -258,13 +253,12 @@ export async function POST(request: NextRequest) {
     );
 
     // -----------------------------------------
-    // 8. Return heartbeat success
+    // 9. Return heartbeat success
     // -----------------------------------------
     return NextResponse.json({
       success: true,
       message: "Heartbeat received.",
       installationInstanceId,
-      accountId: instance.account_id,
       endpointId,
       status: "online",
       lastSeenAt: new Date().toISOString(),

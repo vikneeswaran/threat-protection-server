@@ -1,37 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import {
-  normalizeAgentIdentity,
-  normalizeThreat,
-  resolveInstallationInstance,
-} from "@/lib/agent/agent-request";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const identity = normalizeAgentIdentity(body);
-
     const {
-      name,
-      description,
+      agent_id,
+      account_id,
+      endpoint_id,
+      threat_name,
+      threat_type,
       severity,
-      type,
-      filePath,
-      fileHash,
-      processName,
-      processId,
-      detectionEngine,
-      detectionSource,
-    } = normalizeThreat(body);
+      file_path,
+      file_hash,
+      process_name,
+      process_id,
+      detection_engine,
+      details,
+      detected_at,
+    } = body;
 
-    const { agentId, accountId, endpointId } = identity;
+    // -----------------------------------------
+    // 1. Validate required fields
+    // -----------------------------------------
+    if (!agent_id || typeof agent_id !== "string") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Agent ID is required.",
+        },
+        { status: 400 }
+      );
+    }
 
-    // --------------------------------------------------
-    // 1. Validate required threat information
-    // --------------------------------------------------
+    if (!account_id || typeof account_id !== "string") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Account ID is required.",
+        },
+        { status: 400 }
+      );
+    }
 
-    if (!name) {
+    if (!threat_name || typeof threat_name !== "string") {
       return NextResponse.json(
         {
           success: false,
@@ -41,7 +54,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!severity) {
+    if (!severity || typeof severity !== "string") {
       return NextResponse.json(
         {
           success: false,
@@ -51,69 +64,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // --------------------------------------------------
-    // 2. Resolve the installation instance
-    // --------------------------------------------------
-
-    const instance = await resolveInstallationInstance(identity);
-
-    if (!instance) {
+    // -----------------------------------------
+    // 2. Validate severity levels
+    // -----------------------------------------
+    const validSeverities = ["critical", "high", "medium", "low"];
+    if (!validSeverities.includes(severity.toLowerCase())) {
       return NextResponse.json(
         {
           success: false,
-          message: "Installation instance not found.",
+          message: "Invalid severity level.",
         },
-        { status: 404 }
+        { status: 400 }
       );
     }
 
-    // --------------------------------------------------
-    // 3. Validate installation instance status
-    // --------------------------------------------------
-
-    if (!["PENDING", "INSTALLED", "ACTIVE"].includes(instance.status)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Installation instance is not active.",
-        },
-        { status: 403 }
-      );
-    }
-
-    if (
-      instance.expires_at &&
-      new Date(instance.expires_at) <= new Date()
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Installation instance has expired.",
-        },
-        { status: 401 }
-      );
-    }
-
-    // --------------------------------------------------
-    // 4. Resolve account
-    // --------------------------------------------------
-
-    const resolvedAccountId = instance.account_id;
-
-    if (accountId && accountId !== resolvedAccountId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Account does not match installation instance.",
-        },
-        { status: 403 }
-      );
-    }
-
-    // --------------------------------------------------
-    // 5. Validate account
-    // --------------------------------------------------
-
+    // -----------------------------------------
+    // 3. Verify account exists and is active
+    // -----------------------------------------
     const accountResult = await query(
       `
       SELECT
@@ -148,33 +115,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // --------------------------------------------------
-    // 6. Resolve endpoint
-    // --------------------------------------------------
-
-    let resolvedEndpointId = endpointId || instance.endpoint_id;
-
-    if (!resolvedEndpointId && agentId) {
-      /*
-       * Agents that report a threat before the console linked their
-       * endpoint are matched through their agent id.
-       */
-      const agentEndpointResult = await query(
-        `
-        SELECT id
-        FROM endpoints
-        WHERE account_id = $1
-          AND agent_id = $2
-        ORDER BY created_at DESC
-        LIMIT 1
-        `,
-        [resolvedAccountId, agentId]
-      );
-
-      if (agentEndpointResult.rows.length > 0) {
-        resolvedEndpointId = agentEndpointResult.rows[0].id;
-      }
-    }
+    // -----------------------------------------
+    // 4. Find or create endpoint from agent_id
+    // -----------------------------------------
+    let endpointIdToUse = endpoint_id;
 
     if (!endpointIdToUse) {
       const endpointResult = await query(

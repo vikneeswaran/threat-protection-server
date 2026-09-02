@@ -8,7 +8,6 @@ export async function getInstallerData(
   const accountResult = await query(
     `
     SELECT
-      name,
       total_licenses,
       allocated_licenses,
       used_licenses,
@@ -50,11 +49,6 @@ export async function getInstallerData(
   }
 
   return {
-    account: {
-      id: accountId,
-      name: account.name as string | null,
-    },
-
     license: {
       total: Number(account.total_licenses),
       allocated: Number(account.allocated_licenses),
