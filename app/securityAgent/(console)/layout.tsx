@@ -9,6 +9,7 @@ const navItems = [
   { label: "Threats", href: "/securityAgent/threats" }, 
   { label: "Endpoints", href: "/securityAgent/endpoints" }, 
   { label: "Installers", href: "/securityAgent/installers" }, 
+  { label: "Policy Management", href: "/securityAgent/policies" },
   ]; 
   export default async function SecurityAgentConsoleLayout(
     { children, }: 
