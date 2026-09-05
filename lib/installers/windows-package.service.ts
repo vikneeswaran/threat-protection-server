@@ -1,8 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import { createWriteStream } from "fs";
-import { ZipArchive } from "archiver";
 import AdmZip from "adm-zip";
 
 interface WindowsPackageOptions {
@@ -11,270 +9,83 @@ interface WindowsPackageOptions {
   installationToken: string;
 }
 
-function createZip(
+function toCrlf(s: string): string {
+  return s.replace(/\r?\n/g, "\r\n");
+}
+
+async function createZip(
   sourceDirectory: string,
   outputPath: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const output = createWriteStream(outputPath);
+  const zip = new AdmZip();
 
-    const archive = new ZipArchive({
-      zlib: {
-        level: 9,
-      },
-    });
+  async function addDir(baseDir: string, zipPath = ""): Promise<void> {
+    const entries = await fs.readdir(baseDir, { withFileTypes: true });
 
-    output.on("close", () => {
-      resolve();
-    });
+    for (const entry of entries) {
+      const fullPath = path.join(baseDir, entry.name);
+      const inZipPath = zipPath ? `${zipPath}/${entry.name}` : entry.name;
 
-    output.on("error", reject);
-    archive.on("error", reject);
-
-    archive.pipe(output);
-
-    archive.directory(sourceDirectory, false);
-
-    archive.finalize().catch(reject);
-  });
-}
-
-function createEmbeddedInstallHelperScript(version: string): string {
-  // Built-in PowerShell script - no external fetch needed
-  return `#Requires -RunAsAdministrator
-<#
-.SYNOPSIS
-Kuamini Security Client Installer v${version} - Installation Helper
-This is a built-in helper script with no external dependencies.
-
-.DESCRIPTION
-Installs Kuamini Security Client by running the MSI with proper configuration.
-#>
-
-param(
-    [Parameter(Mandatory = $false)]
-    [switch]$Quiet
-)
-
-$ErrorActionPreference = "Stop"
-$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-
-Write-Host "======================================" -ForegroundColor Green
-Write-Host "Kuamini Security Client Installer" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Green
-Write-Host ""
-
-# STEP 1: FIND MSI FILE
-Write-Host "[1/4] Locating MSI installer..." -ForegroundColor Yellow
-
-$msiFiles = @(Get-ChildItem -Path $scriptPath -Filter "KuaminiSecurityClient-*.msi" -File -ErrorAction SilentlyContinue)
-
-if ($msiFiles.Count -eq 0) {
-    Write-Host "ERROR: No MSI file found in $scriptPath" -ForegroundColor Red
-    exit 1
-}
-
-$msiPath = $msiFiles[0].FullName
-Write-Host "  ✓ Found: $(Split-Path -Leaf $msiPath)" -ForegroundColor Green
-
-# STEP 2: CREATE CONFIG DIRECTORY
-Write-Host "[2/5] Creating configuration directory..." -ForegroundColor Yellow
-
-$configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
-
-try {
-    if (-not (Test-Path $configDir)) {
-        New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+      if (entry.isDirectory()) {
+        await addDir(fullPath, inZipPath);
+      } else {
+        const data = await fs.readFile(fullPath);
+        zip.addFile(inZipPath.replace(/\\/g, "/"), data);
+      }
     }
-    Write-Host "  ✓ Config directory ready: $configDir" -ForegroundColor Green
-} catch {
-    Write-Host "  ⚠ Warning: Could not create config directory" -ForegroundColor Yellow
+  }
+
+  await addDir(sourceDirectory);
+  zip.writeZip(outputPath);
+}
+function applyTemplateVars(
+  content: string,
+  vars: Record<string, string>
+): string {
+  let out = content;
+  for (const [k, v] of Object.entries(vars)) {
+    out = out.replaceAll(`__${k}__`, v ?? "");
+  }
+  return out;
 }
 
-# STEP 3: COPY CONFIG AND REGISTRATION TOKEN
-Write-Host "[3/5] Copying configuration and registration token..." -ForegroundColor Yellow
+async function readTemplate(name: string): Promise<string> {
+  const templatePath = path.join(
+    process.cwd(),
+    "public",
+    "tray",
+    "templates",
+    name
+  );
 
-try {
-    $configSource = Join-Path $scriptPath "config.json"
+  const content = await fs.readFile(templatePath, "utf8");
 
-    if (Test-Path $configSource) {
-        Copy-Item -Path $configSource -Destination (Join-Path $configDir "config.json") -Force
+  if (!content || content.trim().length < 200) {
+    throw new Error(
+      `[Windows Package] Template ${name} appears empty/corrupt`
+    );
+  }
+
+  return content;
+}
+
+async function verifyRequiredFiles(packageDirectory: string): Promise<void> {
+  const expectedFiles = [
+    "install-helper.ps1",
+    "uninstall-kuamini-windows.ps1",
+    "registration.token",
+  ];
+
+  for (const fileName of expectedFiles) {
+    const fullPath = path.join(packageDirectory, fileName);
+    try {
+      await fs.access(fullPath);
+    } catch {
+      throw new Error(
+        `[Windows Package] Missing required file in package directory: ${fileName}`
+      );
     }
-
-    foreach ($tokenFile in @("registration.token", "registration_token.txt")) {
-        $tokenSource = Join-Path $scriptPath $tokenFile
-
-        if (Test-Path $tokenSource) {
-            Copy-Item -Path $tokenSource -Destination (Join-Path $configDir $tokenFile) -Force
-        }
-    }
-
-    Write-Host "  ✓ Configuration and registration token copied" -ForegroundColor Green
-} catch {
-    Write-Host "  ⚠ Warning: Could not copy configuration files" -ForegroundColor Yellow
-}
-
-# STEP 4: INSTALL MSI
-Write-Host "[4/5] Running MSI installation..." -ForegroundColor Yellow
-
-$logFile = Join-Path $env:TEMP ("kuamini-install-" + (Get-Random) + ".log")
-
-try {
-    $msiArgs = @(
-        "/i", $msiPath,
-        "/L*V", $logFile,
-        "/passive",
-        "/norestart"
-    )
-
-    Write-Host "  Installing package..." -ForegroundColor Cyan
-    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -PassThru -Wait -NoNewWindow
-    $exitCode = $process.ExitCode
-
-    if ($exitCode -eq 0 -or $exitCode -eq 3010) {
-        Write-Host "  ✓ MSI installation completed successfully" -ForegroundColor Green
-    } else {
-        Write-Host "  ✗ MSI installation failed with exit code: $exitCode" -ForegroundColor Red
-        if (Test-Path $logFile) {
-            Write-Host ""
-            Write-Host "MSI Log (last 20 lines):" -ForegroundColor Yellow
-            Get-Content $logFile -Tail 20 | Write-Host
-        }
-        exit $exitCode
-    }
-
-    # Cleanup temp log
-    if (Test-Path $logFile) {
-        Remove-Item $logFile -Force -ErrorAction SilentlyContinue
-    }
-
-} catch {
-    Write-Host "  ✗ Installation error: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
-}
-
-# STEP 5: VERIFY AND START AGENT
-Write-Host "[5/5] Verifying installation and starting agent..." -ForegroundColor Yellow
-
-$installDir = "C:\\Program Files\\Kuamini Security Client"
-$exePath = Join-Path $installDir "KuaminiSecurityClient.exe"
-
-if (-not (Test-Path $exePath)) {
-    Write-Host "  ✗ Error: Agent executable not found at $exePath" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "  ✓ Installation verified" -ForegroundColor Green
-
-# Start the agent
-try {
-    Write-Host "  Starting agent..." -ForegroundColor Cyan
-    Start-Process $exePath -ErrorAction Stop
-    Start-Sleep -Seconds 2
-    
-    if (Get-Process KuaminiSecurityClient -ErrorAction SilentlyContinue) {
-        Write-Host "  ✓ Agent started successfully" -ForegroundColor Green
-    } else {
-        Write-Host "  ⚠ Agent process not immediately visible (may start shortly)" -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host "  ⚠ Could not start agent: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "  Agent will start automatically on next login" -ForegroundColor Cyan
-}
-
-# SUMMARY
-Write-Host ""
-Write-Host "======================================" -ForegroundColor Green
-Write-Host "✓ INSTALLATION COMPLETE" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "Next Steps:" -ForegroundColor Cyan
-Write-Host "  1. Open Kuamini Console: https://kuaminisystems.com/securityAgent" -ForegroundColor Gray
-Write-Host "  2. Login to your account" -ForegroundColor Gray
-Write-Host "  3. Verify the new endpoint appears in your dashboard" -ForegroundColor Gray
-Write-Host "  4. Check System Tray for the Kuamini icon" -ForegroundColor Gray
-Write-Host ""
-Write-Host "Logs:" -ForegroundColor Cyan
-Write-Host "  Agent log: $configDir\\agent.log" -ForegroundColor Gray
-Write-Host "  Config: $configDir\\config.json" -ForegroundColor Gray
-Write-Host ""
-
-exit 0
-`;
-}
-
-function createEmbeddedUninstallHelperScript(version: string): string {
-  // Built-in PowerShell script - no external fetch needed
-  return `#Requires -RunAsAdministrator
-<#
-.SYNOPSIS
-Kuamini Security Client Uninstaller v${version} - Uninstallation Helper
-This is a built-in helper script with no external dependencies.
-
-.DESCRIPTION
-Uninstalls Kuamini Security Client by removing the MSI product and local configuration.
-#>
-
-param(
-    [Parameter(Mandatory = $false)]
-    [switch]$Quiet
-)
-
-$ErrorActionPreference = "Stop"
-
-Write-Host "======================================" -ForegroundColor Green
-Write-Host "Kuamini Security Client Uninstaller" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Green
-Write-Host ""
-
-# STEP 1: STOP RUNNING AGENT
-Write-Host "[1/3] Stopping running agent..." -ForegroundColor Yellow
-
-try {
-    Get-Process KuaminiSecurityClient -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Write-Host "  ✓ Agent stopped" -ForegroundColor Green
-} catch {
-    Write-Host "  ⚠ Warning: Could not stop running agent" -ForegroundColor Yellow
-}
-
-# STEP 2: UNINSTALL MSI PRODUCT
-Write-Host "[2/3] Removing installed product..." -ForegroundColor Yellow
-
-try {
-    $product = Get-CimInstance -ClassName Win32_Product -Filter "Name = 'Kuamini Security Client'" -ErrorAction SilentlyContinue
-
-    if ($product) {
-        $product | Invoke-CimMethod -MethodName Uninstall | Out-Null
-        Write-Host "  ✓ Product removed" -ForegroundColor Green
-    } else {
-        Write-Host "  ⚠ Product not found; skipping MSI removal" -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host "  ✗ Uninstall error: $($_.Exception.Message)" -ForegroundColor Red
-}
-
-# STEP 3: REMOVE CONFIGURATION
-Write-Host "[3/3] Removing local configuration..." -ForegroundColor Yellow
-
-$configDir = Join-Path $env:LOCALAPPDATA "KuaminiSecurityClient"
-
-try {
-    if (Test-Path $configDir) {
-        Remove-Item -Path $configDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    Write-Host "  ✓ Local configuration removed" -ForegroundColor Green
-} catch {
-    Write-Host "  ⚠ Warning: Could not remove local configuration" -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "======================================" -ForegroundColor Green
-Write-Host "✓ UNINSTALLATION COMPLETE" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Green
-Write-Host ""
-
-exit 0
-`;
+  }
 }
 
 export async function createWindowsInstallerPackage({
@@ -494,6 +305,10 @@ export async function createWindowsInstallerPackage({
 
       account_id: "",
 
+      endpoint_id: "",
+
+      installation_instance_id: "",
+
       agent_version: version,
 
       console_url:
@@ -547,7 +362,7 @@ export async function createWindowsInstallerPackage({
     );
 
     // --------------------------------------------------
-    // 5. Create built-in install-helper.ps1 (no external fetch)
+    // 5. Create install-helper.ps1 from template
     // --------------------------------------------------
 
     console.info("[Windows Package] Creating built-in installation helper...");
@@ -557,20 +372,31 @@ export async function createWindowsInstallerPackage({
       "install-helper.ps1"
     );
 
-    const helperScript = createEmbeddedInstallHelperScript(version);
+    const helperTemplate = await readTemplate("install-helper.ps1");
+    const helperScript = applyTemplateVars(helperTemplate, {
+      VERSION: version,
+    });
+    const helperScriptCrlf = toCrlf(helperScript);
+    const helperBytes = Buffer.byteLength(helperScriptCrlf, "utf8");
+
+    if (helperBytes < 4000) {
+      throw new Error(
+        `[Windows Package] install-helper.ps1 too small (${helperBytes} bytes), aborting package`
+      );
+    }
 
     await fs.writeFile(
       helperScriptPath,
-      helperScript,
+      helperScriptCrlf,
       "utf8"
     );
 
     console.info(
-      `[Windows Package] Created install-helper.ps1 (${helperScript.length} bytes)`
+      `[Windows Package] Created install-helper.ps1 (${helperBytes} bytes)`
     );
 
     // --------------------------------------------------
-    // 5b. Create built-in uninstall-kuamini-windows.ps1
+    // 5b. Create uninstall-kuamini-windows.ps1 from template
     // --------------------------------------------------
 
     console.info("[Windows Package] Creating built-in uninstallation helper...");
@@ -580,16 +406,27 @@ export async function createWindowsInstallerPackage({
       "uninstall-kuamini-windows.ps1"
     );
 
-    const uninstallScript = createEmbeddedUninstallHelperScript(version);
+    const uninstallTemplate = await readTemplate("uninstall-kuamini-windows.ps1");
+    const uninstallScript = applyTemplateVars(uninstallTemplate, {
+      VERSION: version,
+    });
+    const uninstallScriptCrlf = toCrlf(uninstallScript);
+    const uninstallBytes = Buffer.byteLength(uninstallScriptCrlf, "utf8");
+
+    if (uninstallBytes < 3000) {
+      throw new Error(
+        `[Windows Package] uninstall-kuamini-windows.ps1 too small (${uninstallBytes} bytes), aborting package`
+      );
+    }
 
     await fs.writeFile(
       uninstallScriptPath,
-      uninstallScript,
+      uninstallScriptCrlf,
       "utf8"
     );
 
     console.info(
-      `[Windows Package] Created uninstall-kuamini-windows.ps1 (${uninstallScript.length} bytes)`
+      `[Windows Package] Created uninstall-kuamini-windows.ps1 (${uninstallBytes} bytes)`
     );
 
     // --------------------------------------------------
@@ -630,7 +467,7 @@ exit /b %ERRORLEVEL%
 
     await fs.writeFile(
       installCmdPath,
-      installCmdContent,
+      toCrlf(installCmdContent),
       "utf8"
     );
 
@@ -672,7 +509,7 @@ exit /b %ERRORLEVEL%
 
     await fs.writeFile(
       uninstallCmdPath,
-      uninstallCmdContent,
+      toCrlf(uninstallCmdContent),
       "utf8"
     );
 
@@ -697,14 +534,14 @@ QUICK START:
 
 CONTENTS:
   - install-windows.cmd             : Install launcher (requires admin)
-  - install-helper.ps1               : Built-in install helper script
-  - uninstall-windows.cmd            : Uninstall launcher (requires admin)
-  - uninstall-kuamini-windows.ps1    : Built-in uninstall helper script
-  - KuaminiSecurityClient-*.msi      : Windows installer
-  - config.json                      : Account-specific configuration
-  - registration.token               : Account registration token
-  - registration_token.txt           : Account registration token (text copy)
-  - README.txt                       : This file
+  - install-helper.ps1              : Built-in install helper script
+  - uninstall-windows.cmd           : Uninstall launcher (requires admin)
+  - uninstall-kuamini-windows.ps1   : Built-in uninstall helper script
+  - KuaminiSecurityClient-*.msi     : Windows installer
+  - config.json                     : Account-specific configuration
+  - registration.token              : Account registration token
+  - registration_token.txt          : Account registration token (text copy)
+  - README.txt                      : This file
 
 SYSTEM REQUIREMENTS:
   - Windows 10 or later
@@ -736,12 +573,18 @@ SUPPORT:
 
     await fs.writeFile(
       readmePath,
-      readmeContent,
+      toCrlf(readmeContent),
       "utf8"
     );
 
     // --------------------------------------------------
-    // 8. Create final ZIP
+    // 8. Integrity checks before ZIP creation
+    // --------------------------------------------------
+
+    await verifyRequiredFiles(packageDirectory);
+
+    // --------------------------------------------------
+    // 9. Create final ZIP
     // --------------------------------------------------
 
     console.info("[Windows Package] Creating final package...");
@@ -754,7 +597,7 @@ SUPPORT:
     console.info("[Windows Package] Package created successfully");
 
     // --------------------------------------------------
-    // 9. Return package
+    // 10. Return package
     // --------------------------------------------------
 
     return {

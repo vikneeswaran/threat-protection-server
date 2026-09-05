@@ -1,5 +1,7 @@
+
 {
   "name": "threat-protection-server",
+
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -27,7 +29,8 @@
     "test:watch": "vitest --watch",
     "benchmark:baseline": "node scripts/benchmark/collect-api-baseline.mjs",
     "type-check": "tsc --noEmit",
-    "validate": "npm run lint && npm run type-check && npm run test"
+    "validate": "npm run lint && npm run type-check && npm run test",
+    "validate:windows-helpers": "node scripts/validate-windows-helpers.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
