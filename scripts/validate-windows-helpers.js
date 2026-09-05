@@ -1,5 +1,5 @@
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
 
 const files = [
   path.join(process.cwd(), "public/tray/templates/install-helper.ps1"),
@@ -19,4 +19,4 @@ for (const f of files) {
   }
 }
 
-console.log("Windows helper templates validation passed.");
+console.info("Windows helper templates validation passed.");
