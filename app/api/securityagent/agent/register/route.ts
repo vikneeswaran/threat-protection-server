@@ -17,16 +17,33 @@ export async function POST(request: NextRequest) {
     const {
       installationToken,
       registrationToken,
+      registration_token,
       installerVersion,
       platform,
-      // agentId, hostname, os, osVersion are accepted but not used yet
-      // They may be used in future updates for endpoint registration
+      agentId,
+      agent_id,
+      hostname,
+      os,
+      osVersion,
+      os_version,
+      agentVersion,
+      agent_version,
+      ipAddress,
+      ip_address,
+      local_ip,
+      macAddress,
+      mac_address,
+      publicIp,
+      public_ip,
     } = body;
 
     // -----------------------------------------
     // 1. Validate request
     // -----------------------------------------
-    const token = installationToken || registrationToken;
+    const token = installationToken || registrationToken || registration_token;
+    const resolvedAgentId = agentId || agent_id;
+    const resolvedPlatform = platform || os || "windows";
+    const resolvedInstallerVersion = installerVersion || agentVersion || agent_version || "unknown";
 
     if (!token || typeof token !== "string") {
       return NextResponse.json(
@@ -38,7 +55,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!installerVersion || typeof installerVersion !== "string") {
+    if (typeof resolvedInstallerVersion !== "string") {
       return NextResponse.json(
         {
           success: false,
@@ -48,7 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!platform || typeof platform !== "string") {
+    if (typeof resolvedPlatform !== "string") {
       return NextResponse.json(
         {
           success: false,
@@ -250,8 +267,8 @@ export async function POST(request: NextRequest) {
       [
         accountId,
         token,
-        installerVersion,
-        platform,
+        resolvedInstallerVersion,
+        resolvedPlatform,
         tokenRecord ? tokenRecord.expires_at : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         tokenRecord ? tokenRecord.id : null,
       ]
@@ -259,14 +276,46 @@ export async function POST(request: NextRequest) {
 
     const instance = instanceResult.rows[0] as Record<string, unknown>;
 
-    // -----------------------------------------
-    // 8. Return success with account_id
-    // -----------------------------------------
+    const resolvedOs = String(os || resolvedPlatform).toLowerCase();
+    const existingEndpoint = resolvedAgentId
+      ? await query("SELECT id FROM endpoints WHERE account_id = $1 AND agent_id = $2 LIMIT 1", [accountId, resolvedAgentId])
+      : { rows: [] };
+    const endpointResult = existingEndpoint.rows[0]
+      ? await query(
+          `UPDATE endpoints SET hostname = $1, os = $2::endpoint_os, os_version = $3,
+           agent_version = $4, ip_address = $5, mac_address = $6, public_ip = $7,
+           status = 'online'::endpoint_status, last_seen_at = NOW(), updated_at = NOW()
+           WHERE id = $8 RETURNING id`,
+          [hostname || "Unknown", resolvedOs, osVersion || os_version || null, agentVersion || agent_version || resolvedInstallerVersion,
+            ipAddress || ip_address || local_ip || null, macAddress || mac_address || null, publicIp || public_ip || null,
+            existingEndpoint.rows[0].id],
+        )
+      : await query(
+          `INSERT INTO endpoints (account_id, hostname, os, os_version, agent_version, ip_address,
+           mac_address, status, last_seen_at, registered_at, agent_id, public_ip, secured_by_kuamini, infected)
+           VALUES ($1, $2, $3::endpoint_os, $4, $5, $6, $7, 'online'::endpoint_status,
+           NOW(), NOW(), $8, $9, true, false) RETURNING id`,
+          [accountId, hostname || "Unknown", resolvedOs, osVersion || os_version || null,
+            agentVersion || agent_version || resolvedInstallerVersion, ipAddress || ip_address || local_ip || null,
+            macAddress || mac_address || null, resolvedAgentId || null, publicIp || public_ip || null],
+        );
+    const endpointId = endpointResult.rows[0].id;
+
+    await query(
+      "UPDATE installation_instances SET endpoint_id = $1 WHERE id = $2",
+      [endpointId, instance.id],
+    );
+
+    console.info("[Agent Register] Registration accepted", { accountId, agentId: resolvedAgentId, endpointId, installationInstanceId: instance.id });
     return NextResponse.json({
       success: true,
       message: "Agent registration successful.",
       accountId,
       installationInstanceId: instance.id,
+      agent_id: resolvedAgentId,
+      account_id: accountId,
+      endpoint_id: endpointId,
+      installation_instance_id: instance.id,
       installerVersion: instance.installer_version,
       platform: instance.platform,
       status: instance.status,

@@ -15,14 +15,27 @@ export async function POST(request: NextRequest) {
       macAddress,
       publicIp,
       agentId,
+      installation_instance_id,
+      hostname: snakeHostname,
+      os: snakeOs,
+      os_version,
+      agent_version,
+      ip_address,
+      local_ip,
+      mac_address,
+      public_ip,
+      agent_id,
     } = body;
+    const resolvedInstallationInstanceId = installationInstanceId || installation_instance_id;
+    const resolvedAgentId = agentId || agent_id;
+    const resolvedOs = (os || snakeOs || "").toLowerCase();
 
     // -----------------------------------------
     // 1. Validate installation instance ID
     // -----------------------------------------
     if (
-      !installationInstanceId ||
-      typeof installationInstanceId !== "string"
+      !resolvedInstallationInstanceId ||
+      typeof resolvedInstallationInstanceId !== "string"
     ) {
       return NextResponse.json(
         {
@@ -36,7 +49,7 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     // 2. Validate OS
     // -----------------------------------------
-    if (!["windows", "macos", "linux"].includes(os)) {
+    if (resolvedOs && !["windows", "macos", "linux"].includes(resolvedOs)) {
       return NextResponse.json(
         {
           success: false,
@@ -64,7 +77,7 @@ export async function POST(request: NextRequest) {
       WHERE id = $1
       LIMIT 1
       `,
-      [installationInstanceId]
+      [resolvedInstallationInstanceId]
     );
 
     if (instanceResult.rows.length === 0) {
@@ -155,13 +168,13 @@ export async function POST(request: NextRequest) {
         `,
         [
           hostname || "Unknown",
-          os,
-          osVersion || null,
-          agentVersion || null,
-          ipAddress || null,
-          macAddress || null,
-          publicIp || null,
-          agentId || null,
+          resolvedOs || instance.platform.toLowerCase(),
+          osVersion || os_version || null,
+          agentVersion || agent_version || null,
+          ipAddress || ip_address || local_ip || null,
+          macAddress || mac_address || null,
+          publicIp || public_ip || null,
+          resolvedAgentId || null,
           endpointId,
         ]
       );
@@ -223,14 +236,14 @@ export async function POST(request: NextRequest) {
         `,
         [
           instance.account_id,
-          hostname || "Unknown",
-          os,
-          osVersion || null,
-          agentVersion || null,
-          ipAddress || null,
-          macAddress || null,
-          agentId || null,
-          publicIp || null,
+          hostname || snakeHostname || "Unknown",
+          resolvedOs || instance.platform.toLowerCase(),
+          osVersion || os_version || null,
+          agentVersion || agent_version || null,
+          ipAddress || ip_address || local_ip || null,
+          macAddress || mac_address || null,
+          resolvedAgentId || null,
+          publicIp || public_ip || null,
         ]
       );
 
@@ -249,7 +262,7 @@ export async function POST(request: NextRequest) {
         installed_at = COALESCE(installed_at, NOW())
       WHERE id = $2
       `,
-      [endpointId, installationInstanceId]
+      [endpointId, resolvedInstallationInstanceId]
     );
 
     // -----------------------------------------
@@ -258,7 +271,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Heartbeat received.",
-      installationInstanceId,
+      installationInstanceId: resolvedInstallationInstanceId,
       endpointId,
       status: "online",
       lastSeenAt: new Date().toISOString(),
