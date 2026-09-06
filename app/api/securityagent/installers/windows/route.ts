@@ -28,9 +28,18 @@ export async function GET(request: Request) {
       const paramAccountId = searchParams.get("accountId");
       const paramToken = searchParams.get("token");
 
-      if (paramAccountId && paramToken) {
-        accountId = paramAccountId;
-        installationToken = paramToken;
+      if (paramToken) {
+        const tokenResult = await query<{ account_id: string }>(
+          `SELECT account_id
+           FROM installation_tokens
+           WHERE installation_token = $1 AND expires_at > NOW()
+           LIMIT 1`,
+          [paramToken],
+        );
+        if (tokenResult.rows[0]) {
+          accountId = tokenResult.rows[0].account_id;
+          installationToken = paramToken;
+        }
       }
     }
 

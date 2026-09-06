@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 interface JWTPayload {
   accountId: string;
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     let tokenRecord: Record<string, unknown> | null = null;
 
     // Try JWT token first
-    if (token.includes(".")) {
+    if (token.includes(".") && JWT_SECRET) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
         accountId = decoded.accountId;
@@ -203,36 +203,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const existingInstanceResult = resolvedAgentId
+      ? await query(
+          `SELECT i.* FROM installation_instances i
+           INNER JOIN endpoints e ON e.id = i.endpoint_id
+           WHERE i.account_id = $1 AND e.agent_id = $2
+             AND i.status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+           ORDER BY i.created_at DESC LIMIT 1`,
+          [accountId, resolvedAgentId],
+        )
+      : { rows: [] };
+    const existingInstance = existingInstanceResult.rows[0] as Record<string, unknown> | undefined;
+
     // -----------------------------------------
     // 6. Check license availability
     // -----------------------------------------
-    const activeInstancesResult = await query(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM installation_instances
-      WHERE account_id = $1
-        AND status IN ('PENDING', 'INSTALLED', 'ACTIVE')
-      `,
-      [accountId]
-    );
-
-    const activeInstances = (activeInstancesResult.rows[0] as Record<string, number>).count;
-    const totalLicenses = Number(account.total_licenses);
-
-    if (activeInstances >= totalLicenses) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "No available licenses for this account.",
-        },
-        { status: 403 }
+    if (!existingInstance) {
+      const activeInstancesResult = await query(
+        `
+        SELECT COUNT(*)::int AS count
+        FROM installation_instances
+        WHERE account_id = $1
+          AND status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+        `,
+        [accountId]
       );
+
+      const activeInstances = (activeInstancesResult.rows[0] as Record<string, number>).count;
+      const totalLicenses = Number(account.total_licenses);
+
+      if (activeInstances >= totalLicenses) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "No available licenses for this account.",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // -----------------------------------------
     // 7. Create installation instance
     // -----------------------------------------
-    const instanceResult = await query(
+    const instance = existingInstance ?? (await query(
       `
       INSERT INTO installation_instances
       (
@@ -272,9 +286,7 @@ export async function POST(request: NextRequest) {
         tokenRecord ? tokenRecord.expires_at : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         tokenRecord ? tokenRecord.id : null,
       ]
-    );
-
-    const instance = instanceResult.rows[0] as Record<string, unknown>;
+    )).rows[0] as Record<string, unknown>;
 
     const resolvedOs = String(os || resolvedPlatform).toLowerCase();
     const existingEndpoint = resolvedAgentId
