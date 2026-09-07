@@ -26,7 +26,6 @@ export async function GET(request: Request) {
     } else {
       // Try to get from URL parameters (for direct downloads)
       const { searchParams } = new URL(request.url);
-      const paramAccountId = searchParams.get("accountId");
       const paramToken = searchParams.get("token");
 
       if (paramToken) {

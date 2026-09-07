@@ -41,7 +41,9 @@ function decodeBase64Json(value: string): JsonObject | null {
 function accountIdFromToken(token: string): string | null {
   const parts = token.trim().split(".");
   const payload = parts.length === 3 ? decodeBase64Json(parts[1]) : decodeBase64Json(token);
-  if (!payload) return null;
+  if (!payload) {
+    return null;
+  }
 
   if (parts.length === 3 && process.env.AGENT_REGISTRATION_SECRET) {
     const signature = createHmac("sha256", process.env.AGENT_REGISTRATION_SECRET)
@@ -76,7 +78,9 @@ async function endpointFor(agentId: string, accountId: string) {
 
 export async function registerAgent(request: Request) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
 
   const agentId = text(body.agent_id ?? body.agentId);
   const token = text(body.installationToken ?? body.registration_token);
@@ -133,7 +137,9 @@ export async function registerAgent(request: Request) {
 
 export async function heartbeatAgent(request: Request) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
   const agentId = text(body.agent_id ?? body.agentId);
   const accountId = uuid(body.account_id ?? body.accountId);
   const endpointId = uuid(body.endpoint_id ?? body.endpointId);
@@ -159,7 +165,9 @@ export async function heartbeatAgent(request: Request) {
 
 export async function reportThreat(request: Request) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
   const agentId = text(body.agent_id);
   const accountId = uuid(body.account_id);
   const endpointId = uuid(body.endpoint_id);
@@ -181,11 +189,15 @@ export async function reportThreat(request: Request) {
 
 export async function reportScanSummary(request: Request) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
   const accountId = uuid(body.account_id);
   const endpointId = uuid(body.endpoint_id);
   const scanId = text(body.scan_id);
-  if (!accountId || !endpointId || !scanId || !text(body.scan_type)) return NextResponse.json({ error: "account_id, endpoint_id, scan_id, and scan_type are required" }, { status: 400 });
+  if (!accountId || !endpointId || !scanId || !text(body.scan_type)) {
+    return NextResponse.json({ error: "account_id, endpoint_id, scan_id, and scan_type are required" }, { status: 400 });
+  }
   await query(
     `INSERT INTO scan_summaries (account_id, endpoint_id, scan_id, scan_type, start_time, end_time, total_threats, severity_breakdown)
      VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()), $6::timestamptz, $7, $8::jsonb)
@@ -198,17 +210,25 @@ export async function reportScanSummary(request: Request) {
 
 export async function updateThreatStatus(request: Request, threatId: string) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
   const status = text(body.status);
-  if (!status) return NextResponse.json({ error: "status is required" }, { status: 400 });
+  if (!status) {
+    return NextResponse.json({ error: "status is required" }, { status: 400 });
+  }
   const result = await query<{ id: string }>("UPDATE threats SET status = $1, resolved_at = CASE WHEN $1 IN ('resolved', 'quarantined', 'killed', 'allowed') THEN NOW() ELSE resolved_at END WHERE id = $2 RETURNING id", [status, threatId]);
-  if (!result.rows[0]) return NextResponse.json({ error: "Threat not found" }, { status: 404 });
+  if (!result.rows[0]) {
+    return NextResponse.json({ error: "Threat not found" }, { status: 404 });
+  }
   return NextResponse.json({ ok: true, threat_id: threatId, status });
 }
 
 export async function getPolicies(request: Request) {
   const accountId = uuid(new URL(request.url).searchParams.get("account_id"));
-  if (!accountId) return NextResponse.json({ error: "account_id is required" }, { status: 400 });
+  if (!accountId) {
+    return NextResponse.json({ error: "account_id is required" }, { status: 400 });
+  }
   const policies = await query("SELECT * FROM policies WHERE account_id = $1 AND status = 'active'", [accountId]);
   return NextResponse.json(policies.rows);
 }
@@ -218,16 +238,22 @@ export async function getScanCommand(request: Request) {
   const accountId = uuid(url.searchParams.get("account_id"));
   const agentId = text(url.searchParams.get("agent_id"));
   const endpoint = agentId && accountId ? await endpointFor(agentId, accountId) : null;
-  if (!endpoint || !accountId) return NextResponse.json({ error: "Unknown agent" }, { status: 404 });
+  if (!endpoint || !accountId) {
+    return NextResponse.json({ error: "Unknown agent" }, { status: 404 });
+  }
   const command = await query("SELECT id, scan_type FROM scan_commands WHERE account_id = $1 AND endpoint_id = $2 AND status = 'pending' ORDER BY created_at LIMIT 1", [accountId, endpoint.id]);
   return NextResponse.json({ has_pending_command: Boolean(command.rows[0]), command: command.rows[0] ?? null });
 }
 
 export async function completeScanCommand(request: Request) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
   const commandId = uuid(body.command_id);
-  if (!commandId) return NextResponse.json({ error: "command_id is required" }, { status: 400 });
+  if (!commandId) {
+    return NextResponse.json({ error: "command_id is required" }, { status: 400 });
+  }
   await query("UPDATE scan_commands SET status = $1, result_scan_id = $2, error_message = $3, completed_at = NOW() WHERE id = $4", [text(body.status) ?? "completed", text(body.scan_id), text(body.error_message), commandId]);
   return NextResponse.json({ ok: true });
 }
@@ -237,16 +263,22 @@ export async function getThreatActionCommand(request: Request) {
   const accountId = uuid(url.searchParams.get("account_id"));
   const agentId = text(url.searchParams.get("agent_id"));
   const endpoint = agentId && accountId ? await endpointFor(agentId, accountId) : null;
-  if (!endpoint || !accountId) return NextResponse.json({ error: "Unknown agent" }, { status: 404 });
+  if (!endpoint || !accountId) {
+    return NextResponse.json({ error: "Unknown agent" }, { status: 404 });
+  }
   const command = await query("SELECT id, action, payload FROM threat_action_commands WHERE account_id = $1 AND endpoint_id = $2 AND status = 'pending' ORDER BY created_at LIMIT 1", [accountId, endpoint.id]);
   return NextResponse.json({ has_pending_command: Boolean(command.rows[0]), command: command.rows[0] ?? null });
 }
 
 export async function completeThreatActionCommand(request: Request) {
   const body = await bodyFor(request);
-  if (body instanceof NextResponse) return body;
+  if (body instanceof NextResponse) {
+    return body;
+  }
   const commandId = uuid(body.command_id);
-  if (!commandId) return NextResponse.json({ error: "command_id is required" }, { status: 400 });
+  if (!commandId) {
+    return NextResponse.json({ error: "command_id is required" }, { status: 400 });
+  }
   await query("UPDATE threat_action_commands SET status = $1, error_message = $2, result_details = $3::jsonb, completed_at = NOW(), updated_at = NOW() WHERE id = $4", [text(body.status) ?? "completed", text(body.error_message), JSON.stringify(asObject(body.result_details)), commandId]);
   return NextResponse.json({ ok: true });
 }
