@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
           installation_token,
           expires_at
         FROM installation_tokens
-        WHERE installation_token = $1 OR account_id = $1
+        WHERE installation_token = $1 OR account_id::text = $1
         LIMIT 1
         `,
         [token]
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
         used_licenses,
         is_active
       FROM accounts
-      WHERE id = $1
+      WHERE id::text = $1
       LIMIT 1
       `,
       [accountId]
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       ? await query(
           `SELECT i.* FROM installation_instances i
            INNER JOIN endpoints e ON e.id = i.endpoint_id
-           WHERE i.account_id = $1 AND e.agent_id = $2
+           WHERE i.account_id::text = $1 AND e.agent_id = $2
              AND i.status IN ('PENDING', 'INSTALLED', 'ACTIVE')
            ORDER BY i.created_at DESC LIMIT 1`,
           [accountId, resolvedAgentId],
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
         `
         SELECT COUNT(*)::int AS count
         FROM installation_instances
-        WHERE account_id = $1
+        WHERE account_id::text = $1
           AND status IN ('PENDING', 'INSTALLED', 'ACTIVE')
         `,
         [accountId]
@@ -262,13 +262,13 @@ export async function POST(request: NextRequest) {
       )
       VALUES
       (
-        $1,
+        $1::uuid,
         $2,
         $3,
         $4,
         'PENDING',
         $5,
-        $6
+        $6::uuid
       )
       RETURNING
         id,
@@ -292,14 +292,14 @@ export async function POST(request: NextRequest) {
 
     const resolvedOs = String(os || resolvedPlatform).toLowerCase();
     const existingEndpoint = resolvedAgentId
-      ? await query("SELECT id FROM endpoints WHERE account_id = $1 AND agent_id = $2 LIMIT 1", [accountId, resolvedAgentId])
+      ? await query("SELECT id FROM endpoints WHERE account_id::text = $1 AND agent_id = $2 LIMIT 1", [accountId, resolvedAgentId])
       : { rows: [] };
     const endpointResult = existingEndpoint.rows[0]
       ? await query(
           `UPDATE endpoints SET hostname = $1, os = $2::endpoint_os, os_version = $3,
            agent_version = $4, ip_address = $5, mac_address = $6, public_ip = $7,
            status = 'online'::endpoint_status, last_seen_at = NOW(), updated_at = NOW()
-           WHERE id = $8 RETURNING id`,
+           WHERE id::text = $8 RETURNING id`,
           [hostname || "Unknown", resolvedOs, osVersion || os_version || null, agentVersion || agent_version || resolvedInstallerVersion,
             ipAddress || ip_address || local_ip || null, macAddress || mac_address || null, publicIp || public_ip || null,
             existingEndpoint.rows[0].id],
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
       : await query(
           `INSERT INTO endpoints (account_id, hostname, os, os_version, agent_version, ip_address,
            mac_address, status, last_seen_at, registered_at, agent_id, public_ip, secured_by_kuamini, infected)
-           VALUES ($1, $2, $3::endpoint_os, $4, $5, $6, $7, 'online'::endpoint_status,
+           VALUES ($1::uuid, $2, $3::endpoint_os, $4, $5, $6, $7, 'online'::endpoint_status,
            NOW(), NOW(), $8, $9, true, false) RETURNING id`,
           [accountId, hostname || "Unknown", resolvedOs, osVersion || os_version || null,
             agentVersion || agent_version || resolvedInstallerVersion, ipAddress || ip_address || local_ip || null,
@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
     const endpointId = endpointResult.rows[0].id;
 
     await query(
-      "UPDATE installation_instances SET endpoint_id = $1 WHERE id = $2",
+      "UPDATE installation_instances SET endpoint_id = $1::uuid WHERE id::text = $2",
       [endpointId, instance.id],
     );
 

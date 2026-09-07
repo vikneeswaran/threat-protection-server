@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         expires_at,
         endpoint_id
       FROM installation_instances
-      WHERE id = $1
+      WHERE id::text = $1
       LIMIT 1
       `,
       [resolvedInstallationInstanceId]
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
         id,
         is_active
       FROM accounts
-      WHERE id = $1
+      WHERE id::text = $1
       LIMIT 1
       `,
       [instance.account_id]
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
           status = 'online'::endpoint_status,
           last_seen_at = NOW(),
           updated_at = NOW()
-        WHERE id = $9
+        WHERE id::text = $9
         RETURNING id
         `,
         [
@@ -306,10 +306,10 @@ export async function POST(request: NextRequest) {
       `
       UPDATE installation_instances
       SET
-        endpoint_id = $1,
+        endpoint_id = $1::uuid,
         status = 'ACTIVE',
         installed_at = COALESCE(installed_at, NOW())
-      WHERE id = $2
+      WHERE id::text = $2
       `,
       [endpointId, resolvedInstallationInstanceId]
     );
