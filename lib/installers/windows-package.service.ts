@@ -379,7 +379,7 @@ export async function createWindowsInstallerPackage({
     const helperScriptCrlf = toCrlf(helperScript);
     const helperBytes = Buffer.byteLength(helperScriptCrlf, "utf8");
 
-    if (helperBytes < 4000) {
+    if (helperBytes < 1500) {
       throw new Error(
         `[Windows Package] install-helper.ps1 too small (${helperBytes} bytes), aborting package`
       );

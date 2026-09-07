@@ -134,8 +134,8 @@ export default async function EndpointDetailsPage({
         <DetailCard title="Operating System" value={endpoint.os} />
         <DetailCard title="OS Version" value={endpoint.os_version} />
         <DetailCard title="Agent Version" value={endpoint.agent_version} />
-        <DetailCard title="Local IP" value={endpoint.ip_address} />
-        <DetailCard title="Public IP" value={endpoint.public_ip} />
+        <DetailCard title="Local IP" value={endpoint.ip_address || "-"} />
+        <DetailCard title="Public IP" value={endpoint.public_ip || "-"} />
         <DetailCard title="MAC Address" value={endpoint.mac_address} />
 
         <DetailCard

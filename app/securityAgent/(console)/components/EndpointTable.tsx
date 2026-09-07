@@ -31,8 +31,8 @@ export default function EndpointTable({
   const filtered = endpoints.filter((endpoint) => {
     const matchesSearch =
       endpoint.hostname.toLowerCase().includes(search.toLowerCase()) ||
-      endpoint.ip_address.toLowerCase().includes(search.toLowerCase()) ||
-      endpoint.public_ip.toLowerCase().includes(search.toLowerCase()) ||
+      (endpoint.ip_address ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (endpoint.public_ip ?? "").toLowerCase().includes(search.toLowerCase()) ||
       endpoint.os.toLowerCase().includes(search.toLowerCase()) ||
       endpoint.os_version.toLowerCase().includes(search.toLowerCase());
 
@@ -284,11 +284,11 @@ return (
 </td>
 
 <td className="px-6 py-4 text-center">
-  {endpoint.ip_address}
+  {endpoint.ip_address || "-"}
 </td>
 
 <td className="px-6 py-4 text-center">
-  {endpoint.public_ip}
+  {endpoint.public_ip || "-"}
 </td>
 
 <td className="px-6 py-4 text-center">
