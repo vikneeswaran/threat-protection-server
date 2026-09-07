@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/session";
+import { query } from "@/lib/db";
 import { getInstallerData } from "@/lib/installers/installer.service";
 import { getInstallationToken } from "@/lib/installation-token";
 import { createWindowsInstallerPackage } from "@/lib/installers/windows-package.service";
