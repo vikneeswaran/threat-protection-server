@@ -180,13 +180,62 @@ export async function POST(request: NextRequest) {
       );
 
       if (endpointResult.rows.length === 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Endpoint not found.",
-          },
-          { status: 404 }
+        // Endpoint record was manually deleted or missing from DB; recreate it for this account/agent
+        const recreatedEndpoint = await query(
+          `
+          INSERT INTO endpoints
+          (
+            account_id,
+            hostname,
+            os,
+            os_version,
+            agent_version,
+            ip_address,
+            mac_address,
+            status,
+            last_seen_at,
+            registered_at,
+            created_at,
+            updated_at,
+            agent_id,
+            public_ip,
+            secured_by_kuamini,
+            infected
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3::endpoint_os,
+            $4,
+            $5,
+            $6,
+            $7,
+            'online'::endpoint_status,
+            NOW(),
+            NOW(),
+            NOW(),
+            NOW(),
+            $8,
+            $9,
+            true,
+            false
+          )
+          RETURNING id
+          `,
+          [
+            instance.account_id,
+            hostname || snakeHostname || "Unknown",
+            resolvedOs || instance.platform.toLowerCase(),
+            osVersion || os_version || null,
+            agentVersion || agent_version || null,
+            ipAddress || ip_address || local_ip || null,
+            macAddress || mac_address || null,
+            resolvedAgentId || null,
+            publicIp || public_ip || null,
+          ]
         );
+        endpointId = recreatedEndpoint.rows[0].id;
       }
     } else {
       // -----------------------------------------

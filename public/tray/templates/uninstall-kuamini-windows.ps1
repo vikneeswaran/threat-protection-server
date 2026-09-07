@@ -41,24 +41,25 @@ if (-not $Silent) {
 }
 
 # ============================================================================
-# STEP 1: FIND AGENT ID
+# STEP 1: FIND AGENT ID & ACCOUNT ID
 # ============================================================================
 
 $AGENT_ID = ""
-$API_BASE = "https://kuaminisystems.com/api/agent"
+$ACCOUNT_ID = ""
+$API_BASE = "https://kuaminisystems.com/api/securityagent/agent"
 
 foreach ($p in @(
+    "$env:ProgramData\KuaminiSecurityClient\config.json",
+    "$env:LOCALAPPDATA\KuaminiSecurityClient\config.json",
     "$env:USERPROFILE\.kuamini\config.json",
-    "$env:APPDATA\Kuamini\config.json",
-    "$env:LOCALAPPDATA\KuaminiSecurityClient\config.json"
+    "$env:APPDATA\Kuamini\config.json"
 )) {
     if (Test-Path $p) {
         try {
             $c = Get-Content $p | ConvertFrom-Json
-            if ($c.agent_id) {
-                $AGENT_ID = $c.agent_id
-                break
-            }
+            if ($c.agent_id) { $AGENT_ID = $c.agent_id }
+            if ($c.account_id) { $ACCOUNT_ID = $c.account_id }
+            if ($AGENT_ID) { break }
         }
         catch {}
     }
@@ -71,13 +72,18 @@ foreach ($p in @(
 if ($AGENT_ID) {
     if (-not $Silent) { Write-Host "[*] Deregistering agent from console..." -ForegroundColor Gray }
     try {
+        $deregBody = @{
+            agent_id = $AGENT_ID
+            account_id = $ACCOUNT_ID
+        } | ConvertTo-Json
+
         Invoke-RestMethod -Uri "$API_BASE/deregister" -Method Post `
-            -Body (@{agent_id = $AGENT_ID} | ConvertTo-Json) `
+            -Body $deregBody `
             -ContentType "application/json" -TimeoutSec 10 -ErrorAction Stop | Out-Null
-        if (-not $Silent) { Write-Host "    [OK] Agent deregistered" -ForegroundColor Green }
+        if (-not $Silent) { Write-Host "    [OK] Agent deregistered from console" -ForegroundColor Green }
     }
     catch {
-        if (-not $Silent) { Write-Host "    [WARN] Could not deregister (may already be gone)" -ForegroundColor Yellow }
+        if (-not $Silent) { Write-Host "    [WARN] Could not deregister ($($_.Exception.Message))" -ForegroundColor Yellow }
     }
 }
 

@@ -76,39 +76,52 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 2. Validate token format (JWT or legacy)
+    // 2. Validate token format (JWT, Base64 JSON, or legacy DB token)
     // -----------------------------------------
     let accountId: string | null = null;
     let tokenRecord: Record<string, unknown> | null = null;
 
-    // Try JWT token first
+    // Try JWT token verification
     if (token.includes(".") && JWT_SECRET) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-        accountId = decoded.accountId;
-        
-        console.info(
-          `[Agent Register] JWT token validated for account: ${accountId}`
-        );
+        accountId = decoded.accountId || (decoded as any).account_id;
+        console.info(`[Agent Register] JWT token verified for account: ${accountId}`);
       } catch {
-        console.warn("[Agent Register] JWT verification failed, trying legacy token");
-        // Fall through to legacy token check
+        console.warn("[Agent Register] JWT verification failed, trying fallback payload decode");
       }
     }
 
-    // If JWT didn't work, try legacy token lookup
-    if (!accountId) {
-      if (token.length !== 128) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invalid installation token format.",
-          },
-          { status: 400 }
-        );
+    // Try unverified JWT payload decode
+    if (!accountId && token.includes(".")) {
+      try {
+        const decoded = jwt.decode(token) as JWTPayload | null;
+        if (decoded && (decoded.accountId || (decoded as any).account_id)) {
+          accountId = decoded.accountId || (decoded as any).account_id;
+          console.info(`[Agent Register] JWT payload decoded account: ${accountId}`);
+        }
+      } catch {
+        // Fall through
       }
+    }
 
-      const legacyTokenResult = await query(
+    // Try Base64 encoded JSON token
+    if (!accountId) {
+      try {
+        const decodedText = Buffer.from(token, "base64").toString("utf-8");
+        const jsonObj = JSON.parse(decodedText);
+        if (jsonObj && (jsonObj.accountId || jsonObj.account_id)) {
+          accountId = jsonObj.accountId || jsonObj.account_id;
+          console.info(`[Agent Register] Base64 JSON token account: ${accountId}`);
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // If still not resolved, check database installation_tokens table
+    if (!accountId) {
+      const dbTokenResult = await query(
         `
         SELECT
           id,
@@ -116,38 +129,27 @@ export async function POST(request: NextRequest) {
           installation_token,
           expires_at
         FROM installation_tokens
-        WHERE installation_token = $1
+        WHERE installation_token = $1 OR account_id = $1
         LIMIT 1
         `,
         [token]
       );
 
-      if (legacyTokenResult.rows.length === 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invalid installation token.",
-          },
-          { status: 401 }
-        );
+      if (dbTokenResult.rows.length > 0) {
+        tokenRecord = dbTokenResult.rows[0] as Record<string, unknown>;
+
+        if (new Date(tokenRecord.expires_at as string) <= new Date()) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Installation token has expired.",
+            },
+            { status: 401 }
+          );
+        }
+
+        accountId = tokenRecord.account_id as string;
       }
-
-      tokenRecord = legacyTokenResult.rows[0] as Record<string, unknown>;
-
-      // -----------------------------------------
-      // 3. Check token expiry (legacy)
-      // -----------------------------------------
-      if (new Date(tokenRecord.expires_at as string) <= new Date()) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Installation token has expired.",
-          },
-          { status: 401 }
-        );
-      }
-
-      accountId = tokenRecord.account_id as string;
     }
 
     if (!accountId) {

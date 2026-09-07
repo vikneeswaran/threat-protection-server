@@ -140,6 +140,8 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     // 5. Insert threat record
     // -----------------------------------------
+    const descriptionText = typeof details === "object" ? JSON.stringify(details) : (details || threat_name);
+
     const threatResult = await query(
       `
       INSERT INTO threats
@@ -147,15 +149,16 @@ export async function POST(request: NextRequest) {
         account_id,
         endpoint_id,
         agent_id,
-        threat_name,
-        threat_type,
+        name,
+        description,
+        type,
         severity,
         file_path,
         file_hash,
         process_name,
         process_id,
         detection_engine,
-        details,
+        detection_source,
         detected_at,
         status,
         created_at,
@@ -175,6 +178,7 @@ export async function POST(request: NextRequest) {
         $10,
         $11,
         $12,
+        'agent',
         $13,
         'detected',
         NOW(),
@@ -185,7 +189,7 @@ export async function POST(request: NextRequest) {
         account_id,
         endpoint_id,
         agent_id,
-        threat_name,
+        name,
         severity,
         status,
         detected_at,
@@ -196,6 +200,7 @@ export async function POST(request: NextRequest) {
         endpointIdToUse || null,
         agent_id,
         threat_name,
+        descriptionText,
         threat_type || "unknown",
         severity.toLowerCase(),
         file_path || null,
@@ -203,7 +208,6 @@ export async function POST(request: NextRequest) {
         process_name || null,
         process_id || null,
         detection_engine || "signature",
-        JSON.stringify(details || {}),
         detected_at || new Date().toISOString(),
       ]
     );
@@ -239,10 +243,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Threat reported successfully.",
+      threat_id: threat.id,
       threatId: threat.id,
       accountId: threat.account_id,
       agentId: threat.agent_id,
-      threatName: threat.threat_name,
+      threatName: threat.name || threat_name,
       severity: threat.severity,
       status: threat.status,
       detectedAt: threat.detected_at,

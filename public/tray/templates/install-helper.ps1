@@ -74,7 +74,11 @@ $msiLog = Join-Path $env:TEMP "kuamini-install-$([guid]::NewGuid()).log"
 $msiArguments = @("/i", "`"$msiPath`"", "REGISTRATIONTOKEN=`"$token`"", "/passive", "/norestart", "/L*V", "`"$msiLog`"")
 $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArguments -PassThru -Wait
 if ($process.ExitCode -notin @(0, 3010)) {
-    Stop-Install "MSI installation failed with exit code $($process.ExitCode). See $msiLog"
+    if (Test-Path $msiLog) {
+        Write-Host "--- MSI Installation Error Log (Tail 30 lines) ---" -ForegroundColor Yellow
+        Get-Content $msiLog -Tail 30 | Write-Host
+    }
+    Stop-Install "MSI installation failed with exit code $($process.ExitCode). See log at $msiLog"
 }
 
 $agentExe = Join-Path $installPath "KuaminiSecurityClient.exe"
