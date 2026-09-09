@@ -1,93 +1,163 @@
 "use client"
 
-import type React from "react"
 
-
-import { useState } from "react"
 
 export function Footer() {
-
-  const [email, setEmail] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [resultMessage, setResultMessage] = useState<string | null>(null)
-  const [resultType, setResultType] = useState<"success" | "error" | null>(null)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setResultMessage(null)
-    setResultType(null)
-    try {
-      const response = await fetch("/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      })
-      const payload = (await response.json().catch(() => ({}))) as { error?: string }
-      if (!response.ok) {
-        throw new Error(payload.error || "Unable to submit inquiry")
-      }
-      setEmail("")
-      setResultType("success")
-      setResultMessage("Thank you. Your inquiry has been sent.")
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to submit inquiry"
-      setResultType("error")
-      setResultMessage(message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   return (
-    <footer className="bg-[#36344d] text-white py-12">
-      <div className="container mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* About Section */}
+    <footer className="relative overflow-hidden bg-[#34334D] text-white">
+
+      {/* =========================================================
+          BACKGROUND LIGHTING
+          ========================================================= */}
+
+      {/* Main purple/pink ambient lighting */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: `
+            radial-gradient(
+              ellipse 70% 90% at 0% 100%,
+              rgba(92, 45, 180, 0.22) 0%,
+              rgba(92, 45, 180, 0.08) 35%,
+              transparent 70%
+            ),
+            radial-gradient(
+              ellipse 65% 80% at 100% 0%,
+              rgba(180, 45, 140, 0.18) 0%,
+              rgba(120, 40, 120, 0.08) 40%,
+              transparent 72%
+            )
+          `,
+        }}
+      />
+
+      {/* =========================================================
+          DECORATIVE LIGHTING
+          ========================================================= */}
+
+      {/* Bottom-left purple glow */}
+      <div
+        className="pointer-events-none absolute -left-40 -bottom-72 h-[600px] w-[600px] rounded-full blur-3xl"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(120,45,255,0.24) 0%, rgba(90,30,180,0.10) 45%, transparent 72%)",
+        }}
+      />
+
+      {/* Top-right pink glow */}
+      <div
+        className="pointer-events-none absolute -right-48 -top-64 h-[600px] w-[600px] rounded-full blur-3xl"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(255,45,170,0.20) 0%, rgba(160,30,130,0.08) 45%, transparent 72%)",
+        }}
+      />
+
+      {/* Bottom-left curved light */}
+      <div
+        className="pointer-events-none absolute -left-48 -bottom-[390px] h-[650px] w-[850px] rotate-[-25deg] rounded-[50%]"
+        style={{
+          borderTop: "1px solid rgba(190,80,255,0.35)",
+          boxShadow: "0 -4px 18px rgba(160,50,255,0.12)",
+        }}
+      />
+
+      {/* Top-right curved light */}
+      <div
+        className="pointer-events-none absolute -right-52 -top-[390px] h-[650px] w-[850px] rotate-[25deg] rounded-[50%]"
+        style={{
+          borderBottom: "1px solid rgba(255,70,170,0.30)",
+          boxShadow: "0 4px 18px rgba(255,50,170,0.10)",
+        }}
+      />
+
+      {/* =========================================================
+          FOOTER CONTENT
+          ========================================================= */}
+
+      <div className="relative z-10 mx-auto max-w-7xl px-6 py-16">
+
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-3">
+
+          {/* =====================================================
+              ABOUT
+              ===================================================== */}
+
           <div>
-            <h3 className="text-lg font-semibold mb-4">About</h3>
-            <p className="text-gray-300 text-sm">Your trusted partner in technology solutions.</p>
+            <h2 className="mb-5 text-xl font-semibold text-white">
+              About
+            </h2>
+
+            <p className="text-base leading-relaxed text-slate-200">
+              Your trusted partner in technology solutions.
+            </p>
           </div>
 
-          {/* Contact Section */}
+          {/* =====================================================
+              CONTACT
+              ===================================================== */}
+
           <div>
-            <h3 className="text-lg font-semibold mb-4 uppercase text-sm tracking-wider">Contact</h3>
-            <div className="space-y-2 text-gray-300 text-sm">
-              <p>+91 7829910997</p>
-              <p>contact@kuaminisystems.com</p>
+            <h2 className="mb-5 text-xl font-semibold text-white">
+              CONTACT
+            </h2>
+
+            <div className="space-y-3 text-base text-slate-200">
+              <p>
+                +91 7829910997
+              </p>
+
+              <p>
+                contact@kuaminisystems.com
+              </p>
             </div>
           </div>
 
-          {/* Newsletter Section */}
+          {/* =====================================================
+              EMAIL CONNECTION
+              ===================================================== */}
+
           <div>
-            <p className="text-sm text-gray-300 mb-3">Enter your email address</p>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Your email here"
-                className="w-full px-4 py-2 rounded-md bg-white text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#673de6]"
-                required
-                disabled={isSubmitting}
-              />
-              <button
-                type="submit"
-                className="w-full md:w-auto px-6 py-2 bg-[#8c85ff] hover:bg-[#673de6] text-white text-sm font-medium rounded-md transition-colors"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Sending..." : "Connect With Us"}
-              </button>
-              {resultMessage && (
-                <p className={`text-sm ${resultType === "success" ? "text-green-300" : "text-red-300"}`}>{resultMessage}</p>
-              )}
-            </form>
+            <label
+              htmlFor="footer-email"
+              className="mb-4 block text-base text-slate-200"
+            >
+              Enter your email address
+            </label>
+
+            <input
+              id="footer-email"
+              type="email"
+              placeholder="Your email here"
+              className="w-full rounded-lg border border-white/10 bg-white px-5 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/30"
+            />
+
+            <button
+              type="button"
+              className="mt-4 rounded-lg bg-[#8981F5] px-7 py-3 text-base font-semibold text-white transition-all duration-300 hover:bg-[#9A91FF] hover:shadow-[0_0_25px_rgba(137,129,245,0.35)]"
+            >
+              Connect With Us
+            </button>
           </div>
+
         </div>
 
-        <div className="mt-8 pt-6 border-t border-gray-600 text-center text-gray-400 text-sm">
-          © 2025. All rights reserved.
+        {/* =======================================================
+            DIVIDER
+            ======================================================= */}
+
+        <div className="my-10 border-t border-white/15" />
+
+        {/* =======================================================
+            COPYRIGHT
+            ======================================================= */}
+
+        <div className="text-center">
+          <p className="text-base text-slate-300">
+            © 2026. All rights reserved.
+          </p>
         </div>
+
       </div>
     </footer>
   )
