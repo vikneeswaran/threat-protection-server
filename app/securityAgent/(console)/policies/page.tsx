@@ -77,6 +77,21 @@ export default function PoliciesPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   // ---------------------------------------------------------
+  // Sorting
+  // ---------------------------------------------------------
+
+  type SortKey =
+    | "name"
+    | "threatType"
+    | "priority"
+    | "action"
+    | "appliedTo";
+
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDirection, setSortDirection] =
+    useState<"asc" | "desc">("asc");
+
+  // ---------------------------------------------------------
   // Load policies and threat types
   // ---------------------------------------------------------
 
@@ -629,13 +644,86 @@ export default function PoliciesPage() {
   }, [policies, searchTerm]);
 
   // ---------------------------------------------------------
+  // Sorting
+  // ---------------------------------------------------------
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) =>
+        current === "asc" ? "desc" : "asc"
+      );
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+
+    // Start from the first page after changing the sort.
+    setCurrentPage(1);
+  };
+
+  const sortedPolicies = useMemo(() => {
+    const sorted = [...filteredPolicies];
+
+    sorted.sort((a, b) => {
+      let valueA = "";
+      let valueB = "";
+
+      switch (sortKey) {
+        case "name":
+          valueA = a.name || "";
+          valueB = b.name || "";
+          break;
+
+        case "threatType":
+          valueA = a.config?.threatType || "";
+          valueB = b.config?.threatType || "";
+          break;
+
+        case "priority":
+          valueA = a.config?.priority || "";
+          valueB = b.config?.priority || "";
+          break;
+
+        case "action":
+          valueA = a.config?.action || "";
+          valueB = b.config?.action || "";
+          break;
+
+        case "appliedTo":
+          valueA = a.is_inherited
+            ? "Inherited"
+            : "Current Account";
+          valueB = b.is_inherited
+            ? "Inherited"
+            : "Current Account";
+          break;
+      }
+
+      const comparison = valueA.localeCompare(
+        valueB,
+        undefined,
+        {
+          numeric: true,
+          sensitivity: "base",
+        }
+      );
+
+      return sortDirection === "asc"
+        ? comparison
+        : -comparison;
+    });
+
+    return sorted;
+  }, [filteredPolicies, sortKey, sortDirection]);
+
+  // ---------------------------------------------------------
   // Pagination
   // ---------------------------------------------------------
 
   const totalPages = Math.max(
     1,
     Math.ceil(
-      filteredPolicies.length /
+      sortedPolicies.length /
         POLICIES_PER_PAGE
     )
   );
@@ -645,12 +733,12 @@ export default function PoliciesPage() {
       (currentPage - 1) *
       POLICIES_PER_PAGE;
 
-    return filteredPolicies.slice(
+    return sortedPolicies.slice(
       start,
       start + POLICIES_PER_PAGE
     );
   }, [
-    filteredPolicies,
+    sortedPolicies,
     currentPage,
   ]);
 
@@ -837,26 +925,102 @@ export default function PoliciesPage() {
 
                   <thead className="border-b border-slate-800 bg-slate-950/60">
                     <tr>
+                      {/* Policy Name */}
                       <th className="px-6 py-4 font-medium text-slate-400">
-                        Policy Name
+                        <button
+                          type="button"
+                          onClick={() => handleSort("name")}
+                          className="flex items-center gap-2 transition hover:text-white"
+                          title="Sort by Policy Name"
+                        >
+                          Policy Name
+                          <span className="text-xs">
+                            {sortKey === "name"
+                              ? sortDirection === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </button>
                       </th>
 
+                      {/* Threat Type */}
                       <th className="px-6 py-4 font-medium text-slate-400">
-                        Threat Type
+                        <button
+                          type="button"
+                          onClick={() => handleSort("threatType")}
+                          className="flex items-center gap-2 transition hover:text-white"
+                          title="Sort by Threat Type"
+                        >
+                          Threat Type
+                          <span className="text-xs">
+                            {sortKey === "threatType"
+                              ? sortDirection === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </button>
                       </th>
 
+                      {/* Priority */}
                       <th className="px-6 py-4 font-medium text-slate-400">
-                        Priority
+                        <button
+                          type="button"
+                          onClick={() => handleSort("priority")}
+                          className="flex items-center gap-2 transition hover:text-white"
+                          title="Sort by Priority"
+                        >
+                          Priority
+                          <span className="text-xs">
+                            {sortKey === "priority"
+                              ? sortDirection === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </button>
                       </th>
 
+                      {/* Default Action */}
                       <th className="px-6 py-4 font-medium text-slate-400">
-                        Default Action
+                        <button
+                          type="button"
+                          onClick={() => handleSort("action")}
+                          className="flex items-center gap-2 transition hover:text-white"
+                          title="Sort by Default Action"
+                        >
+                          Default Action
+                          <span className="text-xs">
+                            {sortKey === "action"
+                              ? sortDirection === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </button>
                       </th>
 
+                      {/* Applied To */}
                       <th className="px-6 py-4 font-medium text-slate-400">
-                        Applied To
+                        <button
+                          type="button"
+                          onClick={() => handleSort("appliedTo")}
+                          className="flex items-center gap-2 transition hover:text-white"
+                          title="Sort by Applied To"
+                        >
+                          Applied To
+                          <span className="text-xs">
+                            {sortKey === "appliedTo"
+                              ? sortDirection === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </button>
                       </th>
 
+                      {/* Actions - not sortable */}
                       <th className="px-6 py-4 font-medium text-slate-400">
                         Actions
                       </th>
