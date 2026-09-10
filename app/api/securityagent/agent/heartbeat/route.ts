@@ -15,6 +15,8 @@ export async function POST(request: NextRequest) {
       macAddress,
       publicIp,
       agentId,
+
+      // Snake_case compatibility
       installation_instance_id,
       hostname: snakeHostname,
       os: snakeOs,
@@ -25,10 +27,100 @@ export async function POST(request: NextRequest) {
       mac_address,
       public_ip,
       agent_id,
+
+      // Newer agent payload compatibility
+      system_info,
     } = body;
-    const resolvedInstallationInstanceId = installationInstanceId || installation_instance_id;
-    const resolvedAgentId = agentId || agent_id;
-    const resolvedOs = (os || snakeOs || "").toLowerCase();
+
+    // -----------------------------------------
+    // Resolve system_info safely
+    // -----------------------------------------
+    const systemInfo =
+      system_info && typeof system_info === "object"
+        ? system_info
+        : {};
+
+    // -----------------------------------------
+    // Resolve identifiers
+    // -----------------------------------------
+    const resolvedInstallationInstanceId =
+      installationInstanceId || installation_instance_id;
+
+    const resolvedAgentId =
+      agentId || agent_id;
+
+    // -----------------------------------------
+    // Resolve endpoint information
+    // -----------------------------------------
+    const resolvedHostname =
+      hostname ||
+      snakeHostname ||
+      systemInfo.hostname ||
+      "Unknown";
+
+    const resolvedOs =
+      String(
+        os ||
+          snakeOs ||
+          systemInfo.os ||
+          ""
+      ).toLowerCase();
+
+    // -----------------------------------------
+    // Resolve OS version
+    //
+    // Accept:
+    //   osVersion
+    //   os_version
+    //   system_info.osVersion
+    //   system_info.os_version
+    // -----------------------------------------
+    const resolvedOsVersion =
+      osVersion ||
+      os_version ||
+      systemInfo.osVersion ||
+      systemInfo.os_version ||
+      null;
+
+    // -----------------------------------------
+    // Resolve agent version
+    //
+    // Accept:
+    //   agentVersion
+    //   agent_version
+    //   system_info.agentVersion
+    //   system_info.agent_version
+    // -----------------------------------------
+    const resolvedAgentVersion =
+      agentVersion ||
+      agent_version ||
+      systemInfo.agentVersion ||
+      systemInfo.agent_version ||
+      null;
+
+    // -----------------------------------------
+    // Resolve network information
+    // -----------------------------------------
+    const resolvedIpAddress =
+      ipAddress ||
+      ip_address ||
+      local_ip ||
+      systemInfo.ip ||
+      systemInfo.local_ip ||
+      null;
+
+    const resolvedMacAddress =
+      macAddress ||
+      mac_address ||
+      systemInfo.mac ||
+      systemInfo.mac_address ||
+      null;
+
+    const resolvedPublicIp =
+      publicIp ||
+      public_ip ||
+      systemInfo.public_ip ||
+      null;
 
     // -----------------------------------------
     // 1. Validate installation instance ID
@@ -49,7 +141,10 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     // 2. Validate OS
     // -----------------------------------------
-    if (resolvedOs && !["windows", "macos", "linux"].includes(resolvedOs)) {
+    if (
+      resolvedOs &&
+      !["windows", "macos", "linux"].includes(resolvedOs)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -132,6 +227,9 @@ export async function POST(request: NextRequest) {
 
     const account = accountResult.rows[0];
 
+    // -----------------------------------------
+    // Check account status
+    // -----------------------------------------
     if (!account.is_active) {
       return NextResponse.json(
         {
@@ -141,6 +239,24 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    // -----------------------------------------
+    // Resolve OS using installation platform
+    // only if heartbeat did not provide one.
+    // -----------------------------------------
+    const finalOs =
+      resolvedOs ||
+      String(instance.platform || "").toLowerCase();
+
+    // -----------------------------------------
+    // Resolve agent version using installation
+    // version only when heartbeat does not provide
+    // an agent version.
+    // -----------------------------------------
+    const finalAgentVersion =
+      resolvedAgentVersion ||
+      instance.installer_version ||
+      null;
 
     // -----------------------------------------
     // 6. Existing endpoint
@@ -154,8 +270,15 @@ export async function POST(request: NextRequest) {
         SET
           hostname = $1,
           os = $2::endpoint_os,
-          os_version = $3,
-          agent_version = $4,
+
+          /*
+           * IMPORTANT:
+           * Do not erase an existing value when the
+           * heartbeat does not provide one.
+           */
+          os_version = COALESCE($3, os_version),
+          agent_version = COALESCE($4, agent_version),
+
           ip_address = $5,
           mac_address = $6,
           public_ip = $7,
@@ -167,20 +290,24 @@ export async function POST(request: NextRequest) {
         RETURNING id
         `,
         [
-          hostname || "Unknown",
-          resolvedOs || instance.platform.toLowerCase(),
-          osVersion || os_version || null,
-          agentVersion || agent_version || null,
-          ipAddress || ip_address || local_ip || null,
-          macAddress || mac_address || null,
-          publicIp || public_ip || null,
+          resolvedHostname,
+          finalOs,
+          resolvedOsVersion,
+          finalAgentVersion,
+          resolvedIpAddress,
+          resolvedMacAddress,
+          resolvedPublicIp,
           resolvedAgentId || null,
           endpointId,
         ]
       );
 
       if (endpointResult.rows.length === 0) {
-        // Endpoint record was manually deleted or missing from DB; recreate it for this account/agent
+        // -----------------------------------------
+        // Endpoint record was manually deleted or
+        // is missing from the database.
+        // Recreate it for this account/agent.
+        // -----------------------------------------
         const recreatedEndpoint = await query(
           `
           INSERT INTO endpoints
@@ -225,16 +352,17 @@ export async function POST(request: NextRequest) {
           `,
           [
             instance.account_id,
-            hostname || snakeHostname || "Unknown",
-            resolvedOs || instance.platform.toLowerCase(),
-            osVersion || os_version || null,
-            agentVersion || agent_version || null,
-            ipAddress || ip_address || local_ip || null,
-            macAddress || mac_address || null,
+            resolvedHostname,
+            finalOs,
+            resolvedOsVersion,
+            finalAgentVersion,
+            resolvedIpAddress,
+            resolvedMacAddress,
             resolvedAgentId || null,
-            publicIp || public_ip || null,
+            resolvedPublicIp,
           ]
         );
+
         endpointId = recreatedEndpoint.rows[0].id;
       }
     } else {
@@ -285,14 +413,14 @@ export async function POST(request: NextRequest) {
         `,
         [
           instance.account_id,
-          hostname || snakeHostname || "Unknown",
-          resolvedOs || instance.platform.toLowerCase(),
-          osVersion || os_version || null,
-          agentVersion || agent_version || null,
-          ipAddress || ip_address || local_ip || null,
-          macAddress || mac_address || null,
+          resolvedHostname,
+          finalOs,
+          resolvedOsVersion,
+          finalAgentVersion,
+          resolvedIpAddress,
+          resolvedMacAddress,
           resolvedAgentId || null,
-          publicIp || public_ip || null,
+          resolvedPublicIp,
         ]
       );
 
@@ -332,7 +460,10 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         message: "Heartbeat failed.",
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
       },
       { status: 500 }
     );

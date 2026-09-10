@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 minutes in milliseconds
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
 export default function SessionSecurityGuard() {
   const router = useRouter();
 
@@ -45,7 +45,7 @@ export default function SessionSecurityGuard() {
         logout();
       }, INACTIVITY_TIMEOUT);
 
-      console.info("⏱️ Timer reset. Logout in 60 seconds.");
+      console.info("⏱️ Timer reset. Logout in 15 minutes.");
     };
 
     const activityEvents = [
