@@ -3,124 +3,173 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Light Blue theme */
+/* =========================================================
+   KUAMINI SECURITY - GLOBAL THEME
+   ========================================================= */
+
 :root {
-  --background: oklch(0.98 0.01 240);
-  --foreground: oklch(0.2 0.02 240);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.02 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.02 240);
-  --primary: oklch(0.55 0.2 250);
-  --primary-foreground: oklch(0.98 0.01 240);
-  --secondary: oklch(0.94 0.02 240);
-  --secondary-foreground: oklch(0.25 0.02 240);
-  --muted: oklch(0.94 0.02 240);
-  --muted-foreground: oklch(0.5 0.02 240);
-  --accent: oklch(0.92 0.03 240);
-  --accent-foreground: oklch(0.25 0.02 240);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.88 0.02 240);
-  --input: oklch(0.88 0.02 240);
-  --ring: oklch(0.55 0.2 250);
-  --chart-1: oklch(0.55 0.2 250);
-  --chart-2: oklch(0.65 0.15 200);
-  --chart-3: oklch(0.45 0.15 280);
-  --chart-4: oklch(0.7 0.12 180);
-  --chart-5: oklch(0.6 0.18 220);
+  --background: #0b0912;
+  --foreground: #f8f7ff;
+
+  --card: #15121f;
+  --card-foreground: #f8f7ff;
+
+  --popover: #15121f;
+  --popover-foreground: #f8f7ff;
+
+  --primary: #9b4de8;
+  --primary-foreground: #ffffff;
+
+  --secondary: #211b2b;
+  --secondary-foreground: #ffffff;
+
+  --muted: #211b2b;
+  --muted-foreground: #a9a4b8;
+
+  --accent: #8b3fd1;
+  --accent-foreground: #ffffff;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.10);
+  --input: rgba(255, 255, 255, 0.10);
+  --ring: #9b4de8;
+
+  --chart-1: #9b4de8;
+  --chart-2: #d43c9a;
+  --chart-3: #67ddeb;
+  --chart-4: #f3a847;
+  --chart-5: #6ee7b7;
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.96 0.02 240);
-  --sidebar-foreground: oklch(0.2 0.02 240);
-  --sidebar-primary: oklch(0.55 0.2 250);
-  --sidebar-primary-foreground: oklch(0.98 0.01 240);
-  --sidebar-accent: oklch(0.92 0.03 240);
-  --sidebar-accent-foreground: oklch(0.25 0.02 240);
-  --sidebar-border: oklch(0.88 0.02 240);
-  --sidebar-ring: oklch(0.55 0.2 250);
-  /* Status colors */
-  --success: oklch(0.65 0.2 145);
-  --success-foreground: oklch(0.98 0 0);
-  --warning: oklch(0.75 0.18 85);
-  --warning-foreground: oklch(0.25 0.05 85);
-  --info: oklch(0.65 0.15 230);
-  --info-foreground: oklch(0.98 0 0);
+
+  --sidebar: #0d0a14;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #9b4de8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #211b2b;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --sidebar-ring: #9b4de8;
+
+  --success: #4ade80;
+  --success-foreground: #07140b;
+
+  --warning: #fbbf24;
+  --warning-foreground: #171003;
+
+  --info: #67ddeb;
+  --info-foreground: #061014;
 }
 
-/* Dark Blue theme */
+
+/* =========================================================
+   DARK THEME
+   ========================================================= */
+
 .dark {
-  --background: oklch(0.18 0.03 250);
-  --foreground: oklch(0.95 0.01 240);
-  --card: oklch(0.22 0.03 250);
-  --card-foreground: oklch(0.95 0.01 240);
-  --popover: oklch(0.22 0.03 250);
-  --popover-foreground: oklch(0.95 0.01 240);
-  --primary: oklch(0.65 0.18 250);
-  --primary-foreground: oklch(0.15 0.02 250);
-  --secondary: oklch(0.28 0.04 250);
-  --secondary-foreground: oklch(0.95 0.01 240);
-  --muted: oklch(0.28 0.04 250);
-  --muted-foreground: oklch(0.7 0.02 240);
-  --accent: oklch(0.32 0.05 250);
-  --accent-foreground: oklch(0.95 0.01 240);
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.95 0 0);
-  --border: oklch(0.32 0.04 250);
-  --input: oklch(0.32 0.04 250);
-  --ring: oklch(0.65 0.18 250);
-  --chart-1: oklch(0.65 0.18 250);
-  --chart-2: oklch(0.6 0.15 200);
-  --chart-3: oklch(0.55 0.15 280);
-  --chart-4: oklch(0.65 0.12 180);
-  --chart-5: oklch(0.58 0.18 220);
-  --sidebar: oklch(0.15 0.03 250);
-  --sidebar-foreground: oklch(0.95 0.01 240);
-  --sidebar-primary: oklch(0.65 0.18 250);
-  --sidebar-primary-foreground: oklch(0.15 0.02 250);
-  --sidebar-accent: oklch(0.28 0.04 250);
-  --sidebar-accent-foreground: oklch(0.95 0.01 240);
-  --sidebar-border: oklch(0.28 0.04 250);
-  --sidebar-ring: oklch(0.65 0.18 250);
-  /* Status colors */
-  --success: oklch(0.6 0.18 145);
-  --success-foreground: oklch(0.15 0 0);
-  --warning: oklch(0.7 0.16 85);
-  --warning-foreground: oklch(0.2 0.05 85);
-  --info: oklch(0.6 0.14 230);
-  --info-foreground: oklch(0.15 0 0);
+  --background: #0b0912;
+  --foreground: #f8f7ff;
+
+  --card: #15121f;
+  --card-foreground: #f8f7ff;
+
+  --popover: #15121f;
+  --popover-foreground: #f8f7ff;
+
+  --primary: #a855f7;
+  --primary-foreground: #ffffff;
+
+  --secondary: #211b2b;
+  --secondary-foreground: #ffffff;
+
+  --muted: #211b2b;
+  --muted-foreground: #aaa5b9;
+
+  --accent: #8b3fd1;
+  --accent-foreground: #ffffff;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.10);
+  --input: rgba(255, 255, 255, 0.10);
+  --ring: #a855f7;
+
+  --chart-1: #a855f7;
+  --chart-2: #ec4899;
+  --chart-3: #67ddeb;
+  --chart-4: #f3a847;
+  --chart-5: #6ee7b7;
+
+  --sidebar: #09070f;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #a855f7;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #211b2b;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --sidebar-ring: #a855f7;
+
+  --success: #4ade80;
+  --success-foreground: #07140b;
+
+  --warning: #fbbf24;
+  --warning-foreground: #171003;
+
+  --info: #67ddeb;
+  --info-foreground: #061014;
 }
+
+
+/* =========================================================
+   TAILWIND THEME VARIABLES
+   ========================================================= */
 
 @theme inline {
   --font-sans: "Geist", "Geist Fallback";
   --font-mono: "Geist Mono", "Geist Mono Fallback";
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -129,19 +178,1503 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
 }
+
+
+/* =========================================================
+   BASE
+   ========================================================= */
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    background: #0b0912;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    margin: 0;
+    min-height: 100vh;
+    background: #0b0912;
+    color: #f8f7ff;
+  }
+}
+
+
+/* =========================================================
+   KUAMINI BACKGROUND SYSTEM
+   ========================================================= */
+
+/*
+   IMPORTANT:
+
+   All lighting is clipped inside its section.
+   This prevents the neon curves from appearing outside
+   the page when scrolling.
+*/
+
+
+/* =========================================================
+   SECURITY AGENT HERO
+   ========================================================= */
+
+.kuamini-agent-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 70% 80% at 15% 45%,
+      rgba(117, 65, 166, 0.18),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 60% 70% at 90% 10%,
+      rgba(211, 55, 154, 0.13),
+      transparent 65%
+    ),
+    linear-gradient(
+      135deg,
+      #3b2c54 0%,
+      #352b49 45%,
+      #292631 100%
+    );
+}
+
+
+/* Main pink/purple curved lighting */
+
+.kuamini-agent-hero::before {
+  content: "";
+  position: absolute;
+
+  width: 720px;
+  height: 720px;
+
+  right: -430px;
+  top: -390px;
+
+  border-radius: 50%;
+
+  border: 2px solid rgba(244, 63, 94, 0.55);
+
+  box-shadow:
+    0 0 12px rgba(236, 72, 153, 0.45),
+    0 0 35px rgba(168, 85, 247, 0.22);
+
+  transform: rotate(-18deg);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* Small glow behind the curve */
+
+.kuamini-agent-hero::after {
+  content: "";
+
+  position: absolute;
+
+  width: 300px;
+  height: 300px;
+
+  right: -100px;
+  top: -80px;
+
+  border-radius: 50%;
+
+  background: rgba(168, 85, 247, 0.10);
+
+  filter: blur(70px);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   ACCESS CONSOLE SECTION
+   ========================================================= */
+
+.kuamini-console-bg {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 60% 100% at 10% 50%,
+      rgba(117, 65, 166, 0.12),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 50% 70% at 90% 10%,
+      rgba(236, 72, 153, 0.10),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      #382b50 0%,
+      #332b47 45%,
+      #292631 100%
+    );
+}
+
+
+/* Purple curved light on console section */
+
+.kuamini-console-bg::before {
+  content: "";
+
+  position: absolute;
+
+  width: 650px;
+  height: 650px;
+
+  left: -470px;
+  bottom: -420px;
+
+  border-radius: 50%;
+
+  border: 2px solid rgba(168, 85, 247, 0.38);
+
+  box-shadow:
+    0 0 18px rgba(168, 85, 247, 0.25),
+    0 0 45px rgba(236, 72, 153, 0.10);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* Pink light at upper-right */
+
+.kuamini-console-bg::after {
+  content: "";
+
+  position: absolute;
+
+  width: 520px;
+  height: 520px;
+
+  right: -400px;
+  top: -350px;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(236, 72, 153, 0.35);
+
+  box-shadow:
+    0 0 20px rgba(236, 72, 153, 0.25);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   DARK CONTENT SECTIONS
+   ========================================================= */
+
+.kuamini-dark-section {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 50% 80% at 100% 50%,
+      rgba(100, 50, 140, 0.08),
+      transparent 70%
+    ),
+    #0d0a14;
+}
+
+
+/* Very subtle curve */
+
+.kuamini-dark-section::before {
+  content: "";
+
+  position: absolute;
+
+  width: 500px;
+  height: 500px;
+
+  right: -390px;
+  top: 20%;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(168, 85, 247, 0.20);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   INSTALLATION SECTION
+   ========================================================= */
+
+.kuamini-installation-bg {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 70% 90% at 0% 100%,
+      rgba(168, 85, 247, 0.11),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 50% 70% at 100% 0%,
+      rgba(236, 72, 153, 0.09),
+      transparent 65%
+    ),
+    #17131f;
+}
+
+
+/* Bottom-left curved light */
+
+.kuamini-installation-bg::before {
+  content: "";
+
+  position: absolute;
+
+  width: 620px;
+  height: 620px;
+
+  left: -470px;
+  bottom: -420px;
+
+  border-radius: 50%;
+
+  border: 2px solid rgba(236, 72, 153, 0.35);
+
+  box-shadow:
+    0 0 15px rgba(236, 72, 153, 0.25),
+    0 0 35px rgba(168, 85, 247, 0.12);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* Upper-right curve */
+
+.kuamini-installation-bg::after {
+  content: "";
+
+  position: absolute;
+
+  width: 520px;
+  height: 520px;
+
+  right: -420px;
+  top: -350px;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(168, 85, 247, 0.30);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   CTA SECTION
+   ========================================================= */
+
+.kuamini-cta-bg {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 65% 100% at 10% 50%,
+      rgba(168, 85, 247, 0.15),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 55% 80% at 90% 50%,
+      rgba(236, 72, 153, 0.12),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      #3a2550 0%,
+      #352743 50%,
+      #292530 100%
+    );
+}
+
+
+/* CTA curved lighting */
+
+.kuamini-cta-bg::before {
+  content: "";
+
+  position: absolute;
+
+  width: 700px;
+  height: 700px;
+
+  left: -560px;
+  bottom: -480px;
+
+  border-radius: 50%;
+
+  border: 2px solid rgba(236, 72, 153, 0.42);
+
+  box-shadow:
+    0 0 18px rgba(236, 72, 153, 0.30),
+    0 0 45px rgba(168, 85, 247, 0.16);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   CONTENT ABOVE LIGHTING
+   ========================================================= */
+
+.kuamini-agent-hero > *,
+.kuamini-console-bg > *,
+.kuamini-dark-section > *,
+.kuamini-installation-bg > *,
+.kuamini-cta-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+
+/* =========================================================
+   HOMEPAGE HERO
+   ========================================================= */
+
+.kuamini-home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 65% 85% at 8% 50%,
+      rgba(94, 54, 137, 0.20),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 55% 75% at 95% 5%,
+      rgba(218, 55, 154, 0.14),
+      transparent 68%
+    ),
+    linear-gradient(
+      135deg,
+      #11192a 0%,
+      #17152a 48%,
+      #21172b 72%,
+      #0b0912 100%
+    );
+}
+
+
+/* Homepage top-right pink/purple curve */
+
+.kuamini-home-hero::before {
+  content: "";
+
+  position: absolute;
+
+  width: 760px;
+  height: 760px;
+
+  right: -560px;
+  top: -520px;
+
+  border-radius: 50%;
+
+  border: 2px solid rgba(236, 72, 153, 0.58);
+
+  box-shadow:
+    0 0 12px rgba(236, 72, 153, 0.50),
+    0 0 32px rgba(168, 85, 247, 0.28);
+
+  transform: rotate(-15deg);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* Homepage purple glow */
+
+.kuamini-home-hero::after {
+  content: "";
+
+  position: absolute;
+
+  width: 360px;
+  height: 360px;
+
+  right: -100px;
+  top: -80px;
+
+  border-radius: 50%;
+
+  background: rgba(168, 85, 247, 0.10);
+
+  filter: blur(80px);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   HOMEPAGE ABOUT
+   ========================================================= */
+
+.kuamini-home-about {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 60% 90% at 0% 50%,
+      rgba(100, 55, 145, 0.13),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 50% 80% at 100% 100%,
+      rgba(236, 72, 153, 0.08),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      #29213c 0%,
+      #251f35 50%,
+      #191722 100%
+    );
+}
+
+
+/* About bottom-left curve */
+
+.kuamini-home-about::before {
+  content: "";
+
+  position: absolute;
+
+  width: 650px;
+  height: 650px;
+
+  left: -510px;
+  bottom: -450px;
+
+  border-radius: 50%;
+
+  border: 2px solid rgba(168, 85, 247, 0.38);
+
+  box-shadow:
+    0 0 18px rgba(168, 85, 247, 0.25),
+    0 0 40px rgba(236, 72, 153, 0.10);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* About soft pink glow */
+
+.kuamini-home-about::after {
+  content: "";
+
+  position: absolute;
+
+  width: 300px;
+  height: 300px;
+
+  right: -100px;
+  top: 10%;
+
+  border-radius: 50%;
+
+  background: rgba(236, 72, 153, 0.08);
+
+  filter: blur(75px);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   HOMEPAGE PARTNERS
+   ========================================================= */
+
+.kuamini-home-partners {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      ellipse 60% 90% at 100% 50%,
+      rgba(168, 85, 247, 0.12),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      #141222 0%,
+      #171321 50%,
+      #0d0a14 100%
+    );
+}
+
+
+/* Partners top-right curve */
+
+.kuamini-home-partners::before {
+  content: "";
+
+  position: absolute;
+
+  width: 600px;
+  height: 600px;
+
+  right: -470px;
+  top: -390px;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(236, 72, 153, 0.38);
+
+  box-shadow:
+    0 0 15px rgba(236, 72, 153, 0.25),
+    0 0 35px rgba(168, 85, 247, 0.15);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* Partners bottom-left glow */
+
+.kuamini-home-partners::after {
+  content: "";
+
+  position: absolute;
+
+  width: 280px;
+  height: 280px;
+
+  left: -100px;
+  bottom: -120px;
+
+  border-radius: 50%;
+
+  background: rgba(168, 85, 247, 0.09);
+
+  filter: blur(70px);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* =========================================================
+   HOMEPAGE CONTENT ABOVE LIGHTING
+   ========================================================= */
+
+.kuamini-home-hero > *,
+.kuamini-home-about > *,
+.kuamini-home-partners > * {
+  position: relative;
+  z-index: 1;
+}
+
+
+/* =========================================================
+   HOMEPAGE SERVICE CARDS
+   ========================================================= */
+
+.kuamini-home-hero .group {
+  transition:
+    transform 300ms ease,
+    border-color 300ms ease,
+    box-shadow 300ms ease;
+}
+
+.kuamini-home-hero .group:hover {
+  transform: translateY(-3px);
+
+  border-color: rgba(168, 85, 247, 0.45);
+
+  box-shadow:
+    0 10px 35px rgba(0, 0, 0, 0.35),
+    0 0 20px rgba(168, 85, 247, 0.10);
+}
+
+
+/* =========================================================
+   SCROLLBAR
+   ========================================================= */
+
+html {
+  scrollbar-color: #4b3a61 #0b0912;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b0912;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b3a61;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #684b82;
+}
+
+
+/* =========================================================
+   KUAMINI SECURITY CONSOLE - DASHBOARD DESIGN
+   ========================================================= */
+
+/*
+   Dashboard visual direction:
+
+   - Deep navy / charcoal base
+   - Cyan / blue glow
+   - Purple glow
+   - Pink / red glow
+   - Orange / yellow glow
+   - Neon curved lighting
+   - Glass-like cards
+   - Soft borders
+   - No white backgrounds
+*/
+
+
+/* =========================================================
+   DASHBOARD PAGE
+   ========================================================= */
+
+.kuamini-dashboard-page {
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100vh - 80px);
+
+  background:
+    radial-gradient(
+      ellipse 55% 70% at 100% 0%,
+      rgba(236, 72, 153, 0.20),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 50% 65% at 0% 100%,
+      rgba(139, 92, 246, 0.22),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 50% 60% at 55% 10%,
+      rgba(14, 165, 233, 0.13),
+      transparent 65%
+    ),
+    linear-gradient(
+      135deg,
+      #071225 0%,
+      #08152b 35%,
+      #101633 62%,
+      #170b28 100%
+    );
+
+  overflow: hidden;
+}
+
+
+/* =========================================================
+   DASHBOARD MAIN LIGHTING
+   ========================================================= */
+
+.kuamini-dashboard-lighting {
+  position: absolute;
+  inset: 0;
+
+  pointer-events: none;
+
+  background:
+    radial-gradient(
+      circle 420px at 92% 5%,
+      rgba(236, 72, 153, 0.20),
+      transparent 70%
+    ),
+    radial-gradient(
+      circle 360px at 3% 88%,
+      rgba(168, 85, 247, 0.20),
+      transparent 70%
+    ),
+    radial-gradient(
+      circle 300px at 48% 0%,
+      rgba(34, 211, 238, 0.12),
+      transparent 70%
+    );
+
+  z-index: -1;
+}
+
+
+/* =========================================================
+   NEON CURVED LIGHTING
+   ========================================================= */
+
+.kuamini-dashboard-curve {
+  position: absolute;
+
+  border-radius: 50%;
+
+  pointer-events: none;
+
+  z-index: -1;
+}
+
+
+/* Top-right pink/orange curve */
+
+.kuamini-dashboard-curve-top {
+  width: 850px;
+  height: 850px;
+
+  right: -610px;
+  top: -590px;
+
+  border: 2px solid rgba(236, 72, 153, 0.70);
+
+  box-shadow:
+    0 0 10px rgba(236, 72, 153, 0.75),
+    0 0 25px rgba(236, 72, 153, 0.45),
+    0 0 60px rgba(168, 85, 247, 0.25);
+
+  transform: rotate(-15deg);
+}
+
+
+/* Left-side purple/pink curve */
+
+.kuamini-dashboard-curve-left {
+  width: 720px;
+  height: 720px;
+
+  left: -570px;
+  bottom: -390px;
+
+  border: 2px solid rgba(168, 85, 247, 0.65);
+
+  box-shadow:
+    0 0 12px rgba(168, 85, 247, 0.70),
+    0 0 35px rgba(236, 72, 153, 0.35),
+    0 0 70px rgba(168, 85, 247, 0.20);
+
+  transform: rotate(18deg);
+}
+
+
+/* Bottom-right orange/pink curve */
+
+.kuamini-dashboard-curve-bottom {
+  width: 900px;
+  height: 500px;
+
+  right: -500px;
+  bottom: -430px;
+
+  border: 2px solid rgba(249, 115, 22, 0.60);
+
+  box-shadow:
+    0 0 12px rgba(249, 115, 22, 0.55),
+    0 0 30px rgba(236, 72, 153, 0.40),
+    0 0 60px rgba(168, 85, 247, 0.20);
+
+  transform: rotate(-12deg);
+}
+
+
+/* =========================================================
+   DASHBOARD CONTENT
+   ========================================================= */
+
+.kuamini-dashboard-content {
+  position: relative;
+  z-index: 2;
+}
+
+
+/* =========================================================
+   DASHBOARD HEADER
+   ========================================================= */
+
+.kuamini-dashboard-page .kuamini-dashboard-content > div:first-child {
+  position: relative;
+}
+
+
+/* Small slogan in top-right */
+
+.kuamini-dashboard-kicker {
+  position: absolute;
+
+  right: 5px;
+  top: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  text-align: right;
+
+  font-size: 12px;
+  font-weight: 500;
+
+  letter-spacing: 0.30em;
+
+  color: rgba(186, 230, 253, 0.70);
+
+  line-height: 1.7;
+
+  pointer-events: none;
+}
+
+.kuamini-dashboard-kicker span {
+  color: rgba(244, 114, 182, 0.75);
+}
+
+
+/* =========================================================
+   SUMMARY CARDS
+   ========================================================= */
+
+.kuamini-dashboard-card {
+  position: relative;
+  isolation: isolate;
+
+  min-height: 175px;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(148, 163, 184, 0.28);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(15, 30, 56, 0.94),
+      rgba(7, 18, 36, 0.90)
+    );
+
+  box-shadow:
+    0 18px 45px rgba(0, 0, 0, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  transition:
+    transform 250ms ease,
+    border-color 250ms ease,
+    box-shadow 250ms ease;
+}
+
+
+.kuamini-dashboard-card:hover {
+  transform: translateY(-4px);
+
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.38),
+    0 0 25px rgba(59, 130, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+
+/* =========================================================
+   CARD COLOURS
+   ========================================================= */
+
+.kuamini-card-health {
+  border-color: rgba(20, 184, 166, 0.65);
+
+  background:
+    radial-gradient(
+      ellipse 80% 100% at 100% 100%,
+      rgba(16, 185, 129, 0.30),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(7, 55, 72, 0.95),
+      rgba(5, 31, 51, 0.94)
+    );
+
+  box-shadow:
+    0 0 25px rgba(16, 185, 129, 0.12),
+    inset 0 0 35px rgba(16, 185, 129, 0.04);
+}
+
+
+.kuamini-card-threats {
+  border-color: rgba(244, 63, 94, 0.72);
+
+  background:
+    radial-gradient(
+      ellipse 80% 100% at 100% 0%,
+      rgba(244, 63, 94, 0.32),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(68, 19, 49, 0.95),
+      rgba(31, 15, 39, 0.94)
+    );
+
+  box-shadow:
+    0 0 28px rgba(244, 63, 94, 0.13),
+    inset 0 0 35px rgba(244, 63, 94, 0.04);
+}
+
+
+.kuamini-card-policies {
+  border-color: rgba(168, 85, 247, 0.72);
+
+  background:
+    radial-gradient(
+      ellipse 80% 100% at 100% 0%,
+      rgba(168, 85, 247, 0.35),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(47, 18, 81, 0.96),
+      rgba(24, 15, 48, 0.94)
+    );
+
+  box-shadow:
+    0 0 30px rgba(168, 85, 247, 0.15),
+    inset 0 0 35px rgba(168, 85, 247, 0.05);
+}
+
+
+.kuamini-card-licenses {
+  border-color: rgba(245, 158, 11, 0.72);
+
+  background:
+    radial-gradient(
+      ellipse 80% 100% at 100% 0%,
+      rgba(245, 158, 11, 0.34),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(67, 44, 15, 0.96),
+      rgba(38, 27, 18, 0.94)
+    );
+
+  box-shadow:
+    0 0 30px rgba(245, 158, 11, 0.14),
+    inset 0 0 35px rgba(245, 158, 11, 0.04);
+}
+
+
+/* =========================================================
+   CARD GLOW
+   ========================================================= */
+
+.kuamini-card-glow {
+  position: absolute;
+
+  width: 170px;
+  height: 170px;
+
+  right: -80px;
+  bottom: -100px;
+
+  border-radius: 50%;
+
+  filter: blur(20px);
+
+  opacity: 0.35;
+
+  pointer-events: none;
+}
+
+
+/* =========================================================
+   CARD ICONS
+   ========================================================= */
+
+.kuamini-health-icon,
+.kuamini-threat-icon,
+.kuamini-policy-icon,
+.kuamini-license-icon {
+  position: absolute;
+
+  right: 22px;
+  top: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+}
+
+
+.kuamini-health-icon {
+  font-size: 64px;
+  font-weight: 300;
+
+  color: rgba(52, 211, 153, 0.60);
+
+  text-shadow:
+    0 0 12px rgba(52, 211, 153, 0.65),
+    0 0 30px rgba(52, 211, 153, 0.25);
+}
+
+
+.kuamini-threat-icon {
+  width: 58px;
+  height: 58px;
+
+  border: 3px solid rgba(251, 113, 133, 0.65);
+
+  border-radius: 18px;
+
+  color: rgba(251, 113, 133, 0.85);
+
+  font-size: 34px;
+  font-weight: 700;
+
+  text-shadow:
+    0 0 12px rgba(244, 63, 94, 0.80);
+}
+
+
+.kuamini-policy-icon {
+  font-size: 60px;
+
+  color: rgba(192, 132, 252, 0.75);
+
+  text-shadow:
+    0 0 14px rgba(168, 85, 247, 0.80),
+    0 0 30px rgba(168, 85, 247, 0.30);
+}
+
+
+.kuamini-license-icon {
+  font-size: 32px;
+  letter-spacing: 4px;
+
+  color: rgba(251, 191, 36, 0.75);
+
+  text-shadow:
+    0 0 12px rgba(245, 158, 11, 0.75),
+    0 0 25px rgba(245, 158, 11, 0.30);
+}
+
+
+/* =========================================================
+   MAIN PANELS
+   ========================================================= */
+
+.kuamini-dashboard-panel {
+  position: relative;
+  isolation: isolate;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(59, 130, 246, 0.35);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(14, 34, 64, 0.94),
+      rgba(8, 22, 42, 0.96)
+    );
+
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+
+/* Cyan glow on top of panel */
+
+.kuamini-dashboard-panel::before {
+  content: "";
+
+  position: absolute;
+
+  width: 340px;
+  height: 170px;
+
+  right: -120px;
+  top: -100px;
+
+  border-radius: 50%;
+
+  background: rgba(34, 211, 238, 0.13);
+
+  filter: blur(30px);
+
+  pointer-events: none;
+
+  z-index: -1;
+}
+
+
+/* =========================================================
+   ENDPOINT PANEL
+   ========================================================= */
+
+.kuamini-health-panel {
+  border-color: rgba(14, 165, 233, 0.45);
+
+  background:
+    radial-gradient(
+      ellipse 70% 60% at 100% 0%,
+      rgba(20, 184, 166, 0.22),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(12, 42, 69, 0.95),
+      rgba(8, 25, 48, 0.96)
+    );
+}
+
+
+/* =========================================================
+   THREAT PANEL
+   ========================================================= */
+
+.kuamini-threat-panel {
+  border-color: rgba(59, 130, 246, 0.38);
+
+  background:
+    radial-gradient(
+      ellipse 70% 70% at 100% 0%,
+      rgba(244, 63, 94, 0.15),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(15, 32, 60, 0.96),
+      rgba(8, 20, 40, 0.97)
+    );
+}
+
+
+/* =========================================================
+   POLICY PANEL
+   ========================================================= */
+
+.kuamini-policy-panel {
+  border-color: rgba(59, 130, 246, 0.45);
+
+  background:
+    radial-gradient(
+      ellipse 80% 50% at 100% 0%,
+      rgba(20, 184, 166, 0.18),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(14, 38, 70, 0.96),
+      rgba(8, 23, 46, 0.97)
+    );
+}
+
+
+/* =========================================================
+   LICENSE PANEL
+   ========================================================= */
+
+.kuamini-license-panel {
+  border-color: rgba(59, 130, 246, 0.42);
+
+  background:
+    radial-gradient(
+      ellipse 80% 65% at 100% 0%,
+      rgba(245, 158, 11, 0.22),
+      transparent 65%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(25, 39, 69, 0.96),
+      rgba(10, 24, 46, 0.97)
+    );
+}
+
+
+/* =========================================================
+   INNER CARDS
+   ========================================================= */
+
+.kuamini-inner-card {
+  position: relative;
+  overflow: hidden;
+
+  min-height: 105px;
+
+  border: 1px solid rgba(148, 163, 184, 0.20);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(4, 20, 42, 0.94),
+      rgba(3, 15, 32, 0.96)
+    );
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 25px rgba(0, 0, 0, 0.20);
+
+  transition:
+    transform 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+
+.kuamini-inner-card:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+
+/* =========================================================
+   INNER CARD ACCENTS
+   ========================================================= */
+
+.kuamini-blue-accent {
+  border-left: 4px solid #0ea5e9;
+
+  box-shadow:
+    inset 12px 0 30px rgba(14, 165, 233, 0.05);
+}
+
+
+.kuamini-green-accent {
+  border-left: 4px solid #10b981;
+
+  box-shadow:
+    inset 12px 0 30px rgba(16, 185, 129, 0.05);
+}
+
+
+.kuamini-orange-accent {
+  border-left: 4px solid #f59e0b;
+
+  box-shadow:
+    inset 12px 0 30px rgba(245, 158, 11, 0.05);
+}
+
+
+.kuamini-pink-accent {
+  border-left: 4px solid #ec4899;
+
+  box-shadow:
+    inset 12px 0 30px rgba(236, 72, 153, 0.05);
+}
+
+
+.kuamini-cyan-accent {
+  border-left: 4px solid #06b6d4;
+
+  box-shadow:
+    inset 12px 0 30px rgba(6, 182, 212, 0.05);
+}
+
+
+.kuamini-disabled-accent {
+  border-left: 4px solid #94a3b8;
+
+  box-shadow:
+    inset 12px 0 30px rgba(148, 163, 184, 0.04);
+}
+
+
+/* =========================================================
+   THREAT TABLE
+   ========================================================= */
+
+.kuamini-threat-panel table tr {
+  transition:
+    background 180ms ease;
+}
+
+
+.kuamini-threat-panel table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+
+/* =========================================================
+   LICENSE PROGRESS
+   ========================================================= */
+
+.kuamini-license-progress {
+  position: relative;
+
+  width: 100%;
+  height: 16px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(30, 64, 175, 0.35),
+      rgba(51, 65, 85, 0.80)
+    );
+
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+
+.kuamini-license-progress-fill {
+  height: 100%;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      90deg,
+      #f59e0b,
+      #fbbf24,
+      #f97316
+    );
+
+  box-shadow:
+    0 0 10px rgba(251, 191, 36, 0.70),
+    0 0 25px rgba(245, 158, 11, 0.35);
+
+  transition: width 600ms ease;
+}
+
+
+/* =========================================================
+   DASHBOARD TEXT
+   ========================================================= */
+
+.kuamini-dashboard-page h2,
+.kuamini-dashboard-page h3,
+.kuamini-dashboard-page h4 {
+  letter-spacing: -0.02em;
+}
+
+
+.kuamini-dashboard-page h2 {
+  text-shadow:
+    0 0 20px rgba(255, 255, 255, 0.08);
+}
+
+
+/* =========================================================
+   DASHBOARD RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 1024px) {
+
+  .kuamini-dashboard-kicker {
+    display: none;
+  }
+
+  .kuamini-dashboard-curve-top {
+    right: -680px;
+  }
+
+  .kuamini-dashboard-curve-left {
+    left: -620px;
+  }
+}
+
+
+@media (max-width: 640px) {
+
+  .kuamini-dashboard-page {
+    min-height: 100vh;
+  }
+
+  .kuamini-dashboard-card {
+    min-height: 155px;
+  }
+
+  .kuamini-dashboard-curve-top {
+    width: 600px;
+    height: 600px;
+
+    right: -470px;
+    top: -450px;
+  }
+
+  .kuamini-dashboard-curve-left {
+    width: 550px;
+    height: 550px;
+
+    left: -430px;
+    bottom: -350px;
+  }
+
+  .kuamini-dashboard-curve-bottom {
+    width: 650px;
+    height: 400px;
+
+    right: -450px;
+    bottom: -350px;
+  }
+
+  .kuamini-health-icon,
+  .kuamini-policy-icon {
+    opacity: 0.55;
+  }
+}
+
+
+/* =========================================================
+   REDUCE MOTION
+   ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .kuamini-dashboard-card,
+  .kuamini-inner-card,
+  .kuamini-license-progress-fill {
+    transition: none;
   }
 }

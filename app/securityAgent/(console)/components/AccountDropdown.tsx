@@ -31,35 +31,111 @@ export default function AccountDropdown() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative z-[99999]">
+      {/* Account Button */}
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-     className="flex h-12 items-center rounded-lg border border-slate-700 px-6 text-sm font-medium hover:bg-slate-800 transition-colors" >
-        Account ▾
+        className="
+          relative z-[99999]
+          flex h-12 items-center
+          rounded-lg
+          border border-slate-700
+          bg-transparent
+          px-6
+          text-sm font-medium
+          text-white
+          transition-all duration-200
+          hover:border-purple-400/60
+          hover:bg-white/5
+        "
+      >
+        Account
+        <span
+          className={`ml-2 text-xs transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        >
+          ▾
+        </span>
       </button>
 
+      {/* Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-40 rounded-md border border-slate-700 bg-slate-900 shadow-lg">
+        <div
+          className="
+            absolute
+            right-0
+            top-full
+            z-[999999]
+            mt-2
+            w-48
+            overflow-hidden
+            rounded-lg
+            border border-slate-700
+            bg-[#0B1020]
+            shadow-2xl
+            shadow-black/50
+          "
+        >
+          {/* About */}
           <Link
             href="/securityAgent/about"
-            className="block px-4 py-2 text-sm hover:bg-slate-800"
+            onClick={() => setIsOpen(false)}
+            className="
+              block
+              px-4 py-3
+              text-sm
+              font-medium
+              text-slate-200
+              transition-colors
+              hover:bg-purple-600/20
+              hover:text-white
+            "
           >
             About
           </Link>
 
+          {/* Settings */}
           <Link
             href="/securityAgent/settings"
-            className="block px-4 py-2 text-sm hover:bg-slate-800"
+            onClick={() => setIsOpen(false)}
+            className="
+              block
+              px-4 py-3
+              text-sm
+              font-medium
+              text-slate-200
+              transition-colors
+              hover:bg-purple-600/20
+              hover:text-white
+            "
           >
             Settings
           </Link>
 
-       <button
-  onClick={handleLogout}
-  className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-800"
->
-  Logout
-</button>
+          {/* Divider */}
+          <div className="border-t border-slate-700/70" />
+
+          {/* Logout */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="
+              block
+              w-full
+              px-4 py-3
+              text-left
+              text-sm
+              font-medium
+              text-slate-200
+              transition-colors
+              hover:bg-red-500/10
+              hover:text-red-300
+            "
+          >
+            Logout
+          </button>
         </div>
       )}
     </div>
