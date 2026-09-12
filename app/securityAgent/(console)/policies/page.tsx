@@ -7,14 +7,24 @@ type Policy = {
   id: string;
   account_id: string;
   parent_policy_id: string | null;
+
+  // Account to which this policy actually applies
+  applies_to_account_id: string;
+  applies_to_account_name?: string | null;
+
+  // True only for the currently logged-in account's own policy
+  is_current_account: boolean;
+
   name: string;
   description: string | null;
   type: string;
+
   config: {
     threatType?: string;
     priority?: string;
     action?: string;
   };
+
   is_default: boolean;
   is_active: boolean;
   created_by: string | null;
@@ -22,16 +32,18 @@ type Policy = {
   updated_at: string;
   status: string;
 
-  // True when the policy is inherited from the parent account.
+  // True when inherited from parent
   is_inherited?: boolean;
 
-  // Comes from the parent account's policy setting.
-  // This determines whether the child can override
-  // an inherited policy.
+  // Parent account setting
   parent_allows_child_overrides?: boolean;
 };
-
 const POLICIES_PER_PAGE = 5;
+
+type ChildAccount = {
+  id: string;
+  name: string;
+};
 
 export default function PoliciesPage() {
   // ---------------------------------------------------------
@@ -70,6 +82,19 @@ export default function PoliciesPage() {
     useState(false);
 
   // ---------------------------------------------------------
+  // Child accounts
+  // ---------------------------------------------------------
+
+  const [childAccounts, setChildAccounts] =
+    useState<ChildAccount[]>([]);
+
+  const [selectedChildAccountIds, setSelectedChildAccountIds] =
+    useState<string[]>([]);
+
+  const [childDropdownOpen, setChildDropdownOpen] =
+    useState(false);
+
+  // ---------------------------------------------------------
   // Search / pagination
   // ---------------------------------------------------------
 
@@ -87,12 +112,14 @@ export default function PoliciesPage() {
     | "action"
     | "appliedTo";
 
-  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortKey, setSortKey] =
+    useState<SortKey>("name");
+
   const [sortDirection, setSortDirection] =
     useState<"asc" | "desc">("asc");
 
   // ---------------------------------------------------------
-  // Load policies and threat types
+  // Load policies, threat types and child accounts
   // ---------------------------------------------------------
 
   useEffect(() => {
@@ -103,24 +130,55 @@ export default function PoliciesPage() {
         const [
           policiesResponse,
           threatTypesResponse,
+          childAccountsResponse,
         ] = await Promise.all([
           fetch("/api/securityagent/policies"),
           fetch("/api/securityagent/policies/threat-types"),
+          fetch("/api/securityagent/policies/child-accounts"),
         ]);
+
+        // -----------------------------------------------------
+        // Validate policies response
+        // -----------------------------------------------------
 
         if (!policiesResponse.ok) {
           throw new Error("Failed to fetch policies");
         }
 
+        // -----------------------------------------------------
+        // Validate threat types response
+        // -----------------------------------------------------
+
         if (!threatTypesResponse.ok) {
           throw new Error("Failed to fetch threat types");
         }
+
+        // -----------------------------------------------------
+        // Validate child accounts response
+        // -----------------------------------------------------
+
+        if (!childAccountsResponse.ok) {
+          throw new Error(
+            "Failed to fetch child accounts"
+          );
+        }
+
+        // -----------------------------------------------------
+        // Parse responses
+        // -----------------------------------------------------
 
         const policiesData =
           await policiesResponse.json();
 
         const threatTypesData =
           await threatTypesResponse.json();
+
+        const childAccountsData =
+          await childAccountsResponse.json();
+
+        // -----------------------------------------------------
+        // Policies
+        // -----------------------------------------------------
 
         /*
          * The policies API returns:
@@ -130,29 +188,77 @@ export default function PoliciesPage() {
          *   allowChildOverrides: boolean
          * }
          */
+
         if (
           !policiesData ||
-          !Array.isArray(policiesData.policies)
+          !Array.isArray(
+            policiesData.policies
+          )
         ) {
           throw new Error(
             "Invalid policies response"
           );
         }
 
-        setPolicies(policiesData.policies);
+        setPolicies(
+          policiesData.policies
+        );
+        console.log(
+  "POLICIES FROM API:",
+  policiesData.policies
+);
 
         setAllowChildOverrides(
           policiesData.allowChildOverrides === true
         );
 
+        // -----------------------------------------------------
+        // Threat types
+        // -----------------------------------------------------
+
         /*
          * Threat types API returns an array.
          */
+
         if (Array.isArray(threatTypesData)) {
-          setThreatTypes(threatTypesData);
+          setThreatTypes(
+            threatTypesData
+          );
         } else {
           setThreatTypes([]);
         }
+
+        // -----------------------------------------------------
+        // Child accounts
+        // -----------------------------------------------------
+
+        /*
+         * Child accounts API returns:
+         *
+         * [
+         *   {
+         *     id: "...",
+         *     name: "Name1"
+         *   },
+         *   {
+         *     id: "...",
+         *     name: "Name2"
+         *   }
+         * ]
+         */
+
+        if (Array.isArray(childAccountsData)) {
+          setChildAccounts(
+            childAccountsData
+          );
+        } else {
+          setChildAccounts([]);
+        }
+
+        console.log(
+          "Child accounts loaded:",
+          childAccountsData
+        );
       } catch (error) {
         console.error(
           "Failed to load policy data:",
@@ -189,47 +295,37 @@ export default function PoliciesPage() {
   // Edit policy
   // ---------------------------------------------------------
 
-  const handleEdit = (policy: Policy) => {
-    /*
-     * An inherited policy can only be edited when
-     * the parent account has explicitly allowed overrides.
-     */
-    if (
-      policy.is_inherited &&
-      !policy.parent_allows_child_overrides
-    ) {
-      toast.error(
-        "The parent account does not allow this inherited policy to be overridden."
-      );
-      return;
-    }
-
-    setEditingPolicyId(policy.id);
-
-    setName(policy.name);
-    setDescription(policy.description || "");
-
-    setThreatType(
-      policy.config?.threatType || ""
+    const handleEdit = (policy: Policy) => {
+  if (!isPolicyForSelectedChild(policy)) {
+    toast.error(
+      "Please select this child account before editing its policy."
     );
+    return;
+  }
 
-    setPriority(
-      policy.config?.priority || ""
+  if (
+    policy.is_inherited &&
+   policy.parent_allows_child_overrides !== true
+  ) {
+    toast.error(
+      "The parent account does not allow this inherited policy to be overridden."
     );
+    return;
+  }
 
-    setAction(
-      policy.config?.action || ""
-    );
+  setEditingPolicyId(policy.id);
 
-    /*
-     * Scroll to the configuration section below
-     * the policies table.
-     */
-    window.scrollTo({
-      top: document.body.scrollHeight,
-      behavior: "smooth",
-    });
-  };
+  setName(policy.name);
+  setDescription(policy.description || "");
+  setThreatType(policy.config?.threatType || "");
+  setPriority(policy.config?.priority || "");
+  setAction(policy.config?.action || "");
+
+  window.scrollTo({
+    top: document.body.scrollHeight,
+    behavior: "smooth",
+  });
+};    
 
   // ---------------------------------------------------------
   // Validate unique policy name
@@ -249,6 +345,7 @@ export default function PoliciesPage() {
          * When editing, ignore the policy currently
          * being edited.
          */
+
         if (
           editingPolicyId &&
           policy.id === editingPolicyId
@@ -280,7 +377,10 @@ export default function PoliciesPage() {
 
   const handleSavePolicy = async () => {
     if (!name.trim()) {
-      toast.error("Policy name is required");
+      toast.error(
+        "Policy name is required"
+      );
+
       return;
     }
 
@@ -289,17 +389,26 @@ export default function PoliciesPage() {
     }
 
     if (!threatType) {
-      toast.error("Threat type is required");
+      toast.error(
+        "Threat type is required"
+      );
+
       return;
     }
 
     if (!priority) {
-      toast.error("Priority is required");
+      toast.error(
+        "Priority is required"
+      );
+
       return;
     }
 
     if (!action) {
-      toast.error("Default action is required");
+      toast.error(
+        "Default action is required"
+      );
+
       return;
     }
 
@@ -307,6 +416,7 @@ export default function PoliciesPage() {
       toast.error(
         "Description must be 200 characters or less"
       );
+
       return;
     }
 
@@ -331,7 +441,8 @@ export default function PoliciesPage() {
           {
             method: "PATCH",
             headers: {
-              "Content-Type": "application/json",
+              "Content-Type":
+                "application/json",
             },
             body: JSON.stringify({
               id: editingPolicyId,
@@ -340,7 +451,8 @@ export default function PoliciesPage() {
           }
         );
 
-        const data = await response.json();
+        const data =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
@@ -356,12 +468,16 @@ export default function PoliciesPage() {
          * Therefore replace the original inherited
          * policy with the returned child policy.
          */
-        setPolicies((currentPolicies) =>
-          currentPolicies.map((policy) =>
-            policy.id === editingPolicyId
-              ? data
-              : policy
-          )
+
+        setPolicies(
+          (currentPolicies) =>
+            currentPolicies.map(
+              (policy) =>
+                policy.id ===
+                editingPolicyId
+                  ? data
+                  : policy
+            )
         );
 
         toast.success(
@@ -382,13 +498,15 @@ export default function PoliciesPage() {
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
           body: JSON.stringify(payload),
         }
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -397,15 +515,18 @@ export default function PoliciesPage() {
         );
       }
 
-      setPolicies((currentPolicies) => [
-        data,
-        ...currentPolicies,
-      ]);
+      setPolicies(
+        (currentPolicies) => [
+          data,
+          ...currentPolicies,
+        ]
+      );
 
       /*
        * Return to first page so the newly created
        * policy is visible.
        */
+
       setCurrentPage(1);
 
       toast.success(
@@ -433,322 +554,570 @@ export default function PoliciesPage() {
   // Delete policy
   // ---------------------------------------------------------
 
-  const handleDelete = async (
-    policy: Policy
-  ) => {
-    /*
-     * Inherited parent policies cannot be deleted
-     * from a child account.
-     */
-    if (policy.is_inherited) {
-      toast.error(
-        "Inherited policies cannot be deleted from a child account."
-      );
-      return;
-    }
+ // ---------------------------------------------------------
+// Apply policy to all endpoints
+// ---------------------------------------------------------
 
-    const confirmed = window.confirm(
+const handleApplyToEndpoints = async (
+  policy: Policy
+) => {
+  if (policy.is_inherited) {
+    toast.error(
+      "Inherited policies cannot be directly applied."
+    );
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Are you sure you want to apply "${policy.name}" to all endpoints belonging to this account?`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setSaving(true);
+
+   
+
+   const response = await fetch(
+  "/api/securityagent/policies/apply-to-endpoints",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      policyId: policy.id,
+      accountId: policy.applies_to_account_id,
+    }),
+  }
+);
+
+const responseText = await response.text();
+
+console.log(
+  "Apply policy API status:",
+  response.status
+);
+
+console.log(
+  "Apply policy API response:",
+  responseText
+);
+
+if (!response.ok) {
+  throw new Error(
+    `API error ${response.status}: ${responseText}`
+  );
+}
+
+let data;
+
+try {
+  data = JSON.parse(responseText);
+} catch {
+  throw new Error(
+    "The API returned an invalid response. Check the backend route."
+  );
+}
+
+toast.success(
+  data.message ||
+    "Policy applied to all endpoints successfully"
+);
+
+    
+  } catch (error) {
+    console.error(
+      "Failed to apply policy to endpoints:",
+      error
+    );
+
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Failed to apply policy to endpoints"
+    );
+  } finally {
+    setSaving(false);
+  }
+};
+
+
+// ---------------------------------------------------------
+// Delete policy
+// ---------------------------------------------------------
+
+const handleDelete = async (
+  policy: Policy
+) => {
+  /*
+   * Inherited parent policies cannot be deleted
+   * from a child account.
+   */
+
+  if (policy.is_inherited) {
+    toast.error(
+      "Inherited policies cannot be deleted from a child account."
+    );
+
+    return;
+  }
+
+  const confirmed =
+    window.confirm(
       `Are you sure you want to delete "${policy.name}"?`
     );
 
-    if (!confirmed) {
-      return;
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/securityagent/policies?id=${encodeURIComponent(
+        policy.id
+      )}`,
+      {
+        method: "DELETE",
+      }
+    );
+
+    const data =
+      await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error ||
+          "Failed to delete policy"
+      );
     }
 
-    try {
-      const response = await fetch(
-        `/api/securityagent/policies?id=${encodeURIComponent(
-          policy.id
-        )}`,
-        {
-          method: "DELETE",
-        }
-      );
+    setPolicies(
+      (currentPolicies) =>
+        currentPolicies.filter(
+          (currentPolicy) =>
+            currentPolicy.id !==
+            policy.id
+        )
+    );
 
-      const data = await response.json();
+    if (
+      editingPolicyId === policy.id
+    ) {
+      resetForm();
+    }
 
-      if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Failed to delete policy"
+    toast.success(
+      "Policy deleted successfully"
+    );
+  } catch (error) {
+    console.error(
+      "Failed to delete policy:",
+      error
+    );
+
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Failed to delete policy"
+    );
+  }
+};
+
+  // ---------------------------------------------------------
+  // Child account dropdown helpers
+  // ---------------------------------------------------------
+
+  const toggleChildAccount = (
+    childId: string
+  ) => {
+    setSelectedChildAccountIds(
+      (current) =>
+        current.includes(childId)
+          ? current.filter(
+              (id) => id !== childId
+            )
+          : [
+              ...current,
+              childId,
+            ]
+    );
+  };
+
+    const getSelectedChildAccountLabel =
+    () => {
+      if (
+        selectedChildAccountIds.length ===
+        0
+      ) {
+        return "Select Child Accounts";
+      }
+
+      if (
+        selectedChildAccountIds.length ===
+        1
+      ) {
+        const selectedChild =
+          childAccounts.find(
+            (child) =>
+              child.id ===
+              selectedChildAccountIds[0]
+          );
+
+        return (
+          selectedChild?.name ||
+          "1 Child Selected"
         );
       }
 
-      setPolicies((currentPolicies) =>
-        currentPolicies.filter(
-          (currentPolicy) =>
-            currentPolicy.id !== policy.id
-        )
-      );
+      return `${selectedChildAccountIds.length} Children Selected`;
+    };
 
-      if (
-        editingPolicyId === policy.id
-      ) {
-        resetForm();
-      }
+  // ---------------------------------------------------------
+  // Check whether the policy belongs to a selected child
+  // ---------------------------------------------------------
 
-      toast.success(
-        "Policy deleted successfully"
-      );
-    } catch (error) {
-      console.error(
-        "Failed to delete policy:",
-        error
-      );
+const isPolicyForSelectedChild = (policy: Policy) => {
+  // Current account policy is always editable.
+  if (policy.is_current_account) {
+    return true;
+  }
 
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete policy"
-      );
-    }
-  };
-
+  // Child policy is editable only when
+  // that exact child account is selected.
+  return selectedChildAccountIds.includes(
+    policy.applies_to_account_id
+  );
+};
   // ---------------------------------------------------------
   // Child override setting
   // ---------------------------------------------------------
 
-  const handleChildOverrideChange = async (
-    enabled: boolean
-  ) => {
-    /*
-     * Optimistic UI update.
-     */
-    setAllowChildOverrides(enabled);
-
-    try {
-      setSavingSettings(true);
-
-      const response = await fetch(
-        "/api/securityagent/policies/settings",
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            allowChildOverrides: enabled,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Failed to update policy settings"
-        );
-      }
+  const handleChildOverrideChange =
+    async (
+      enabled: boolean
+    ) => {
+      /*
+       * Optimistic UI update.
+       */
 
       setAllowChildOverrides(
-        data.allowChildOverrides === true
+        enabled
       );
 
-      /*
-       * Reload policies because the parent override
-       * permission can affect inherited policy actions.
-       */
-      const policiesResponse = await fetch(
-        "/api/securityagent/policies"
-      );
+      try {
+        setSavingSettings(true);
 
-      if (policiesResponse.ok) {
-        const policiesData =
-          await policiesResponse.json();
+        const response =
+          await fetch(
+            "/api/securityagent/policies/settings",
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                allowChildOverrides:
+                  enabled,
+              }),
+            }
+          );
 
-        if (
-          Array.isArray(
-            policiesData.policies
-          )
-        ) {
-          setPolicies(
-            policiesData.policies
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              "Failed to update policy settings"
           );
         }
 
         setAllowChildOverrides(
-          policiesData.allowChildOverrides === true
+          data.allowChildOverrides === true
         );
+
+        /*
+         * Reload policies because the parent override
+         * permission can affect inherited policy actions.
+         */
+
+        const policiesResponse =
+          await fetch(
+            "/api/securityagent/policies"
+          );
+
+        if (policiesResponse.ok) {
+          const policiesData =
+            await policiesResponse.json();
+
+          if (
+            Array.isArray(
+              policiesData.policies
+            )
+          ) {
+            setPolicies(
+              policiesData.policies
+            );
+          }
+
+          setAllowChildOverrides(
+            policiesData.allowChildOverrides ===
+              true
+          );
+        }
+
+        toast.success(
+          enabled
+            ? "Child account overrides enabled"
+            : "Child account overrides disabled"
+        );
+      } catch (error) {
+        console.error(
+          "Failed to update child override setting:",
+          error
+        );
+
+        /*
+         * Revert optimistic update.
+         */
+
+        setAllowChildOverrides(
+          !enabled
+        );
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to update policy settings"
+        );
+      } finally {
+        setSavingSettings(false);
       }
-
-      toast.success(
-        enabled
-          ? "Child account overrides enabled"
-          : "Child account overrides disabled"
-      );
-    } catch (error) {
-      console.error(
-        "Failed to update child override setting:",
-        error
-      );
-
-      /*
-       * Revert optimistic update.
-       */
-      setAllowChildOverrides(
-        !enabled
-      );
-
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update policy settings"
-      );
-    } finally {
-      setSavingSettings(false);
-    }
-  };
+    };
 
   // ---------------------------------------------------------
   // Search filtering
   // ---------------------------------------------------------
 
-  const filteredPolicies = useMemo(() => {
-    const search =
-      searchTerm.trim().toLowerCase();
+  const filteredPolicies =
+    useMemo(() => {
+      const search =
+        searchTerm
+          .trim()
+          .toLowerCase();
 
-    if (!search) {
-      return policies;
-    }
-
-    return policies.filter(
-      (policy) => {
-        const policyName =
-          policy.name?.toLowerCase() || "";
-
-        const description =
-          policy.description?.toLowerCase() || "";
-
-        const threat =
-          policy.config?.threatType
-            ?.toLowerCase() || "";
-
-        const priority =
-          policy.config?.priority
-            ?.toLowerCase() || "";
-
-        const action =
-          policy.config?.action
-            ?.toLowerCase() || "";
-
-        return (
-          policyName.includes(search) ||
-          description.includes(search) ||
-          threat.includes(search) ||
-          priority.includes(search) ||
-          action.includes(search)
-        );
+      if (!search) {
+        return policies;
       }
-    );
-  }, [policies, searchTerm]);
+
+      return policies.filter(
+        (policy) => {
+          const policyName =
+            policy.name?.toLowerCase() ||
+            "";
+
+          const description =
+            policy.description?.toLowerCase() ||
+            "";
+
+          const threat =
+            policy.config?.threatType
+              ?.toLowerCase() ||
+            "";
+
+          const priority =
+            policy.config?.priority
+              ?.toLowerCase() ||
+            "";
+
+          const action =
+            policy.config?.action
+              ?.toLowerCase() ||
+            "";
+
+          return (
+            policyName.includes(
+              search
+            ) ||
+            description.includes(
+              search
+            ) ||
+            threat.includes(
+              search
+            ) ||
+            priority.includes(
+              search
+            ) ||
+            action.includes(
+              search
+            )
+          );
+        }
+      );
+    }, [
+      policies,
+      searchTerm,
+    ]);
 
   // ---------------------------------------------------------
   // Sorting
   // ---------------------------------------------------------
 
-  const handleSort = (key: SortKey) => {
+  const handleSort = (
+    key: SortKey
+  ) => {
     if (sortKey === key) {
-      setSortDirection((current) =>
-        current === "asc" ? "desc" : "asc"
+      setSortDirection(
+        (current) =>
+          current === "asc"
+            ? "desc"
+            : "asc"
       );
     } else {
       setSortKey(key);
       setSortDirection("asc");
     }
 
-    // Start from the first page after changing the sort.
+    /*
+     * Start from the first page after changing
+     * the sort.
+     */
+
     setCurrentPage(1);
   };
 
-  const sortedPolicies = useMemo(() => {
-    const sorted = [...filteredPolicies];
+  const sortedPolicies =
+    useMemo(() => {
+      const sorted = [
+        ...filteredPolicies,
+      ];
 
-    sorted.sort((a, b) => {
-      let valueA = "";
-      let valueB = "";
+      sorted.sort((a, b) => {
+        let valueA = "";
+        let valueB = "";
 
-      switch (sortKey) {
-        case "name":
-          valueA = a.name || "";
-          valueB = b.name || "";
-          break;
+        switch (sortKey) {
+          case "name":
+            valueA =
+              a.name || "";
+            valueB =
+              b.name || "";
+            break;
 
-        case "threatType":
-          valueA = a.config?.threatType || "";
-          valueB = b.config?.threatType || "";
-          break;
+          case "threatType":
+            valueA =
+              a.config
+                ?.threatType ||
+              "";
 
-        case "priority":
-          valueA = a.config?.priority || "";
-          valueB = b.config?.priority || "";
-          break;
+            valueB =
+              b.config
+                ?.threatType ||
+              "";
+            break;
 
-        case "action":
-          valueA = a.config?.action || "";
-          valueB = b.config?.action || "";
-          break;
+          case "priority":
+            valueA =
+              a.config
+                ?.priority ||
+              "";
 
-        case "appliedTo":
-          valueA = a.is_inherited
-            ? "Inherited"
-            : "Current Account";
-          valueB = b.is_inherited
-            ? "Inherited"
-            : "Current Account";
-          break;
-      }
+            valueB =
+              b.config
+                ?.priority ||
+              "";
+            break;
 
-      const comparison = valueA.localeCompare(
-        valueB,
-        undefined,
-        {
-          numeric: true,
-          sensitivity: "base",
+          case "action":
+            valueA =
+              a.config?.action ||
+              "";
+
+            valueB =
+              b.config?.action ||
+              "";
+            break;
+
+          case "appliedTo":
+            valueA =
+              a.is_inherited
+                ? "Inherited"
+                : "Current Account";
+
+            valueB =
+              b.is_inherited
+                ? "Inherited"
+                : "Current Account";
+
+            break;
         }
-      );
 
-      return sortDirection === "asc"
-        ? comparison
-        : -comparison;
-    });
+        const comparison =
+          valueA.localeCompare(
+            valueB,
+            undefined,
+            {
+              numeric: true,
+              sensitivity: "base",
+            }
+          );
 
-    return sorted;
-  }, [filteredPolicies, sortKey, sortDirection]);
+        return sortDirection ===
+          "asc"
+          ? comparison
+          : -comparison;
+      });
+
+      return sorted;
+    }, [
+      filteredPolicies,
+      sortKey,
+      sortDirection,
+    ]);
 
   // ---------------------------------------------------------
   // Pagination
   // ---------------------------------------------------------
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(
-      sortedPolicies.length /
-        POLICIES_PER_PAGE
-    )
-  );
-
-  const paginatedPolicies = useMemo(() => {
-    const start =
-      (currentPage - 1) *
-      POLICIES_PER_PAGE;
-
-    return sortedPolicies.slice(
-      start,
-      start + POLICIES_PER_PAGE
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        sortedPolicies.length /
+          POLICIES_PER_PAGE
+      )
     );
-  }, [
-    sortedPolicies,
-    currentPage,
-  ]);
+
+  const paginatedPolicies =
+    useMemo(() => {
+      const start =
+        (currentPage - 1) *
+        POLICIES_PER_PAGE;
+
+      return sortedPolicies.slice(
+        start,
+        start +
+          POLICIES_PER_PAGE
+      );
+    }, [
+      sortedPolicies,
+      currentPage,
+    ]);
 
   /*
    * If filtering/search causes the current page
    * to become invalid, return to page 1.
    */
+
   useEffect(() => {
     if (
-      currentPage > totalPages
+      currentPage >
+      totalPages
     ) {
       setCurrentPage(1);
     }
@@ -760,6 +1129,7 @@ export default function PoliciesPage() {
   /*
    * Reset pagination whenever the search term changes.
    */
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
@@ -769,7 +1139,8 @@ export default function PoliciesPage() {
   // ---------------------------------------------------------
 
   const startItem =
-    filteredPolicies.length === 0
+    filteredPolicies.length ===
+    0
       ? 0
       : (currentPage - 1) *
           POLICIES_PER_PAGE +
@@ -794,6 +1165,7 @@ export default function PoliciesPage() {
         ================================================== */}
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+
           <div>
             <h1 className="text-2xl font-semibold text-white">
               Policies
@@ -806,44 +1178,181 @@ export default function PoliciesPage() {
           </div>
 
           {/* =================================================
-              ACCOUNT-LEVEL CHILD OVERRIDE SETTING
+              ACCOUNT-LEVEL CHILD SETTINGS
           ================================================== */}
 
-          <div className="rounded-xl border border-slate-700 bg-slate-950 px-5 py-4 lg:min-w-[420px]">
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={
-                  allowChildOverrides
-                }
-                disabled={
-                  savingSettings
-                }
-                onChange={(e) =>
-                  handleChildOverrideChange(
-                    e.target.checked
-                  )
-                }
-                className="mt-1 h-5 w-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              />
+          <div className="rounded-xl border border-slate-700 bg-slate-950 px-5 py-4 lg:min-w-[620px]">
 
-              <div>
-                <div className="text-sm font-semibold text-white">
-                  Allow child account overrides
-                </div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
 
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Allow child accounts to
-                  override inherited policies.
-                </p>
+              {/* -------------------------------------------------
+                  ALLOW CHILD OVERRIDES
+              -------------------------------------------------- */}
 
-                {savingSettings && (
-                  <p className="mt-1 text-xs text-blue-400">
-                    Saving...
+              <label className="flex cursor-pointer items-start gap-3">
+
+                <input
+                  type="checkbox"
+                  checked={
+                    allowChildOverrides
+                  }
+                  disabled={
+                    savingSettings
+                  }
+                  onChange={(e) =>
+                    handleChildOverrideChange(
+                      e.target.checked
+                    )
+                  }
+                  className="mt-1 h-5 w-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    Allow child account overrides
+                  </div>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Allow child accounts to
+                    override inherited policies.
                   </p>
+
+                  {savingSettings && (
+                    <p className="mt-1 text-xs text-blue-400">
+                      Saving...
+                    </p>
+                  )}
+                </div>
+              </label>
+
+              {/* -------------------------------------------------
+                  DIVIDER
+              -------------------------------------------------- */}
+
+              <div className="hidden h-10 w-px bg-slate-700 sm:block" />
+
+              {/* -------------------------------------------------
+                  CHILD ACCOUNT DROPDOWN
+              -------------------------------------------------- */}
+
+              <div className="relative min-w-[230px]">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setChildDropdownOpen(
+                      (current) =>
+                        !current
+                    )
+                  }
+                  disabled={
+                    childAccounts.length ===
+                    0
+                  }
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="truncate">
+                    {getSelectedChildAccountLabel()}
+                  </span>
+
+                  <span
+                    className={`text-xs transition-transform ${
+                      childDropdownOpen
+                        ? "rotate-180"
+                        : ""
+                    }`}
+                  >
+                    ▼
+                  </span>
+                </button>
+
+                {/* -------------------------------------------------
+                    DROPDOWN MENU
+                -------------------------------------------------- */}
+
+                {childDropdownOpen && (
+                  <div className="absolute right-0 z-50 mt-2 w-full min-w-[230px] overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+
+                    <div className="border-b border-slate-700 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Child Accounts
+                      </p>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto p-2">
+
+                      {childAccounts.length ===
+                      0 ? (
+                        <div className="px-3 py-4 text-center text-xs text-slate-500">
+                          No child accounts found
+                        </div>
+                      ) : (
+                        childAccounts.map(
+                          (child) => {
+                            const isSelected =
+                              selectedChildAccountIds.includes(
+                                child.id
+                              );
+
+                            return (
+                              <label
+                                key={
+                                  child.id
+                                }
+                                className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 transition hover:bg-slate-800"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    isSelected
+                                  }
+                                  onChange={() =>
+                                    toggleChildAccount(
+                                      child.id
+                                    )
+                                  }
+                                  className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600 focus:ring-blue-500"
+                                />
+
+                                <span className="truncate text-sm text-slate-200">
+                                  {
+                                    child.name
+                                  }
+                                </span>
+                              </label>
+                            );
+                          }
+                        )
+                      )}
+
+                    </div>
+
+                    {/* -------------------------------------------------
+                        SELECTED COUNT
+                    -------------------------------------------------- */}
+
+                    {selectedChildAccountIds.length >
+                      0 && (
+                      <div className="border-t border-slate-700 px-4 py-2.5">
+                        <p className="text-xs text-blue-400">
+                          {
+                            selectedChildAccountIds.length
+                          }{" "}
+                          {selectedChildAccountIds.length ===
+                          1
+                            ? "child account"
+                            : "child accounts"}{" "}
+                          selected
+                        </p>
+                      </div>
+                    )}
+
+                  </div>
                 )}
+
               </div>
-            </label>
+
+            </div>
           </div>
         </div>
 
@@ -858,6 +1367,7 @@ export default function PoliciesPage() {
           -------------------------------------------------- */}
 
           <div className="border-b border-slate-800 px-6 py-5">
+
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
               <div>
@@ -872,6 +1382,7 @@ export default function PoliciesPage() {
               </div>
 
               <div className="w-full lg:max-w-md">
+
                 <input
                   type="text"
                   value={searchTerm}
@@ -883,7 +1394,9 @@ export default function PoliciesPage() {
                   placeholder="Search policies..."
                   className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
+
               </div>
+
             </div>
           </div>
 
@@ -893,14 +1406,19 @@ export default function PoliciesPage() {
 
           {loading ? (
             <div className="flex items-center justify-center px-6 py-16">
+
               <div className="text-sm text-slate-400">
                 Loading policies...
               </div>
+
             </div>
           ) : filteredPolicies.length ===
             0 ? (
+
             <div className="flex items-center justify-center px-6 py-16">
+
               <div className="text-center">
+
                 <p className="text-sm font-medium text-slate-300">
                   {searchTerm.trim()
                     ? "No matching policies found"
@@ -912,143 +1430,215 @@ export default function PoliciesPage() {
                     ? "Try a different search term."
                     : "Create your first policy using the configuration form below."}
                 </p>
+
               </div>
+
             </div>
+
           ) : (
+
             <>
               {/* -------------------------------------------------
                   TABLE
               -------------------------------------------------- */}
 
               <div className="overflow-x-auto">
+
                 <table className="w-full min-w-[950px] text-left text-sm">
 
                   <thead className="border-b border-slate-800 bg-slate-950/60">
+
                     <tr>
+
                       {/* Policy Name */}
+
                       <th className="px-6 py-4 font-medium text-slate-400">
+
                         <button
                           type="button"
-                          onClick={() => handleSort("name")}
+                          onClick={() =>
+                            handleSort(
+                              "name"
+                            )
+                          }
                           className="flex items-center gap-2 transition hover:text-white"
                           title="Sort by Policy Name"
                         >
                           Policy Name
+
                           <span className="text-xs">
-                            {sortKey === "name"
-                              ? sortDirection === "asc"
+                            {sortKey ===
+                            "name"
+                              ? sortDirection ===
+                                "asc"
                                 ? "↑"
                                 : "↓"
                               : "↕"}
                           </span>
                         </button>
+
                       </th>
 
                       {/* Threat Type */}
+
                       <th className="px-6 py-4 font-medium text-slate-400">
+
                         <button
                           type="button"
-                          onClick={() => handleSort("threatType")}
+                          onClick={() =>
+                            handleSort(
+                              "threatType"
+                            )
+                          }
                           className="flex items-center gap-2 transition hover:text-white"
                           title="Sort by Threat Type"
                         >
                           Threat Type
+
                           <span className="text-xs">
-                            {sortKey === "threatType"
-                              ? sortDirection === "asc"
+                            {sortKey ===
+                            "threatType"
+                              ? sortDirection ===
+                                "asc"
                                 ? "↑"
                                 : "↓"
                               : "↕"}
                           </span>
                         </button>
+
                       </th>
 
                       {/* Priority */}
+
                       <th className="px-6 py-4 font-medium text-slate-400">
+
                         <button
                           type="button"
-                          onClick={() => handleSort("priority")}
+                          onClick={() =>
+                            handleSort(
+                              "priority"
+                            )
+                          }
                           className="flex items-center gap-2 transition hover:text-white"
                           title="Sort by Priority"
                         >
                           Priority
+
                           <span className="text-xs">
-                            {sortKey === "priority"
-                              ? sortDirection === "asc"
+                            {sortKey ===
+                            "priority"
+                              ? sortDirection ===
+                                "asc"
                                 ? "↑"
                                 : "↓"
                               : "↕"}
                           </span>
                         </button>
+
                       </th>
 
                       {/* Default Action */}
+
                       <th className="px-6 py-4 font-medium text-slate-400">
+
                         <button
                           type="button"
-                          onClick={() => handleSort("action")}
+                          onClick={() =>
+                            handleSort(
+                              "action"
+                            )
+                          }
                           className="flex items-center gap-2 transition hover:text-white"
                           title="Sort by Default Action"
                         >
                           Default Action
+
                           <span className="text-xs">
-                            {sortKey === "action"
-                              ? sortDirection === "asc"
+                            {sortKey ===
+                            "action"
+                              ? sortDirection ===
+                                "asc"
                                 ? "↑"
                                 : "↓"
                               : "↕"}
                           </span>
                         </button>
+
                       </th>
 
                       {/* Applied To */}
+
                       <th className="px-6 py-4 font-medium text-slate-400">
+
                         <button
                           type="button"
-                          onClick={() => handleSort("appliedTo")}
+                          onClick={() =>
+                            handleSort(
+                              "appliedTo"
+                            )
+                          }
                           className="flex items-center gap-2 transition hover:text-white"
                           title="Sort by Applied To"
                         >
                           Applied To
+
                           <span className="text-xs">
-                            {sortKey === "appliedTo"
-                              ? sortDirection === "asc"
+                            {sortKey ===
+                            "appliedTo"
+                              ? sortDirection ===
+                                "asc"
                                 ? "↑"
                                 : "↓"
                               : "↕"}
                           </span>
                         </button>
+
                       </th>
 
-                      {/* Actions - not sortable */}
-                      <th className="px-6 py-4 font-medium text-slate-400">
+                    {/* Actions */}
+
+                    <th className="px-6 py-4 text-center font-medium text-slate-400">
                         Actions
-                      </th>
+                    </th>
+
                     </tr>
+
                   </thead>
 
                   <tbody className="divide-y divide-slate-800">
-                    {paginatedPolicies.map(
-                      (policy) => {
-                        const canEdit =
-                          !policy.is_inherited ||
-                          policy.parent_allows_child_overrides ===
-                            true;
 
-                        const canDelete =
-                          !policy.is_inherited;
+                   {paginatedPolicies.map(
+  (policy) => {
 
-                        return (
+   const canEdit =
+  isPolicyForSelectedChild(policy) &&
+  (
+    !policy.is_inherited ||
+    policy.parent_allows_child_overrides === true
+  );
+    const canDelete =
+      !policy.is_inherited;
+
+    return (
                           <tr
-                            key={policy.id}
+                            key={
+                              policy.id
+                            }
                             className="transition hover:bg-slate-800/40"
                           >
+
                             {/* Policy Name */}
+
                             <td className="px-6 py-4">
+
                               <div>
+
                                 <div className="flex items-center gap-2">
+
                                   <span className="font-medium text-white">
-                                    {policy.name}
+                                    {
+                                      policy.name
+                                    }
                                   </span>
 
                                   {policy.is_inherited && (
@@ -1063,6 +1653,7 @@ export default function PoliciesPage() {
                                         Override
                                       </span>
                                     )}
+
                                 </div>
 
                                 {policy.description && (
@@ -1072,10 +1663,13 @@ export default function PoliciesPage() {
                                     }
                                   </div>
                                 )}
+
                               </div>
+
                             </td>
 
                             {/* Threat Type */}
+
                             <td className="px-6 py-4 text-slate-300">
                               {policy.config
                                 ?.threatType ||
@@ -1083,7 +1677,9 @@ export default function PoliciesPage() {
                             </td>
 
                             {/* Priority */}
+
                             <td className="px-6 py-4">
+
                               <span
                                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
                                   policy.config
@@ -1101,9 +1697,11 @@ export default function PoliciesPage() {
                                   ?.priority ||
                                   "-"}
                               </span>
+
                             </td>
 
                             {/* Default Action */}
+
                             <td className="px-6 py-4 text-slate-300">
                               {policy.config
                                 ?.action ||
@@ -1111,78 +1709,107 @@ export default function PoliciesPage() {
                             </td>
 
                             {/* Applied To */}
+
                             <td className="px-6 py-4">
+
                               {policy.is_inherited ? (
-                                <span className="text-sm text-blue-400">
-                                  Inherited
-                                </span>
-                              ) : policy.parent_policy_id ? (
-                                <span className="text-sm text-purple-400">
-                                  Current Account
-                                  {" "}
-                                  (Override)
-                                </span>
-                              ) : (
-                                <span className="text-sm text-slate-300">
-                                  Current Account
-                                </span>
-                              )}
+  <div>
+    <span className="text-sm text-blue-400">
+      Inherited
+    </span>
+
+    {policy.applies_to_account_name && (
+      <div className="mt-1 text-xs text-slate-500">
+        Applied to {policy.applies_to_account_name}
+      </div>
+    )}
+  </div>
+) : policy.is_current_account ? (
+  <div>
+    <span className="text-sm text-slate-300">
+      Current Account
+    </span>
+  </div>
+) : (
+  <div>
+    <span className="text-sm text-purple-400">
+      {policy.applies_to_account_name ||
+        "Child Account"}
+    </span>
+  </div>
+)}
                             </td>
 
                             {/* Actions */}
+
                             <td className="px-6 py-4">
+
                               <div className="flex items-center gap-2">
 
-                                {/* EDIT */}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleEdit(
-                                      policy
-                                    )
-                                  }
-                                  disabled={
-                                    !canEdit
-                                  }
-                                  title={
-                                    policy.is_inherited &&
-                                    !policy.parent_allows_child_overrides
-                                      ? "Parent account does not allow child overrides"
-                                      : "Edit policy"
-                                  }
-                                  className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  Edit
-                                </button>
+  {/* EDIT */}
 
-                                {/* DELETE */}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleDelete(
-                                      policy
-                                    )
-                                  }
-                                  disabled={
-                                    !canDelete
-                                  }
-                                  title={
-                                    policy.is_inherited
-                                      ? "Inherited policies cannot be deleted"
-                                      : "Delete policy"
-                                  }
-                                  className="rounded-md border border-red-900/60 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-950/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  Delete
-                                </button>
-                              </div>
+  <button
+    type="button"
+    onClick={() => handleEdit(policy)}
+    disabled={!canEdit}
+    title={
+      !isPolicyForSelectedChild(policy)
+        ? "Please select this child account"
+        : policy.is_inherited &&
+          policy.parent_allows_child_overrides !== true
+        ? "Parent account does not allow child overrides"
+        : "Edit policy"
+    }
+    className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    Edit
+  </button>
+
+  {/* APPLY TO ENDPOINTS */}
+
+  <button
+    type="button"
+    onClick={() => handleApplyToEndpoints(policy)}
+    disabled={policy.is_inherited}
+    title={
+      policy.is_inherited
+        ? "Inherited policies cannot be directly applied"
+        : "Apply this policy to all endpoints in this account"
+    }
+    className="rounded-md border border-green-900/60 px-3 py-1.5 text-xs font-medium text-green-400 transition hover:bg-green-950/40 hover:text-green-300 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    Apply to Endpoints
+  </button>
+
+  {/* DELETE */}
+
+  <button
+    type="button"
+    onClick={() => handleDelete(policy)}
+    disabled={!canDelete}
+    title={
+      policy.is_inherited
+        ? "Inherited policies cannot be deleted"
+        : "Delete policy"
+    }
+    className="rounded-md border border-red-900/60 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-950/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    Delete
+  </button>
+
+</div>
+
                             </td>
+
                           </tr>
                         );
                       }
                     )}
+
                   </tbody>
+
                 </table>
+
               </div>
 
               {/* -------------------------------------------------
@@ -1190,18 +1817,24 @@ export default function PoliciesPage() {
               -------------------------------------------------- */}
 
               <div className="flex flex-col gap-3 border-t border-slate-800 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+
                 <div className="text-xs text-slate-500">
                   Showing{" "}
                   {startItem} -{" "}
                   {endItem} of{" "}
-                  {filteredPolicies.length}{" "}
-                  {filteredPolicies.length ===
-                  1
-                    ? "policy"
-                    : "policies"}
+                  {
+                    filteredPolicies.length
+                  }{" "}
+                  {
+                    filteredPolicies.length ===
+                    1
+                      ? "policy"
+                      : "policies"
+                  }
                 </div>
 
                 <div className="flex items-center gap-2">
+
                   <button
                     type="button"
                     onClick={() =>
@@ -1214,7 +1847,8 @@ export default function PoliciesPage() {
                       )
                     }
                     disabled={
-                      currentPage === 1
+                      currentPage ===
+                      1
                     }
                     className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -1246,22 +1880,26 @@ export default function PoliciesPage() {
                   >
                     Next
                   </button>
+
                 </div>
+
               </div>
             </>
           )}
+
         </div>
 
         {/* =================================================
             POLICY CONFIGURATION
-            THIS IS BELOW THE TABLE
         ================================================== */}
 
         <div
           id="policy-configuration"
           className="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg"
         >
+
           <div className="mb-5">
+
             <h2 className="text-lg font-semibold text-white">
               {editingPolicyId
                 ? "Edit Policy"
@@ -1273,6 +1911,7 @@ export default function PoliciesPage() {
                 ? "Update the selected security policy."
                 : "Create and configure a security policy."}
             </p>
+
           </div>
 
           {/* -------------------------------------------------
@@ -1282,7 +1921,9 @@ export default function PoliciesPage() {
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
 
             {/* Policy Name */}
+
             <div>
+
               <label className="mb-2 block text-sm font-medium text-slate-300">
                 Policy Name
               </label>
@@ -1291,7 +1932,9 @@ export default function PoliciesPage() {
                 type="text"
                 value={name}
                 onChange={(e) =>
-                  setName(e.target.value)
+                  setName(
+                    e.target.value
+                  )
                 }
                 placeholder="Enter policy name"
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -1300,10 +1943,13 @@ export default function PoliciesPage() {
               <p className="mt-1 text-xs text-slate-500">
                 Policy name must be unique.
               </p>
+
             </div>
 
             {/* Threat Type */}
+
             <div>
+
               <label className="mb-2 block text-sm font-medium text-slate-300">
                 Threat Type
               </label>
@@ -1317,8 +1963,10 @@ export default function PoliciesPage() {
                 }
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               >
+
                 <option value="">
-                  {threatTypes.length === 0
+                  {threatTypes.length ===
+                  0
                     ? "No threat types available"
                     : "Select Threat Type"}
                 </option>
@@ -1333,6 +1981,7 @@ export default function PoliciesPage() {
                     </option>
                   )
                 )}
+
               </select>
 
               {threatTypes.length ===
@@ -1343,10 +1992,13 @@ export default function PoliciesPage() {
                     in the threat master.
                   </p>
                 )}
+
             </div>
 
             {/* Priority */}
+
             <div>
+
               <label className="mb-2 block text-sm font-medium text-slate-300">
                 Priority
               </label>
@@ -1360,6 +2012,7 @@ export default function PoliciesPage() {
                 }
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               >
+
                 <option value="">
                   Select Priority
                 </option>
@@ -1375,11 +2028,15 @@ export default function PoliciesPage() {
                 <option value="High">
                   High
                 </option>
+
               </select>
+
             </div>
 
             {/* Default Action */}
+
             <div>
+
               <label className="mb-2 block text-sm font-medium text-slate-300">
                 Default Action
               </label>
@@ -1393,6 +2050,7 @@ export default function PoliciesPage() {
                 }
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               >
+
                 <option value="">
                   Select Default Action
                 </option>
@@ -1412,11 +2070,15 @@ export default function PoliciesPage() {
                 <option value="Allow">
                   Allow
                 </option>
+
               </select>
+
             </div>
 
             {/* Description */}
+
             <div className="lg:col-span-2">
+
               <label className="mb-2 block text-sm font-medium text-slate-300">
                 Description
               </label>
@@ -1435,6 +2097,7 @@ export default function PoliciesPage() {
               />
 
               <div className="mt-1 flex justify-end">
+
                 <span
                   className={`text-xs ${
                     description.length >=
@@ -1443,10 +2106,16 @@ export default function PoliciesPage() {
                       : "text-slate-500"
                   }`}
                 >
-                  {description.length}/200
+                  {
+                    description.length
+                  }
+                  /200
                 </span>
+
               </div>
+
             </div>
+
           </div>
 
           {/* -------------------------------------------------
@@ -1458,7 +2127,9 @@ export default function PoliciesPage() {
             {editingPolicyId && (
               <button
                 type="button"
-                onClick={resetForm}
+                onClick={
+                  resetForm
+                }
                 disabled={saving}
                 className="rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1468,9 +2139,12 @@ export default function PoliciesPage() {
 
             <button
               type="button"
-              onClick={handleSavePolicy}
+              onClick={
+                handleSavePolicy
+              }
               disabled={
-                saving || loading
+                saving ||
+                loading
               }
               className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1482,8 +2156,11 @@ export default function PoliciesPage() {
                   ? "Update Policy"
                   : "Save Policy"}
             </button>
+
           </div>
+
         </div>
+
       </div>
     </div>
   );

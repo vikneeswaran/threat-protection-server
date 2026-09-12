@@ -2,6 +2,30 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/session";
 import { query } from "@/lib/db";
 
+/*
+ * ============================================================
+ * GET
+ * ============================================================
+ *
+ * Parent account:
+ *   - Returns its own policies
+ *   - Returns direct child account policies
+ *
+ * Child account:
+ *   - Returns its own policies
+ *   - Returns inherited policies from its parent
+ *
+ * Additional fields returned:
+ *
+ *   applies_to_account_id
+ *   applies_to_account_name
+ *   is_current_account
+ *   is_inherited
+ *   parent_allows_child_overrides
+ *
+ * These fields allow the frontend to correctly enable/disable
+ * the Edit button based on the selected child account.
+ */
 export async function GET() {
   try {
     const user = await requireSessionUser();
@@ -14,12 +38,15 @@ export async function GET() {
     }
 
     /*
-     * Get the current account and its parent.
+     * --------------------------------------------------------
+     * Get current account
+     * --------------------------------------------------------
      */
     const accountResult = await query(
       `
         SELECT
           id,
+          name,
           parent_account_id
         FROM public.accounts
         WHERE id = $1
@@ -37,7 +64,9 @@ export async function GET() {
     const account = accountResult.rows[0];
 
     /*
-     * Get the current account's policy setting.
+     * --------------------------------------------------------
+     * Get current account policy setting
+     * --------------------------------------------------------
      */
     const settingsResult = await query(
       `
@@ -51,59 +80,100 @@ export async function GET() {
 
     const allowChildOverrides =
       settingsResult.rows.length > 0
-        ? settingsResult.rows[0].allow_child_overrides
+        ? Boolean(
+            settingsResult.rows[0]
+              .allow_child_overrides
+          )
         : false;
 
+    const policies: any[] = [];
+
     /*
-     * Get policies owned by the current account.
+     * ========================================================
+     * CASE 1
+     * ========================================================
      *
-     * These include both normal policies created directly
-     * by the account and child-specific override policies.
+     * Current account's own policies.
+     *
+     * These are always associated with the current account.
      */
     const ownPoliciesResult = await query(
       `
         SELECT
-          id,
-          account_id,
-          parent_policy_id,
-          name,
-          description,
-          type,
-          config,
-          is_default,
-          is_active,
-          created_by,
-          created_at,
-          updated_at,
-          status
-        FROM public.policies
-        WHERE account_id = $1
-        ORDER BY created_at DESC
+          p.id,
+          p.account_id,
+          p.parent_policy_id,
+          p.name,
+          p.description,
+          p.type,
+          p.config,
+          p.is_default,
+          p.is_active,
+          p.created_by,
+          p.created_at,
+          p.updated_at,
+          p.status,
+          a.name AS account_name
+        FROM public.policies p
+        LEFT JOIN public.accounts a
+          ON a.id = p.account_id
+        WHERE p.account_id = $1
+        ORDER BY p.created_at DESC
       `,
       [user.account_id]
     );
 
-    /*
-     * Start with policies owned by the current account.
-     */
-    const policies = ownPoliciesResult.rows.map((policy) => ({
-      ...policy,
-      is_inherited: false,
-      parent_allows_child_overrides: false,
-    }));
+    for (const policy of ownPoliciesResult.rows) {
+      policies.push({
+        ...policy,
+
+        /*
+         * The account that actually owns/applies the policy.
+         */
+        applies_to_account_id:
+          policy.account_id,
+
+        applies_to_account_name:
+          policy.account_name ||
+          account.name ||
+          null,
+
+        /*
+         * This policy belongs to the logged-in account.
+         */
+        is_current_account: true,
+
+        is_inherited: false,
+
+        parent_allows_child_overrides: false,
+      });
+    }
 
     /*
-     * If this account has a parent, inherit the parent's
-     * policies automatically.
+     * ========================================================
+     * CASE 2
+     * ========================================================
+     *
+     * Logged-in user is a PARENT account.
+     *
+     * Return direct child policies as well.
+     *
+     * Example:
+     *
+     * Parent
+     *   ├── Child 1
+     *   └── Child 2
+     *
+     * The returned account_id remains:
+     *
+     *   Parent Policy -> Parent ID
+     *   Child 1      -> Child 1 ID
+     *   Child 2      -> Child 2 ID
+     *
+     * This is important for the frontend Edit button.
      */
-    if (account.parent_account_id) {
-      /*
-       * Get the parent's policies.
-       *
-       * A parent policy is excluded if this child already
-       * has an override for that policy.
-       */
-      const inheritedPoliciesResult = await query(
+    if (!account.parent_account_id) {
+      const childPoliciesResult = await query(
         `
           SELECT
             p.id,
@@ -118,26 +188,66 @@ export async function GET() {
             p.created_by,
             p.created_at,
             p.updated_at,
-            p.status
+            p.status,
+            a.name AS account_name
           FROM public.policies p
-          WHERE p.account_id = $1
-            AND NOT EXISTS (
-              SELECT 1
-              FROM public.policies child_policy
-              WHERE child_policy.account_id = $2
-                AND child_policy.parent_policy_id = p.id
-            )
+          INNER JOIN public.accounts a
+            ON a.id = p.account_id
+          WHERE a.parent_account_id = $1
           ORDER BY p.created_at DESC
         `,
-        [
-          account.parent_account_id,
-          user.account_id,
-        ]
+        [user.account_id]
       );
 
       /*
-       * Check whether the parent allows children to
-       * override inherited policies.
+       * Get parent's child override setting.
+       *
+       * Child policies that are already stored in the child
+       * account are treated as child-owned policies.
+       */
+      for (const policy of childPoliciesResult.rows) {
+        policies.push({
+          ...policy,
+
+          applies_to_account_id:
+            policy.account_id,
+
+          applies_to_account_name:
+            policy.account_name || null,
+
+          /*
+           * This is a child account policy, not the
+           * logged-in parent account policy.
+           */
+          is_current_account: false,
+
+          /*
+           * A policy physically stored in a child account
+           * is not inherited in this response.
+           */
+          is_inherited: false,
+
+          parent_allows_child_overrides:
+            allowChildOverrides,
+        });
+      }
+    }
+
+    /*
+     * ========================================================
+     * CASE 3
+     * ========================================================
+     *
+     * Logged-in user is a CHILD account.
+     *
+     * Get policies from the parent.
+     *
+     * If the child already has an override of a parent policy,
+     * don't show the parent policy as inherited.
+     */
+    if (account.parent_account_id) {
+      /*
+       * Check parent setting.
        */
       const parentSettingsResult = await query(
         `
@@ -151,19 +261,108 @@ export async function GET() {
 
       const parentAllowsChildOverrides =
         parentSettingsResult.rows.length > 0
-          ? parentSettingsResult.rows[0]
-              .allow_child_overrides
+          ? Boolean(
+              parentSettingsResult.rows[0]
+                .allow_child_overrides
+            )
           : false;
 
       /*
-       * Add inherited policies to the response.
+       * Get parent account name.
        */
+      const parentAccountResult = await query(
+        `
+          SELECT
+            id,
+            name
+          FROM public.accounts
+          WHERE id = $1
+        `,
+        [account.parent_account_id]
+      );
+
+      const parentAccount =
+        parentAccountResult.rows[0];
+
+      /*
+       * Get parent's policies that have not already
+       * been overridden by this child.
+       */
+      const inheritedPoliciesResult =
+        await query(
+          `
+            SELECT
+              p.id,
+              p.account_id,
+              p.parent_policy_id,
+              p.name,
+              p.description,
+              p.type,
+              p.config,
+              p.is_default,
+              p.is_active,
+              p.created_by,
+              p.created_at,
+              p.updated_at,
+              p.status,
+              a.name AS account_name
+            FROM public.policies p
+            LEFT JOIN public.accounts a
+              ON a.id = p.account_id
+            WHERE p.account_id = $1
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.policies child_policy
+                WHERE child_policy.account_id = $2
+                  AND child_policy.parent_policy_id = p.id
+              )
+            ORDER BY p.created_at DESC
+          `,
+          [
+            account.parent_account_id,
+            user.account_id,
+          ]
+        );
+
       for (const policy of inheritedPoliciesResult.rows) {
         policies.push({
           ...policy,
+
+          /*
+           * IMPORTANT:
+           *
+           * account_id remains the actual owner of the
+           * policy (the parent).
+           */
+          applies_to_account_id:
+            user.account_id,
+
+          /*
+           * From the child's point of view, the inherited
+           * policy applies to the current child account.
+           */
+          applies_to_account_name:
+            account.name || null,
+
+          /*
+           * This is not owned by the current account.
+           */
+          is_current_account: false,
+
           is_inherited: true,
+
           parent_allows_child_overrides:
             parentAllowsChildOverrides,
+
+          /*
+           * Useful for debugging/UI if needed.
+           */
+          inherited_from_account_id:
+            parentAccount?.id ||
+            account.parent_account_id,
+
+          inherited_from_account_name:
+            parentAccount?.name || null,
         });
       }
     }
@@ -185,6 +384,13 @@ export async function GET() {
   }
 }
 
+/*
+ * ============================================================
+ * POST
+ * ============================================================
+ *
+ * Creates a policy owned by the current account.
+ */
 export async function POST(request: Request) {
   try {
     const user = await requireSessionUser();
@@ -207,7 +413,7 @@ export async function POST(request: Request) {
     } = body;
 
     /*
-     * Validate policy name.
+     * Validate name.
      */
     if (!name || !name.trim()) {
       return NextResponse.json(
@@ -247,7 +453,7 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Validate description length.
+     * Validate description.
      */
     if (
       typeof description === "string" &&
@@ -263,7 +469,7 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Policy configuration stored in JSONB.
+     * Policy JSON configuration.
      */
     const config = {
       threatType,
@@ -272,7 +478,7 @@ export async function POST(request: Request) {
     };
 
     /*
-     * Create a policy owned by the current account.
+     * Create policy for current account.
      */
     const result = await query(
       `
@@ -327,7 +533,14 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ...result.rows[0],
+
+        applies_to_account_id:
+          user.account_id,
+
+        is_current_account: true,
+
         is_inherited: false,
+
         parent_allows_child_overrides: false,
       },
       { status: 201 }
@@ -345,6 +558,21 @@ export async function POST(request: Request) {
   }
 }
 
+/*
+ * ============================================================
+ * PATCH
+ * ============================================================
+ *
+ * Supports:
+ *
+ * 1. Current account editing its own policy.
+ *
+ * 2. Parent account editing a policy owned by one of its
+ *    direct children.
+ *
+ * 3. Child account editing an inherited parent policy by
+ *    creating a child-specific override.
+ */
 export async function PATCH(request: Request) {
   try {
     const user = await requireSessionUser();
@@ -368,7 +596,9 @@ export async function PATCH(request: Request) {
     } = body;
 
     /*
-     * Validate policy ID.
+     * --------------------------------------------------------
+     * Validation
+     * --------------------------------------------------------
      */
     if (!id) {
       return NextResponse.json(
@@ -377,9 +607,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    /*
-     * Validate policy name.
-     */
     if (!name || !name.trim()) {
       return NextResponse.json(
         { error: "Policy name is required" },
@@ -387,9 +614,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    /*
-     * Validate threat type.
-     */
     if (!threatType) {
       return NextResponse.json(
         { error: "Threat type is required" },
@@ -397,9 +621,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    /*
-     * Validate priority.
-     */
     if (!priority) {
       return NextResponse.json(
         { error: "Priority is required" },
@@ -407,9 +628,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    /*
-     * Validate action.
-     */
     if (!action) {
       return NextResponse.json(
         { error: "Default action is required" },
@@ -417,9 +635,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    /*
-     * Validate description length.
-     */
     if (
       typeof description === "string" &&
       description.length > 200
@@ -433,9 +648,6 @@ export async function PATCH(request: Request) {
       );
     }
 
-    /*
-     * Policy configuration.
-     */
     const config = {
       threatType,
       priority,
@@ -443,8 +655,35 @@ export async function PATCH(request: Request) {
     };
 
     /*
-     * First determine whether this policy belongs to
-     * the current account or is an inherited parent policy.
+     * --------------------------------------------------------
+     * Get current account
+     * --------------------------------------------------------
+     */
+    const accountResult = await query(
+      `
+        SELECT
+          id,
+          parent_account_id
+        FROM public.accounts
+        WHERE id = $1
+      `,
+      [user.account_id]
+    );
+
+    if (accountResult.rows.length === 0) {
+      return NextResponse.json(
+        { error: "Account not found" },
+        { status: 404 }
+      );
+    }
+
+    const currentAccount =
+      accountResult.rows[0];
+
+    /*
+     * --------------------------------------------------------
+     * Get requested policy
+     * --------------------------------------------------------
      */
     const policyResult = await query(
       `
@@ -475,12 +714,15 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const existingPolicy = policyResult.rows[0];
+    const existingPolicy =
+      policyResult.rows[0];
 
     /*
-     * CASE 1:
+     * ========================================================
+     * CASE 1
+     * ========================================================
      *
-     * Policy belongs directly to the current account.
+     * Policy belongs directly to current account.
      *
      * Normal update.
      */
@@ -533,216 +775,333 @@ export async function PATCH(request: Request) {
 
       return NextResponse.json({
         ...result.rows[0],
+
+        applies_to_account_id:
+          user.account_id,
+
+        is_current_account: true,
+
         is_inherited: false,
+
         parent_allows_child_overrides: false,
       });
     }
 
     /*
-     * CASE 2:
+     * ========================================================
+     * CASE 2
+     * ========================================================
      *
-     * Policy belongs to another account.
+     * Current account is a PARENT and the policy belongs
+     * to one of its direct CHILD accounts.
      *
-     * It can only be edited if:
-     *
-     * 1. It belongs to the current account's parent.
-     * 2. The parent allows child overrides.
+     * Parent can update the child-owned policy.
      */
-    if (
-      existingPolicy.account_id !==
-      (
-        await query(
-          `
-            SELECT parent_account_id
-            FROM public.accounts
-            WHERE id = $1
-          `,
-          [user.account_id]
-        )
-      ).rows[0]?.parent_account_id
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "You are not allowed to modify this policy",
-        },
-        { status: 403 }
-      );
-    }
-
-    /*
-     * Check the parent's child override setting.
-     */
-    const parentSettingsResult = await query(
-      `
-        SELECT
-          allow_child_overrides
-        FROM public.account_policy_settings
-        WHERE account_id = $1
-      `,
-      [existingPolicy.account_id]
-    );
-
-    const parentAllowsChildOverrides =
-      parentSettingsResult.rows.length > 0
-        ? parentSettingsResult.rows[0]
-            .allow_child_overrides
-        : false;
-
-    if (!parentAllowsChildOverrides) {
-      return NextResponse.json(
-        {
-          error:
-            "Parent account does not allow child account overrides",
-        },
-        { status: 403 }
-      );
-    }
-
-    /*
-     * Check whether an override already exists.
-     */
-    const existingOverrideResult = await query(
-      `
-        SELECT
-          id
-        FROM public.policies
-        WHERE account_id = $1
-          AND parent_policy_id = $2
-        LIMIT 1
-      `,
-      [
-        user.account_id,
-        existingPolicy.id,
-      ]
-    );
-
-    /*
-     * Normally an inherited policy should not have an
-     * existing override because GET hides the parent
-     * once an override exists.
-     *
-     * This check protects us against duplicate overrides.
-     */
-    if (existingOverrideResult.rows.length > 0) {
-      const overrideId =
-        existingOverrideResult.rows[0].id;
-
-      const updateResult = await query(
+    if (!currentAccount.parent_account_id) {
+      const childAccountResult = await query(
         `
-          UPDATE public.policies
-          SET
-            name = $1,
-            description = $2,
-            config = $3::jsonb,
-            status = 'active'::policy_status,
-            is_active = TRUE,
-            updated_at = NOW()
-          WHERE id = $4
-            AND account_id = $5
-          RETURNING
+          SELECT
             id,
-            account_id,
-            parent_policy_id,
-            name,
-            description,
-            type,
-            config,
-            is_default,
-            is_active,
-            created_by,
-            created_at,
-            updated_at,
-            status
+            name
+          FROM public.accounts
+          WHERE id = $1
+            AND parent_account_id = $2
         `,
         [
-          name.trim(),
-          description?.trim() || null,
-          JSON.stringify(config),
-          overrideId,
+          existingPolicy.account_id,
           user.account_id,
         ]
       );
 
-      return NextResponse.json({
-        ...updateResult.rows[0],
-        is_inherited: false,
-        parent_allows_child_overrides:
-          true,
-      });
+      if (
+        childAccountResult.rows.length > 0
+      ) {
+        const result = await query(
+          `
+            UPDATE public.policies
+            SET
+              name = $1,
+              description = $2,
+              config = $3::jsonb,
+              status = 'active'::policy_status,
+              is_active = TRUE,
+              updated_at = NOW()
+            WHERE id = $4
+              AND account_id = $5
+            RETURNING
+              id,
+              account_id,
+              parent_policy_id,
+              name,
+              description,
+              type,
+              config,
+              is_default,
+              is_active,
+              created_by,
+              created_at,
+              updated_at,
+              status
+          `,
+          [
+            name.trim(),
+            description?.trim() || null,
+            JSON.stringify(config),
+            id,
+            existingPolicy.account_id,
+          ]
+        );
+
+        if (result.rowCount === 0) {
+          return NextResponse.json(
+            { error: "Policy not found" },
+            { status: 404 }
+          );
+        }
+
+        return NextResponse.json({
+          ...result.rows[0],
+
+          applies_to_account_id:
+            existingPolicy.account_id,
+
+          applies_to_account_name:
+            childAccountResult.rows[0]
+              .name || null,
+
+          is_current_account: false,
+
+          is_inherited: false,
+
+          parent_allows_child_overrides:
+            true,
+        });
+      }
     }
 
     /*
-     * Create a child-specific override.
+     * ========================================================
+     * CASE 3
+     * ========================================================
      *
-     * IMPORTANT:
+     * Current account is a CHILD.
      *
-     * We do NOT modify the parent's policy.
+     * Requested policy belongs to its PARENT.
      *
-     * The child gets its own policy linked through
-     * parent_policy_id.
+     * We do not modify the parent policy.
+     *
+     * Instead, create/update a child-specific override.
      */
-    const overrideResult = await query(
-      `
-        INSERT INTO public.policies (
-          account_id,
-          parent_policy_id,
-          name,
-          description,
-          type,
-          config,
-          is_default,
-          is_active,
-          created_by,
-          status
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6::jsonb,
-          $7,
-          TRUE,
-          $8,
-          'active'::policy_status
-        )
-        RETURNING
-          id,
-          account_id,
-          parent_policy_id,
-          name,
-          description,
-          type,
-          config,
-          is_default,
-          is_active,
-          created_by,
-          created_at,
-          updated_at,
-          status
-      `,
-      [
-        user.account_id,
-        existingPolicy.id,
-        name.trim(),
-        description?.trim() || null,
-        existingPolicy.type,
-        JSON.stringify(config),
-        existingPolicy.is_default,
-        user.id,
-      ]
-    );
+    if (
+      currentAccount.parent_account_id &&
+      existingPolicy.account_id ===
+        currentAccount.parent_account_id
+    ) {
+      /*
+       * Check parent setting.
+       */
+      const parentSettingsResult =
+        await query(
+          `
+            SELECT
+              allow_child_overrides
+            FROM public.account_policy_settings
+            WHERE account_id = $1
+          `,
+          [
+            currentAccount.parent_account_id,
+          ]
+        );
 
+      const parentAllowsChildOverrides =
+        parentSettingsResult.rows.length > 0
+          ? Boolean(
+              parentSettingsResult.rows[0]
+                .allow_child_overrides
+            )
+          : false;
+
+      if (!parentAllowsChildOverrides) {
+        return NextResponse.json(
+          {
+            error:
+              "Parent account does not allow child account overrides",
+          },
+          { status: 403 }
+        );
+      }
+
+      /*
+       * Check if child override already exists.
+       */
+      const existingOverrideResult =
+        await query(
+          `
+            SELECT
+              id
+            FROM public.policies
+            WHERE account_id = $1
+              AND parent_policy_id = $2
+            LIMIT 1
+          `,
+          [
+            user.account_id,
+            existingPolicy.id,
+          ]
+        );
+
+      /*
+       * ------------------------------------------------------
+       * Existing override
+       * ------------------------------------------------------
+       */
+      if (
+        existingOverrideResult.rows.length >
+        0
+      ) {
+        const overrideId =
+          existingOverrideResult.rows[0].id;
+
+        const updateResult =
+          await query(
+            `
+              UPDATE public.policies
+              SET
+                name = $1,
+                description = $2,
+                config = $3::jsonb,
+                status = 'active'::policy_status,
+                is_active = TRUE,
+                updated_at = NOW()
+              WHERE id = $4
+                AND account_id = $5
+              RETURNING
+                id,
+                account_id,
+                parent_policy_id,
+                name,
+                description,
+                type,
+                config,
+                is_default,
+                is_active,
+                created_by,
+                created_at,
+                updated_at,
+                status
+            `,
+            [
+              name.trim(),
+              description?.trim() || null,
+              JSON.stringify(config),
+              overrideId,
+              user.account_id,
+            ]
+          );
+
+        return NextResponse.json({
+          ...updateResult.rows[0],
+
+          applies_to_account_id:
+            user.account_id,
+
+          is_current_account: true,
+
+          is_inherited: false,
+
+          parent_allows_child_overrides:
+            true,
+        });
+      }
+
+      /*
+       * ------------------------------------------------------
+       * Create new child override
+       * ------------------------------------------------------
+       */
+      const overrideResult =
+        await query(
+          `
+            INSERT INTO public.policies (
+              account_id,
+              parent_policy_id,
+              name,
+              description,
+              type,
+              config,
+              is_default,
+              is_active,
+              created_by,
+              status
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6::jsonb,
+              $7,
+              TRUE,
+              $8,
+              'active'::policy_status
+            )
+            RETURNING
+              id,
+              account_id,
+              parent_policy_id,
+              name,
+              description,
+              type,
+              config,
+              is_default,
+              is_active,
+              created_by,
+              created_at,
+              updated_at,
+              status
+          `,
+          [
+            user.account_id,
+            existingPolicy.id,
+            name.trim(),
+            description?.trim() || null,
+            existingPolicy.type,
+            JSON.stringify(config),
+            existingPolicy.is_default,
+            user.id,
+          ]
+        );
+
+      return NextResponse.json(
+        {
+          ...overrideResult.rows[0],
+
+          applies_to_account_id:
+            user.account_id,
+
+          is_current_account: true,
+
+          is_inherited: false,
+
+          parent_allows_child_overrides:
+            true,
+        },
+        { status: 201 }
+      );
+    }
+
+    /*
+     * ========================================================
+     * Unauthorized
+     * ========================================================
+     */
     return NextResponse.json(
       {
-        ...overrideResult.rows[0],
-        is_inherited: false,
-        parent_allows_child_overrides:
-          true,
+        error:
+          "You are not allowed to modify this policy",
       },
-      { status: 201 }
+      { status: 403 }
     );
   } catch (error) {
     console.error(
@@ -757,6 +1116,19 @@ export async function PATCH(request: Request) {
   }
 }
 
+/*
+ * ============================================================
+ * DELETE
+ * ============================================================
+ *
+ * Parent:
+ *   - Can delete its own policy.
+ *   - Can delete a direct child policy.
+ *
+ * Child:
+ *   - Can delete only its own policy.
+ *   - Cannot delete inherited parent policy.
+ */
 export async function DELETE(request: Request) {
   try {
     const user = await requireSessionUser();
@@ -768,8 +1140,11 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const { searchParams } = new URL(request.url);
-    const policyId = searchParams.get("id");
+    const { searchParams } =
+      new URL(request.url);
+
+    const policyId =
+      searchParams.get("id");
 
     if (!policyId) {
       return NextResponse.json(
@@ -779,36 +1154,151 @@ export async function DELETE(request: Request) {
     }
 
     /*
-     * Only policies owned by the current account can
-     * be deleted.
-     *
-     * Inherited parent policies cannot be deleted from
-     * a child account.
+     * Get current account.
      */
-    const result = await query(
+    const accountResult = await query(
       `
-        DELETE FROM public.policies
+        SELECT
+          id,
+          parent_account_id
+        FROM public.accounts
         WHERE id = $1
-          AND account_id = $2
-        RETURNING id
       `,
-      [
-        policyId,
-        user.account_id,
-      ]
+      [user.account_id]
     );
 
-    if (result.rowCount === 0) {
+    if (accountResult.rows.length === 0) {
+      return NextResponse.json(
+        { error: "Account not found" },
+        { status: 404 }
+      );
+    }
+
+    const currentAccount =
+      accountResult.rows[0];
+
+    /*
+     * Get policy.
+     */
+    const policyResult = await query(
+      `
+        SELECT
+          id,
+          account_id,
+          parent_policy_id
+        FROM public.policies
+        WHERE id = $1
+      `,
+      [policyId]
+    );
+
+    if (policyResult.rows.length === 0) {
       return NextResponse.json(
         { error: "Policy not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      id: result.rows[0].id,
-    });
+    const policy =
+      policyResult.rows[0];
+
+    /*
+     * --------------------------------------------------------
+     * Current account owns the policy.
+     * --------------------------------------------------------
+     */
+    if (
+      policy.account_id ===
+      user.account_id
+    ) {
+      const result = await query(
+        `
+          DELETE FROM public.policies
+          WHERE id = $1
+            AND account_id = $2
+          RETURNING id
+        `,
+        [
+          policyId,
+          user.account_id,
+        ]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { error: "Policy not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        id: result.rows[0].id,
+      });
+    }
+
+    /*
+     * --------------------------------------------------------
+     * Parent deleting direct child policy.
+     * --------------------------------------------------------
+     */
+    if (!currentAccount.parent_account_id) {
+      const childResult = await query(
+        `
+          SELECT
+            id
+          FROM public.accounts
+          WHERE id = $1
+            AND parent_account_id = $2
+        `,
+        [
+          policy.account_id,
+          user.account_id,
+        ]
+      );
+
+      if (childResult.rows.length > 0) {
+        const result = await query(
+          `
+            DELETE FROM public.policies
+            WHERE id = $1
+              AND account_id = $2
+            RETURNING id
+          `,
+          [
+            policyId,
+            policy.account_id,
+          ]
+        );
+
+        if (result.rowCount === 0) {
+          return NextResponse.json(
+            { error: "Policy not found" },
+            { status: 404 }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          id: result.rows[0].id,
+        });
+      }
+    }
+
+    /*
+     * --------------------------------------------------------
+     * Inherited parent policy.
+     *
+     * Child must never delete the parent policy.
+     * --------------------------------------------------------
+     */
+    return NextResponse.json(
+      {
+        error:
+          "Inherited policies cannot be deleted",
+      },
+      { status: 403 }
+    );
   } catch (error) {
     console.error(
       "Failed to delete policy:",
