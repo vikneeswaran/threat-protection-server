@@ -98,7 +98,7 @@
     "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.7",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22",
     "@types/pg": "^8.15.5",
     "@types/react": "^19",
