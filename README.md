@@ -21,7 +21,7 @@ Install and run:
 
 ## Validation
 
+- `pnpm run validate:lockfile`
 - `pnpm lint`
 - `pnpm run type-check`
 - `pnpm test`
-

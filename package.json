@@ -28,6 +28,7 @@
     "benchmark:baseline": "node scripts/benchmark/collect-api-baseline.mjs",
     "type-check": "tsc --noEmit",
     "validate": "npm run lint && npm run type-check && npm run test",
+    "validate:lockfile": "corepack pnpm install --frozen-lockfile",
     "validate:windows-helpers": "node scripts/validate-windows-helpers.js"
   },
   "dependencies": {
