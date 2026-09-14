@@ -1,18 +1,10 @@
 "use client";
 
-// React hooks for state management and lifecycle methods
 import { useEffect, useState } from "react";
-
-// Threat filter component for search and filtering
 import ThreatFilter from "./threatFilters";
-
-// Service function to fetch threats from the backend API
 import { getThreats } from "@/app/services/threatService";
-
-// Next.js component for client-side navigation
 import Link from "next/link";
 
-// Defines the structure of each threat record
 interface Threat {
   id: string;
   name: string;
@@ -24,52 +16,65 @@ interface Threat {
   status: string;
 }
 
-// Main component that displays and manages the threat table
 export default function ThreatTable() {
   // Stores all threats received from the API
   const [threats, setThreats] = useState<Threat[]>([]);
 
-  // Stores threats after applying search and filters
+  // Stores threats after applying filters
   const [filteredThreats, setFilteredThreats] = useState<Threat[]>([]);
 
-  // Stores the search keyword
+  // Search/filter states
   const [search, setSearch] = useState("");
-
-  // Stores selected severity filter
   const [severity, setSeverity] = useState("");
-
-  // Stores selected status filter
   const [status, setStatus] = useState("");
 
-  // Controls loading spinner while fetching data
+  // Loading/error states
   const [loading, setLoading] = useState(true);
-
-  // Stores API error messages
   const [error, setError] = useState("");
-  // Tracks the currently displayed page
+
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Sorting
   const [sortColumn, setSortColumn] = useState<keyof Threat | "">("");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [sortDirection, setSortDirection] =
+    useState<"asc" | "desc">("asc");
+
+  // Selected threats
+  const [selectedThreatIds, setSelectedThreatIds] = useState<string[]>(
+    []
+  );
+
+  // Currently opened gear menu
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(
+    null
+  );
 
   // Number of threats displayed per page
   const pageSize = 50;
 
-  // Fetch threats once when the component loads
+  // Fetch threats once when component loads
   useEffect(() => {
     fetchThreats();
   }, []);
 
-  // Apply filters whenever search, severity, status, or data changes
+  // Apply filters whenever data/filter/sort changes
   useEffect(() => {
     filterThreats();
-  }, [search, severity, status, threats, sortColumn, sortDirection]);
-  // Fetch threat data from the backend API
+  }, [
+    search,
+    severity,
+    status,
+    threats,
+    sortColumn,
+    sortDirection,
+  ]);
+
+  // Fetch threat data
   const fetchThreats = async () => {
     try {
       setLoading(true);
 
-      // Request threat data
       const response = await getThreats();
 
       const threatsData = (response.threats ?? []).map((item: any) => ({
@@ -79,35 +84,31 @@ export default function ThreatTable() {
         threatType: item.type,
         detectedBy: item.detection_engine,
 
-        // Format severity for display
         severity:
           item.severity?.charAt(0).toUpperCase() +
           item.severity?.slice(1).toLowerCase(),
 
-        // Convert timestamp into readable format
         detected: new Date(item.detected_at).toLocaleString(),
-        // Format status for display
+
         status:
           item.status?.charAt(0).toUpperCase() +
           item.status?.slice(1).toLowerCase(),
       }));
 
-      // Store original threat list
       setThreats(threatsData);
-      // Initially display all threats
       setFilteredThreats(threatsData);
     } catch (err) {
-      // Handle API failure
       console.error(err);
+
       setThreats([]);
       setFilteredThreats([]);
       setError("Failed to load threats");
     } finally {
-      // Hide loading spinner
       setLoading(false);
     }
   };
 
+  // Sort threats
   const sortThreats = (
     data: Threat[],
     column: keyof Threat,
@@ -128,6 +129,8 @@ export default function ThreatTable() {
       return 0;
     });
   };
+
+  // Handle column sorting
   const handleSort = (column: keyof Threat) => {
     let direction: "asc" | "desc" = "asc";
 
@@ -138,17 +141,21 @@ export default function ThreatTable() {
     setSortColumn(column);
     setSortDirection(direction);
   };
+
+  // Sort icon
   const getSortIcon = (column: keyof Threat) => {
     if (sortColumn !== column) {
       return "↕";
     }
+
     return sortDirection === "asc" ? "▲" : "▼";
   };
-  // Filters threats based on search text, severity, and status
+
+  // Filter threats
   const filterThreats = () => {
-    // Create a copy to avoid modifying original data
     let filtered = [...threats];
-    // Filter by search keyword
+
+    // Search
     if (search) {
       const searchText = search.toLowerCase();
 
@@ -159,39 +166,120 @@ export default function ThreatTable() {
           item.detectedBy.toLowerCase().includes(searchText)
       );
     }
-    // Filter by severity
+
+    // Severity
     if (severity) {
       filtered = filtered.filter(
-        (item) => item.severity.toLowerCase() === severity.toLowerCase()
+        (item) =>
+          item.severity.toLowerCase() === severity.toLowerCase()
       );
     }
-    // Filter by status
+
+    // Status
     if (status) {
       filtered = filtered.filter(
-        (item) => item.status.toLowerCase() === status.toLowerCase()
+        (item) =>
+          item.status.toLowerCase() === status.toLowerCase()
       );
     }
+
+    // Sorting
     if (sortColumn) {
-      filtered = sortThreats(filtered, sortColumn, sortDirection);
+      filtered = sortThreats(
+        filtered,
+        sortColumn,
+        sortDirection
+      );
     }
-    // Update filtered results
+
     setFilteredThreats(filtered);
-    // Reset to first page after filtering
     setCurrentPage(1);
   };
-  // Calculate total number of pages
-  const totalPages = Math.ceil(filteredThreats.length / pageSize);
-  // Display only records for the current page
+
+  // Current page data
+  const totalPages = Math.ceil(
+    filteredThreats.length / pageSize
+  );
+
   const paginatedThreats = filteredThreats.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
-  // Placeholder for export functionality
+
+  // --------------------------------------------------
+  // CHECKBOX FUNCTIONS
+  // --------------------------------------------------
+
+  // Check/uncheck individual threat
+  const handleThreatSelection = (threatId: string) => {
+    setSelectedThreatIds((previous) => {
+      if (previous.includes(threatId)) {
+        return previous.filter((id) => id !== threatId);
+      }
+
+      return [...previous, threatId];
+    });
+  };
+
+  // Check/uncheck all threats on current page
+  const handleSelectAll = () => {
+    const currentPageIds = paginatedThreats.map(
+      (threat) => threat.id
+    );
+
+    const allSelected = currentPageIds.every((id) =>
+      selectedThreatIds.includes(id)
+    );
+
+    if (allSelected) {
+      setSelectedThreatIds((previous) =>
+        previous.filter(
+          (id) => !currentPageIds.includes(id)
+        )
+      );
+    } else {
+      setSelectedThreatIds((previous) => [
+        ...new Set([...previous, ...currentPageIds]),
+      ]);
+    }
+  };
+
+  const allCurrentPageSelected =
+    paginatedThreats.length > 0 &&
+    paginatedThreats.every((threat) =>
+      selectedThreatIds.includes(threat.id)
+    );
+
+  // --------------------------------------------------
+  // GEAR ACTION FUNCTIONS
+  // --------------------------------------------------
+
+  const handleThreatAction = (
+    action: string,
+    threat: Threat
+  ) => {
+    setOpenActionMenu(null);
+
+    console.log("Threat Action:", {
+      action,
+      threatId: threat.id,
+    });
+
+    // API calls can be added here later.
+    //
+    // Example:
+    //
+    // if (action === "quarantine") {
+    //   await quarantineThreat(threat.id);
+    // }
+  };
+
+  // Export
   const handleExport = () => {
     console.log("Export Incidents");
   };
 
-  // Display loading message while fetching threats
+  // Loading
   if (loading) {
     return (
       <div
@@ -205,7 +293,8 @@ export default function ThreatTable() {
       </div>
     );
   }
-  // Display error message if API fails
+
+  // Error
   if (error) {
     return (
       <div
@@ -221,114 +310,200 @@ export default function ThreatTable() {
   }
 
   return (
-    <div
-      className="relative overflow-hidden rounded-2xl border border-purple-400/30 p-5 shadow-[0_0_30px_rgba(120,70,255,0.12),inset_0_0_45px_rgba(100,50,255,0.05)] sm:p-6"
-      style={{
-        background:
-          "linear-gradient(145deg, rgba(30,45,85,0.82), rgba(11,19,46,0.96) 65%, rgba(6,12,30,0.98))",
-      }}
-    >
-      <div className="pointer-events-none absolute right-0 top-0 h-40 w-72 rounded-bl-full bg-purple-500/10 blur-2xl" />
+    <div className="rounded-xl border border-slate-800 bg-[#111827] p-5">
 
       {/* Search and filter controls */}
-      <div className="relative z-10">
-        <ThreatFilter
-          search={search}
-          severity={severity}
-          status={status}
-          onSearchChange={setSearch}
-          onSeverityChange={setSeverity}
-          onStatusChange={setStatus}
-          onExport={handleExport}
-        />
-      </div>
+      <ThreatFilter
+        search={search}
+        severity={severity}
+        status={status}
+        onSearchChange={setSearch}
+        onSeverityChange={setSeverity}
+        onStatusChange={setStatus}
+        onExport={handleExport}
+      />
 
-      <div className="relative z-10 overflow-x-auto">
+      {/* Selected count */}
+      {selectedThreatIds.length > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
+          <span className="text-sm text-slate-300">
+            {selectedThreatIds.length} threat
+            {selectedThreatIds.length !== 1 ? "s" : ""} selected
+          </span>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() =>
+                console.log(
+                  "Bulk Quarantine:",
+                  selectedThreatIds
+                )
+              }
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              Quarantine
+            </button>
+
+            <button
+              onClick={() =>
+                console.log(
+                  "Bulk Resolve:",
+                  selectedThreatIds
+                )
+              }
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+            >
+              Resolve
+            </button>
+
+            <button
+              onClick={() => setSelectedThreatIds([])}
+              className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-700"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+
         {/* Threat data table */}
         <table className="w-full border-collapse text-left">
+
           {/* Table headers */}
-          <thead className="border-b border-white/10 text-sky-200/70">
+          <thead className="border-b border-slate-700 text-slate-400">
             <tr>
+
+              {/* SELECT ALL CHECKBOX */}
+              <th className="w-[50px] px-3 py-4">
+                <input
+                  type="checkbox"
+                  checked={allCurrentPageSelected}
+                  onChange={handleSelectAll}
+                  className="h-4 w-4 cursor-pointer rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500"
+                  aria-label="Select all threats"
+                />
+              </th>
+
               <th
                 onClick={() => handleSort("id")}
-                className="w-[260px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[180px] cursor-pointer select-none px-3"
               >
-                Threat id {getSortIcon("id")}
+                Threat ID {getSortIcon("id")}
               </th>
+
               <th
                 onClick={() => handleSort("name")}
-                className="w-[260px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[220px] cursor-pointer select-none px-3"
               >
                 Threat Name {getSortIcon("name")}
               </th>
+
               <th
                 onClick={() => handleSort("endpoint")}
-                className="w-[120px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[150px] cursor-pointer px-3 py-4"
               >
                 Endpoint {getSortIcon("endpoint")}
               </th>
+
               <th
                 onClick={() => handleSort("threatType")}
-                className="w-[120px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[150px] cursor-pointer px-3 py-4"
               >
                 Threat Type {getSortIcon("threatType")}
               </th>
+
               <th
                 onClick={() => handleSort("detectedBy")}
-                className="w-[120px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[150px] cursor-pointer px-3 py-4"
               >
                 Detected By {getSortIcon("detectedBy")}
               </th>
+
               <th
                 onClick={() => handleSort("severity")}
-                className="w-[120px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[120px] cursor-pointer px-3 py-4"
               >
                 Severity {getSortIcon("severity")}
               </th>
+
               <th
                 onClick={() => handleSort("detected")}
-                className="w-[120px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[180px] cursor-pointer px-3 py-4"
               >
                 Detected {getSortIcon("detected")}
               </th>
+
               <th
                 onClick={() => handleSort("status")}
-                className="w-[120px] cursor-pointer select-none px-3 py-4 transition hover:text-white"
+                className="w-[120px] cursor-pointer px-3 py-4"
               >
                 Status {getSortIcon("status")}
               </th>
+
+              {/* ACTION HEADER */}
+              <th className="w-[70px] px-3 py-4 text-center">
+                Action
+              </th>
+
             </tr>
           </thead>
+
           <tbody>
-            {/* Display each threat record */}
+
             {paginatedThreats.map((t) => (
               <tr
                 key={t.id}
                 className="border-b border-white/5 transition hover:bg-white/5"
               >
+
+                {/* ROW CHECKBOX */}
                 <td className="px-3 py-4">
-                  {/* Navigate to threat details page */}
+                  <input
+                    type="checkbox"
+                    checked={selectedThreatIds.includes(t.id)}
+                    onChange={() =>
+                      handleThreatSelection(t.id)
+                    }
+                    className="h-4 w-4 cursor-pointer rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500"
+                    aria-label={`Select ${t.name}`}
+                  />
+                </td>
+
+                {/* THREAT ID */}
+                <td className="px-3 py-4">
                   <Link
                     href={`/securityAgent/threats/${t.id}`}
-                    className="font-medium text-cyan-300 transition hover:text-cyan-200 hover:underline"
+                    className="font-medium text-indigo-400 hover:text-indigo-300 hover:underline"
                   >
                     {t.id}
                   </Link>
-                  {/* Display threat information */}
                 </td>
 
-                <td className="px-3 py-4 text-slate-200">{t.name}</td>
-
-                <td className="px-3 py-4 text-slate-200">{t.endpoint}</td>
-
+                {/* THREAT NAME */}
                 <td className="px-3 py-4">
-                  <span className="inline-flex min-w-[90px] items-center justify-center rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">
+                  {t.name}
+                </td>
+
+                {/* ENDPOINT */}
+                <td className="px-3 py-4">
+                  {t.endpoint}
+                </td>
+
+                {/* THREAT TYPE */}
+                <td className="px-3 py-4">
+                  <span className="inline-flex min-w-[90px] items-center justify-center rounded-full bg-slate-700 px-3 py-1 text-xs">
                     {t.threatType}
                   </span>
                 </td>
 
-                <td className="px-3 py-4 text-slate-200">{t.detectedBy}</td>
+                {/* DETECTED BY */}
+                <td className="px-3 py-4">
+                  {t.detectedBy}
+                </td>
 
+                {/* SEVERITY */}
                 <td className="px-3 py-4">
                   <span
                     className={`inline-flex min-w-[90px] justify-center rounded-full px-3 py-1 text-xs font-medium ${
@@ -345,8 +520,12 @@ export default function ThreatTable() {
                   </span>
                 </td>
 
-                <td className="px-3 py-4 text-slate-200">{t.detected}</td>
+                {/* DETECTED */}
+                <td className="px-3 py-4">
+                  {t.detected}
+                </td>
 
+                {/* STATUS */}
                 <td className="px-3 py-4">
                   <span
                     className={`inline-flex min-w-[90px] justify-center rounded-full px-3 py-1 text-xs font-medium ${
@@ -360,56 +539,183 @@ export default function ThreatTable() {
                     {t.status}
                   </span>
                 </td>
+
+                {/* GEAR ACTION */}
+                <td className="relative px-3 py-4 text-center">
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenActionMenu(
+                        openActionMenu === t.id
+                          ? null
+                          : t.id
+                      )
+                    }
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-700 hover:text-white"
+                    aria-label={`Actions for ${t.name}`}
+                    title="Threat actions"
+                  >
+                    {/* Gear icon */}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-5 w-5"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M10.5 3h3l.6 2.1a7.9 7.9 0 0 1 1.8.75l2-1.05 2.1 2.1-1.05 2a7.9 7.9 0 0 1 .75 1.8L21 11.5v3l-2.1.6a7.9 7.9 0 0 1-.75 1.8l1.05 2-2.1 2.1-2-1.05a7.9 7.9 0 0 1-1.8.75L13.5 21h-3l-.6-2.1a7.9 7.9 0 0 1-1.8-.75l-2 1.05-2.1-2.1 1.05-2a7.9 7.9 0 0 1-.75-1.8L2 14.5v-3l2.1-.6a7.9 7.9 0 0 1 .75-1.8l-1.05-2L5.9 5l2 1.05a7.9 7.9 0 0 1 1.8-.75L10.5 3Z"
+                      />
+
+                      <circle
+                        cx="12"
+                        cy="13"
+                        r="2.5"
+                      />
+                    </svg>
+                  </button>
+
+                  {/* ACTION DROPDOWN */}
+                  {openActionMenu === t.id && (
+                    <div className="absolute right-3 top-14 z-50 w-44 overflow-hidden rounded-lg border border-slate-700 bg-[#111827] shadow-xl">
+
+                      {/* View */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
+                      >
+                        <span>👁</span>
+                        View Details
+                      </button>
+
+                      {/* Quarantine */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleThreatAction(
+                            "quarantine",
+                            t
+                          )
+                        }
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-slate-800"
+                      >
+                        <span>🛡</span>
+                        Quarantine
+                      </button>
+
+                      {/* Resolve */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleThreatAction(
+                            "resolve",
+                            t
+                          )
+                        }
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-green-300 hover:bg-slate-800"
+                      >
+                        <span>✓</span>
+                        Resolve
+                      </button>
+
+                      {/* Ignore */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleThreatAction(
+                            "ignore",
+                            t
+                          )
+                        }
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
+                      >
+                        <span>⊘</span>
+                        Ignore
+                      </button>
+
+                    </div>
+                  )}
+
+                </td>
+
               </tr>
             ))}
-            {/* Show message when no records match filters */}
+
+            {/* No records */}
             {paginatedThreats.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-slate-400">
+                <td
+                  colSpan={10}
+                  className="py-10 text-center text-slate-400"
+                >
                   No threats found.
                 </td>
               </tr>
             )}
+
           </tbody>
         </table>
-        {/* Pagination controls */}
+
+        {/* Pagination */}
         <div className="mt-5 flex items-center justify-between">
+
           <p className="text-sm text-slate-400">
             Showing{" "}
             {filteredThreats.length === 0
               ? 0
               : (currentPage - 1) * pageSize + 1}
             {" - "}
-            {Math.min(currentPage * pageSize, filteredThreats.length)}
+            {Math.min(
+              currentPage * pageSize,
+              filteredThreats.length
+            )}
             {" of "}
             {filteredThreats.length} threats
           </p>
 
-          {/* Previous / Next page buttons */}
           <div className="flex gap-2">
+
             <button
-              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              onClick={() =>
+                setCurrentPage((p) =>
+                  Math.max(p - 1, 1)
+                )
+              }
               disabled={currentPage === 1}
-              className="rounded-lg border border-white/10 px-4 py-2 text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border border-slate-700 px-4 py-2 disabled:opacity-50"
             >
               Previous
             </button>
 
-            <span className="flex items-center px-3 text-sm text-slate-300">
+            <span className="flex items-center px-3 text-sm">
               Page {currentPage} of {totalPages || 1}
             </span>
 
             <button
               onClick={() =>
-                setCurrentPage((p) => Math.min(p + 1, totalPages))
+                setCurrentPage((p) =>
+                  Math.min(p + 1, totalPages)
+                )
               }
-              disabled={currentPage === totalPages || totalPages === 0}
-              className="rounded-lg border border-white/10 px-4 py-2 text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={
+                currentPage === totalPages ||
+                totalPages === 0
+              }
+              className="rounded-lg border border-slate-700 px-4 py-2 disabled:opacity-50"
             >
               Next
             </button>
+
           </div>
         </div>
+
       </div>
     </div>
   );
