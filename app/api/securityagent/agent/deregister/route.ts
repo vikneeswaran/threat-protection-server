@@ -77,6 +77,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const endpointIdsFromAgentInstance =
+      resolvedAgentId && effectiveAccountId
+        ? (
+            await query(
+              `
+              SELECT endpoint_id
+              FROM agent_instances
+              WHERE agent_id = $1
+                AND account_id = $2
+                AND endpoint_id IS NOT NULL
+              `,
+              [resolvedAgentId, effectiveAccountId]
+            )
+          ).rows
+            .map((row) => row.endpoint_id as string | null)
+            .filter((id): id is string => Boolean(id))
+        : [];
+
     let targetEndpointIds: string[] = [];
 
     if (resolvedEndpointId) {
@@ -140,6 +158,12 @@ export async function POST(request: NextRequest) {
         .filter(Boolean);
     }
 
+    if (endpointIdsFromAgentInstance.length > 0) {
+      targetEndpointIds = Array.from(
+        new Set([...targetEndpointIds, ...endpointIdsFromAgentInstance])
+      );
+    }
+
     // -----------------------------------------
     // 2. Update installation_instances status
     // -----------------------------------------
@@ -155,23 +179,6 @@ export async function POST(request: NextRequest) {
         WHERE endpoint_id = ANY($1::uuid[])
         `,
         [targetEndpointIds]
-      );
-    } else if (resolvedAgentId && effectiveAccountId) {
-      await query(
-        `
-        UPDATE installation_instances
-        SET
-          status = 'UNINSTALLED',
-          uninstalled_at = NOW(),
-          updated_at = NOW()
-        WHERE account_id = $1 AND endpoint_id IN (
-          SELECT id
-          FROM endpoints
-          WHERE agent_id = $2
-            AND account_id = $1
-        )
-        `,
-        [effectiveAccountId, resolvedAgentId]
       );
     }
 

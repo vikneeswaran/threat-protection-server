@@ -112,4 +112,81 @@ describe("threat details PATCH route", () => {
     );
     expect(upsertPolicyCall).toBeDefined();
   });
+
+  it("returns unauthorized when no session user is available", async () => {
+    requireSessionUserMock.mockResolvedValueOnce(null);
+
+    const response = await patchThreat(
+      new Request("http://localhost/api/securityagent/threats/threat-1", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "allow" }),
+      }),
+      { params: Promise.resolve({ id: "threat-1" }) }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      message: "Unauthorized",
+    });
+  });
+
+  it("returns validation failure for invalid action", async () => {
+    const response = await patchThreat(
+      new Request("http://localhost/api/securityagent/threats/threat-1", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "invalid-action" }),
+      }),
+      { params: Promise.resolve({ id: "threat-1" }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+    });
+  });
+
+  it("returns not found when threat does not exist", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const response = await patchThreat(
+      new Request("http://localhost/api/securityagent/threats/missing", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "allow" }),
+      }),
+      { params: Promise.resolve({ id: "missing" }) }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      message: "Threat not found",
+    });
+  });
+
+  it("returns conflict when threat has no endpoint id", async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "threat-3",
+          account_id: "account-1",
+          endpoint_id: null,
+          file_hash: "hash-3",
+        },
+      ],
+    });
+
+    const response = await patchThreat(
+      new Request("http://localhost/api/securityagent/threats/threat-3", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "allow" }),
+      }),
+      { params: Promise.resolve({ id: "threat-3" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+    });
+  });
 });
