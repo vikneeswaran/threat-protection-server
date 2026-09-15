@@ -209,6 +209,10 @@ export async function PATCH(
       action,
       queued: commandResult.rows.length > 0,
       persistForFileHash,
+      message:
+        commandResult.rows.length > 0
+          ? "Threat action queued."
+          : "A matching threat action is already pending for this threat.",
     });
   } catch (error) {
     console.error("Failed to queue threat action:", error);

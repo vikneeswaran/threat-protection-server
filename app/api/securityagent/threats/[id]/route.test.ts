@@ -58,6 +58,7 @@ describe("threat details PATCH route", () => {
       queued: false,
       commandId: null,
       persistForFileHash: false,
+      message: "A matching threat action is already pending for this threat.",
     });
 
     const upsertPolicyCall = queryMock.mock.calls.find(

@@ -165,7 +165,10 @@ export async function POST(request: NextRequest) {
           uninstalled_at = NOW(),
           updated_at = NOW()
         WHERE account_id = $1 AND endpoint_id IN (
-          SELECT id FROM endpoints WHERE agent_id = $2
+          SELECT id
+          FROM endpoints
+          WHERE agent_id = $2
+            AND account_id = $1
         )
         `,
         [effectiveAccountId, resolvedAgentId]
