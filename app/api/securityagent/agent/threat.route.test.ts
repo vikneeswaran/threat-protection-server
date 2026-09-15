@@ -73,6 +73,13 @@ describe("agent threat reporting route", () => {
 
     expect(commandInsertCall).toBeDefined();
     expect(commandInsertCall?.[1]?.[3]).toBe("allow");
+    expect(
+      queryMock.mock.calls.some(
+        ([sql]: [string]) =>
+          typeof sql === "string" &&
+          sql.includes("FROM policies p")
+      )
+    ).toBe(false);
   });
 
   it("falls back to policy action and normalizes block to kill", async () => {

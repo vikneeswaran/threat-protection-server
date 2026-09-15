@@ -43,4 +43,16 @@ describe("threat listing route", () => {
     expect(queryMock.mock.calls[0][0]).toContain("WHERE t.account_id = $1");
     expect(queryMock.mock.calls[0][1]).toEqual(["account-1"]);
   });
+
+  it("returns unauthorized when there is no session user", async () => {
+    requireSessionUserMock.mockResolvedValueOnce(null);
+
+    const response = await threatsGet();
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      message: "Unauthorized",
+    });
+    expect(queryMock).not.toHaveBeenCalled();
+  });
 });

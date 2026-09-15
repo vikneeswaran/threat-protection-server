@@ -172,7 +172,8 @@ export async function PATCH(
     );
 
     const persistForFileHash = body.persistForFileHash === true;
-    if (persistForFileHash && threat.file_hash) {
+    const queued = commandResult.rows.length > 0;
+    if (queued && persistForFileHash && threat.file_hash) {
       await query(
         `
         INSERT INTO threat_action_policies
@@ -207,10 +208,10 @@ export async function PATCH(
       threatId: threat.id,
       commandId: commandResult.rows[0]?.id ?? null,
       action,
-      queued: commandResult.rows.length > 0,
+      queued,
       persistForFileHash,
       message:
-        commandResult.rows.length > 0
+        queued
           ? "Threat action queued."
           : "A matching threat action is already pending for this threat.",
     });
