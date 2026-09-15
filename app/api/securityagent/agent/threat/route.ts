@@ -322,7 +322,9 @@ export async function POST(request: NextRequest) {
             'pending',
             $5::jsonb
           )
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (threat_id, action)
+          WHERE status IN ('pending', 'running')
+          DO NOTHING
           `,
           [
             account_id,

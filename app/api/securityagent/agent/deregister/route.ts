@@ -47,10 +47,40 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     // 1. Update endpoints status to offline
     // -----------------------------------------
+    let effectiveAccountId = resolvedAccountId;
+    if (!effectiveAccountId && resolvedAgentId) {
+      const endpointAccountResult = await query(
+        `
+        SELECT account_id
+        FROM endpoints
+        WHERE agent_id = $1
+        LIMIT 1
+        `,
+        [resolvedAgentId]
+      );
+
+      effectiveAccountId =
+        endpointAccountResult.rows[0]?.account_id ?? null;
+
+      if (!effectiveAccountId) {
+        const agentAccountResult = await query(
+          `
+          SELECT account_id
+          FROM agent_instances
+          WHERE agent_id = $1
+          LIMIT 1
+          `,
+          [resolvedAgentId]
+        );
+        effectiveAccountId =
+          agentAccountResult.rows[0]?.account_id ?? null;
+      }
+    }
+
     let targetEndpointIds: string[] = [];
 
     if (resolvedEndpointId) {
-      const endpointResult = resolvedAccountId
+      const endpointResult = effectiveAccountId
         ? await query(
             `
             UPDATE endpoints
@@ -62,7 +92,7 @@ export async function POST(request: NextRequest) {
               AND account_id = $2
             RETURNING id
             `,
-            [resolvedEndpointId, resolvedAccountId]
+            [resolvedEndpointId, effectiveAccountId]
           )
         : await query(
             `
@@ -81,31 +111,29 @@ export async function POST(request: NextRequest) {
         .map((row) => row.id as string)
         .filter(Boolean);
     } else if (resolvedAgentId) {
-      const endpointResult = resolvedAccountId
-        ? await query(
-            `
-            UPDATE endpoints
-            SET
-              status = 'offline'::endpoint_status,
-              secured_by_kuamini = FALSE,
-              updated_at = NOW()
-            WHERE agent_id = $1 AND account_id = $2
-            RETURNING id
-            `,
-            [resolvedAgentId, resolvedAccountId]
-          )
-        : await query(
-            `
-            UPDATE endpoints
-            SET
-              status = 'offline'::endpoint_status,
-              secured_by_kuamini = FALSE,
-              updated_at = NOW()
-            WHERE agent_id = $1
-            RETURNING id
-            `,
-            [resolvedAgentId]
-          );
+      if (!effectiveAccountId) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Unable to resolve account for deregistration request.",
+          },
+          { status: 404 }
+        );
+      }
+
+      const endpointResult = await query(
+        `
+        UPDATE endpoints
+        SET
+          status = 'offline'::endpoint_status,
+          secured_by_kuamini = FALSE,
+          updated_at = NOW()
+        WHERE agent_id = $1 AND account_id = $2
+        RETURNING id
+        `,
+        [resolvedAgentId, effectiveAccountId]
+      );
 
       targetEndpointIds = endpointResult.rows
         .map((row) => row.id as string)
@@ -128,7 +156,7 @@ export async function POST(request: NextRequest) {
         `,
         [targetEndpointIds]
       );
-    } else if (resolvedAgentId && resolvedAccountId) {
+    } else if (resolvedAgentId && effectiveAccountId) {
       await query(
         `
         UPDATE installation_instances
@@ -140,7 +168,7 @@ export async function POST(request: NextRequest) {
           SELECT id FROM endpoints WHERE agent_id = $2
         )
         `,
-        [resolvedAccountId, resolvedAgentId]
+        [effectiveAccountId, resolvedAgentId]
       );
     }
 
@@ -148,23 +176,14 @@ export async function POST(request: NextRequest) {
     // 3. Mark agent instance as inactive
     // -----------------------------------------
     if (resolvedAgentId) {
-      if (resolvedAccountId) {
+      if (effectiveAccountId) {
         await query(
           `
           DELETE FROM agent_instances
           WHERE agent_id = $1 AND account_id = $2
           RETURNING id
           `,
-          [resolvedAgentId, resolvedAccountId]
-        );
-      } else {
-        await query(
-          `
-          DELETE FROM agent_instances
-          WHERE agent_id = $1
-          RETURNING id
-          `,
-          [resolvedAgentId]
+          [resolvedAgentId, effectiveAccountId]
         );
       }
     }

@@ -156,7 +156,9 @@ export async function PATCH(
         $5,
         $6::jsonb
       )
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (threat_id, action)
+      WHERE status IN ('pending', 'running')
+      DO NOTHING
       RETURNING id
       `,
       [
