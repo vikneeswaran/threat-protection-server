@@ -1,34 +1,54 @@
 import { NextResponse } from "next/server";
+import { requireSessionUser } from "@/lib/auth/session";
 import { query } from "@/lib/db";
 
 export async function GET() {
   try {
-    const result = await query(`
+    const user = await requireSessionUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        },
+        { status: 401 }
+      );
+    }
+
+    const result = await query(
+      `
       SELECT
         COUNT(*) FILTER (
-          WHERE DATE(detected_at) = CURRENT_DATE
+          WHERE DATE(t.detected_at) = CURRENT_DATE
         ) AS detected,
 
         COUNT(*) FILTER (
-          WHERE severity = 'critical'
+          WHERE t.severity = 'critical'
         ) AS critical,
 
         COUNT(*) FILTER (
-          WHERE status = 'detected'
+          WHERE t.status = 'detected'
         ) AS open_incidents,
 
         COUNT(*) FILTER (
-          WHERE DATE(resolved_at) = CURRENT_DATE
+          WHERE DATE(t.resolved_at) = CURRENT_DATE
         ) AS resolved
-      FROM threats;
-    `);
+
+      FROM threats t
+      INNER JOIN endpoints e
+        ON t.endpoint_id = e.id
+      WHERE e.account_id = $1
+      `,
+      [user.account_id]
+    );
 
     return NextResponse.json({
       success: true,
       summary: result.rows[0],
     });
   } catch (error) {
-    console.error(error);
+    console.error("Threat Summary API Error:", error);
 
     return NextResponse.json(
       {
@@ -38,4 +58,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+} 

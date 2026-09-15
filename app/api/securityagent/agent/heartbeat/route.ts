@@ -188,6 +188,19 @@ export async function POST(request: NextRequest) {
     const instance = instanceResult.rows[0];
 
     // -----------------------------------------
+// 3A. Block heartbeat for uninstalled agent
+// -----------------------------------------
+if (String(instance.status).toUpperCase() === "UNINSTALLED") {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Installation has been uninstalled.",
+    },
+    { status: 410 }
+  );
+}
+
+    // -----------------------------------------
     // 4. Check installation expiry
     // -----------------------------------------
     if (new Date(instance.expires_at) <= new Date()) {
@@ -426,7 +439,6 @@ export async function POST(request: NextRequest) {
 
       endpointId = endpointResult.rows[0].id;
     }
-
     // -----------------------------------------
     // 8. Link endpoint to installation instance
     // -----------------------------------------
@@ -443,7 +455,33 @@ export async function POST(request: NextRequest) {
     );
 
     // -----------------------------------------
-    // 9. Return heartbeat success
+    // 9. Get active policies assigned to endpoint
+    // -----------------------------------------
+    const policyResult = await query(
+      `
+      SELECT
+        p.id,
+        p.name,
+        p.description,
+        p.type,
+        p.config,
+        p.is_active,
+        p.status
+      FROM endpoint_policies ep
+      INNER JOIN policies p
+        ON p.id = ep.policy_id
+      WHERE ep.endpoint_id = $1::uuid
+        AND p.is_active = true
+        AND p.status = 'active'
+      ORDER BY ep.assigned_at DESC
+      `,
+      [endpointId]
+    );
+
+    const policies = policyResult.rows;
+
+    // -----------------------------------------
+    // 10. Return heartbeat success
     // -----------------------------------------
     return NextResponse.json({
       success: true,
@@ -452,6 +490,7 @@ export async function POST(request: NextRequest) {
       endpointId,
       status: "online",
       lastSeenAt: new Date().toISOString(),
+      policies,
     });
   } catch (error) {
     console.error("Agent Heartbeat Error:", error);
