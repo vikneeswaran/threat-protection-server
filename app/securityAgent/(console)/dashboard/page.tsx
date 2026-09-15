@@ -286,7 +286,7 @@ export default async function SecurityAgentDashboardPage() {
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
           {/* Endpoint Health */}
           <div
-            className="relative overflow-hidden rounded-2xl border border-blue-400/35 p-5 shadow-[0_0_28px_rgba(30,100,255,0.12),inset_0_0_45px_rgba(40,100,255,0.05)] sm:p-6"
+            className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-blue-400/35 p-5 shadow-[0_0_28px_rgba(30,100,255,0.12),inset_0_0_45px_rgba(40,100,255,0.05)] sm:p-6"
             style={{
               background:
                 "linear-gradient(145deg, rgba(20,55,100,0.78), rgba(5,20,48,0.94) 65%, rgba(4,13,31,0.98))",
@@ -298,9 +298,9 @@ export default async function SecurityAgentDashboardPage() {
               1. Endpoint Health
             </h3>
 
-            <div className="relative z-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="relative z-10 grid flex-1 grid-cols-1 grid-rows-2 gap-4 sm:grid-cols-2">
               {/* Total */}
-              <div className="rounded-xl border-l-4 border-blue-400 border-t border-r border-b border-blue-400/20 bg-[#06152c]/85 p-5 shadow-[inset_0_0_25px_rgba(30,144,255,0.05)]">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-blue-400 border-t border-r border-b border-blue-400/20 bg-[#06152c]/85 p-5 shadow-[inset_0_0_25px_rgba(30,144,255,0.05)]">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Total Registered
                 </p>
@@ -311,7 +311,7 @@ export default async function SecurityAgentDashboardPage() {
               </div>
 
               {/* Online */}
-              <div className="rounded-xl border-l-4 border-emerald-400 border-t border-r border-b border-emerald-400/20 bg-[#06152c]/85 p-5 shadow-[inset_0_0_25px_rgba(16,185,129,0.05)]">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-emerald-400 border-t border-r border-b border-emerald-400/20 bg-[#06152c]/85 p-5 shadow-[inset_0_0_25px_rgba(16,185,129,0.05)]">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Online
                 </p>
@@ -322,7 +322,7 @@ export default async function SecurityAgentDashboardPage() {
               </div>
 
               {/* Offline */}
-              <div className="rounded-xl border-l-4 border-orange-400 border-t border-r border-b border-orange-400/20 bg-[#06152c]/85 p-5">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-orange-400 border-t border-r border-b border-orange-400/20 bg-[#06152c]/85 p-5">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Offline
                 </p>
@@ -333,7 +333,7 @@ export default async function SecurityAgentDashboardPage() {
               </div>
 
               {/* Quarantine */}
-              <div className="rounded-xl border-l-4 border-pink-500 border-t border-r border-b border-pink-400/20 bg-[#06152c]/85 p-5">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-pink-500 border-t border-r border-b border-pink-400/20 bg-[#06152c]/85 p-5">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   In Quarantine
                 </p>
@@ -343,10 +343,6 @@ export default async function SecurityAgentDashboardPage() {
                 </h4>
               </div>
             </div>
-
-            <p className="relative z-10 mt-5 text-sm text-slate-300/80 sm:text-base">
-              Pending setup: {dashboard.endpointHealth.pending} endpoints
-            </p>
           </div>
 
           {/* Incidents / Threats */}
@@ -430,7 +426,7 @@ export default async function SecurityAgentDashboardPage() {
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
           {/* Policy Status */}
           <div
-            className="relative overflow-hidden rounded-2xl border border-cyan-400/35 p-5 shadow-[0_0_28px_rgba(34,211,238,0.12),inset_0_0_45px_rgba(34,211,238,0.05)] sm:p-6"
+            className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-cyan-400/35 p-5 shadow-[0_0_28px_rgba(34,211,238,0.12),inset_0_0_45px_rgba(34,211,238,0.05)] sm:p-6"
             style={{
               background:
                 "linear-gradient(145deg, rgba(20,58,105,0.82), rgba(7,26,58,0.96) 65%, rgba(4,15,35,0.98))",
@@ -443,9 +439,9 @@ export default async function SecurityAgentDashboardPage() {
               3. Policy Status
             </h3>
 
-            <div className="relative z-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="relative z-10 grid flex-1 grid-cols-1 grid-rows-2 gap-4 sm:grid-cols-2">
               {/* Total */}
-              <div className="rounded-xl border-l-4 border-blue-400 border-t border-r border-b border-blue-400/20 bg-[#06152c]/90 p-5">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-blue-400 border-t border-r border-b border-blue-400/20 bg-[#06152c]/90 p-5">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Total Policies
                 </p>
@@ -456,7 +452,7 @@ export default async function SecurityAgentDashboardPage() {
               </div>
 
               {/* Active */}
-              <div className="rounded-xl border-l-4 border-emerald-400 border-t border-r border-b border-emerald-400/20 bg-[#06152c]/90 p-5">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-emerald-400 border-t border-r border-b border-emerald-400/20 bg-[#06152c]/90 p-5">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Active
                 </p>
@@ -467,7 +463,7 @@ export default async function SecurityAgentDashboardPage() {
               </div>
 
               {/* Draft */}
-              <div className="rounded-xl border-l-4 border-amber-400 border-t border-r border-b border-amber-400/20 bg-[#06152c]/90 p-5">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-amber-400 border-t border-r border-b border-amber-400/20 bg-[#06152c]/90 p-5">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Draft
                 </p>
@@ -478,7 +474,7 @@ export default async function SecurityAgentDashboardPage() {
               </div>
 
               {/* Disabled */}
-              <div className="rounded-xl border-l-4 border-slate-300 border-t border-r border-b border-slate-400/20 bg-[#06152c]/90 p-5">
+              <div className="flex flex-col justify-center rounded-xl border-l-4 border-slate-300 border-t border-r border-b border-slate-400/20 bg-[#06152c]/90 p-5">
                 <p className="text-sm text-sky-200/80 sm:text-base">
                   Disabled
                 </p>
@@ -488,15 +484,11 @@ export default async function SecurityAgentDashboardPage() {
                 </h4>
               </div>
             </div>
-
-            <p className="relative z-10 mt-5 text-sm leading-6 text-slate-300/80 sm:text-base">
-              Endpoints assigned to policies: 236 • Unassigned: 12
-            </p>
           </div>
 
           {/* License Status */}
           <div
-            className="relative overflow-hidden rounded-2xl border border-orange-400/40 p-5 shadow-[0_0_30px_rgba(251,146,60,0.13),inset_0_0_45px_rgba(251,146,60,0.05)] sm:p-6"
+            className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-orange-400/40 p-5 shadow-[0_0_30px_rgba(251,146,60,0.13),inset_0_0_45px_rgba(251,146,60,0.05)] sm:p-6"
             style={{
               background:
                 "linear-gradient(145deg, rgba(34,52,90,0.90), rgba(12,25,58,0.96) 65%, rgba(7,14,34,0.98))",
@@ -509,64 +501,66 @@ export default async function SecurityAgentDashboardPage() {
               4. License Status
             </h3>
 
-            <div className="relative z-10 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
-              {/* Total */}
-              <div className="rounded-xl border-l-4 border-slate-300 border-t border-r border-b border-slate-400/20 bg-[#07172f]/90 p-4 sm:p-5">
-                <p className="text-sm text-sky-200/80">Total</p>
+            <div className="relative z-10 flex flex-1 flex-col">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+                {/* Total */}
+                <div className="flex flex-col justify-center rounded-xl border-l-4 border-slate-300 border-t border-r border-b border-slate-400/20 bg-[#07172f]/90 p-4 sm:p-5">
+                  <p className="text-sm text-sky-200/80">Total</p>
 
-                <h4 className="mt-2 text-3xl font-bold text-white sm:text-4xl">
-                  {dashboard.licenses.total}
-                </h4>
+                  <h4 className="mt-2 text-3xl font-bold text-white sm:text-4xl">
+                    {dashboard.licenses.total}
+                  </h4>
+                </div>
+
+                {/* Allocated */}
+                <div className="flex flex-col justify-center rounded-xl border-l-4 border-blue-400 border-t border-r border-b border-blue-400/20 bg-[#07172f]/90 p-4 sm:p-5">
+                  <p className="text-sm text-sky-200/80">Allocated</p>
+
+                  <h4 className="mt-2 text-3xl font-bold text-blue-400 sm:text-4xl">
+                    {dashboard.licenses.allocated}
+                  </h4>
+                </div>
+
+                {/* Used */}
+                <div className="flex flex-col justify-center rounded-xl border-l-4 border-rose-400 border-t border-r border-b border-rose-400/20 bg-[#07172f]/90 p-4 sm:p-5">
+                  <p className="text-sm text-sky-200/80">Used</p>
+
+                  <h4 className="mt-2 text-3xl font-bold text-rose-400 sm:text-4xl">
+                    {dashboard.licenses.used}
+                  </h4>
+                </div>
+
+                {/* Available */}
+                <div className="flex flex-col justify-center rounded-xl border-l-4 border-emerald-400 border-t border-r border-b border-emerald-400/20 bg-[#07172f]/90 p-4 sm:p-5">
+                  <p className="text-sm text-sky-200/80">Available</p>
+
+                  <h4 className="mt-2 text-3xl font-bold text-emerald-400 sm:text-4xl">
+                    {dashboard.licenses.available}
+                  </h4>
+                </div>
               </div>
 
-              {/* Allocated */}
-              <div className="rounded-xl border-l-4 border-blue-400 border-t border-r border-b border-blue-400/20 bg-[#07172f]/90 p-4 sm:p-5">
-                <p className="text-sm text-sky-200/80">Allocated</p>
+              {/* Utilization */}
+              <div className="my-auto">
+                <div className="mb-3 flex items-center justify-between text-sm text-sky-100/80">
+                  <span>Utilization</span>
 
-                <h4 className="mt-2 text-3xl font-bold text-blue-400 sm:text-4xl">
-                  {dashboard.licenses.allocated}
-                </h4>
-              </div>
+                  <span className="font-semibold text-white">
+                    {dashboard.licenses.utilization}%
+                  </span>
+                </div>
 
-              {/* Used */}
-              <div className="rounded-xl border-l-4 border-rose-400 border-t border-r border-b border-rose-400/20 bg-[#07172f]/90 p-4 sm:p-5">
-                <p className="text-sm text-sky-200/80">Used</p>
-
-                <h4 className="mt-2 text-3xl font-bold text-rose-400 sm:text-4xl">
-                  {dashboard.licenses.used}
-                </h4>
-              </div>
-
-              {/* Available */}
-              <div className="rounded-xl border-l-4 border-emerald-400 border-t border-r border-b border-emerald-400/20 bg-[#07172f]/90 p-4 sm:p-5">
-                <p className="text-sm text-sky-200/80">Available</p>
-
-                <h4 className="mt-2 text-3xl font-bold text-emerald-400 sm:text-4xl">
-                  {dashboard.licenses.available}
-                </h4>
-              </div>
-            </div>
-
-            {/* Utilization */}
-            <div className="relative z-10 mt-7">
-              <div className="mb-3 flex items-center justify-between text-sm text-sky-100/80">
-                <span>Utilization</span>
-
-                <span className="font-semibold text-white">
-                  {dashboard.licenses.utilization}%
-                </span>
-              </div>
-
-              <div className="h-4 overflow-hidden rounded-full border border-white/10 bg-[#142a4c] shadow-inner">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-300 shadow-[0_0_14px_rgba(251,191,36,0.9)] transition-all duration-700"
-                  style={{
-                    width: `${Math.min(
-                      Math.max(dashboard.licenses.utilization, 0),
-                      100
-                    )}%`,
-                  }}
-                />
+                <div className="h-4 overflow-hidden rounded-full border border-white/10 bg-[#142a4c] shadow-inner">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-300 shadow-[0_0_14px_rgba(251,191,36,0.9)] transition-all duration-700"
+                    style={{
+                      width: `${Math.min(
+                        Math.max(dashboard.licenses.utilization, 0),
+                        100
+                      )}%`,
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
