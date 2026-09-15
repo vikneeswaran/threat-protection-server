@@ -301,8 +301,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (endpointIdToUse) {
+      let queuedCommandId: string | null = null;
       if (resolvedAction) {
-        await query(
+        const commandInsertResult = await query(
           `
           INSERT INTO threat_action_commands
           (
@@ -325,6 +326,7 @@ export async function POST(request: NextRequest) {
           ON CONFLICT (threat_id, action)
           WHERE status IN ('pending', 'running')
           DO NOTHING
+          RETURNING id
           `,
           [
             account_id,
@@ -339,21 +341,24 @@ export async function POST(request: NextRequest) {
             }),
           ]
         );
+        queuedCommandId = commandInsertResult.rows[0]?.id ?? null;
       }
 
       // -----------------------------------------
       // 7. Update endpoint threat status if exists
       // -----------------------------------------
-      await query(
-        `
-        UPDATE endpoints
-        SET
-          infected = true,
-          updated_at = NOW()
-        WHERE id = $1
-        `,
-        [endpointIdToUse]
-      );
+      if (!resolvedAction || queuedCommandId) {
+        await query(
+          `
+          UPDATE endpoints
+          SET
+            infected = true,
+            updated_at = NOW()
+          WHERE id = $1
+          `,
+          [endpointIdToUse]
+        );
+      }
     }
 
     // -----------------------------------------

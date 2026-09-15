@@ -42,7 +42,7 @@ describe("agent threat reporting route", () => {
       .mockResolvedValueOnce({
         rows: [{ action: "allow" }],
       })
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "cmd-1" }] })
       .mockResolvedValueOnce({ rows: [] });
 
     const response = await reportThreatPost(
@@ -107,7 +107,7 @@ describe("agent threat reporting route", () => {
       .mockResolvedValueOnce({
         rows: [{ action: "Block" }],
       })
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "cmd-2" }] })
       .mockResolvedValueOnce({ rows: [] });
 
     const response = await reportThreatPost(
@@ -144,5 +144,61 @@ describe("agent threat reporting route", () => {
           sql.includes("FROM policies p")
       )
     ).toBe(true);
+  });
+
+  it("handles duplicate pending action command without re-marking endpoint", async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [{ id: "account-1", is_active: true }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: "endpoint-1" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "threat-3",
+            account_id: "account-1",
+            endpoint_id: "endpoint-1",
+            agent_id: "agent-1",
+            name: "Eicar",
+            severity: "high",
+            status: "detected",
+            detected_at: new Date().toISOString(),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ action: "allow" }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const response = await reportThreatPost(
+      new NextRequest("http://localhost/api/securityagent/agent/threat", {
+        method: "POST",
+        body: JSON.stringify({
+          agent_id: "agent-1",
+          account_id: "account-1",
+          threat_name: "Eicar",
+          threat_type: "Virus",
+          severity: "high",
+          file_hash: "abc123",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      action: "allow",
+    });
+
+    expect(
+      queryMock.mock.calls.some(
+        ([sql]: [string]) =>
+          typeof sql === "string" &&
+          sql.includes("UPDATE endpoints")
+      )
+    ).toBe(false);
   });
 });
