@@ -190,7 +190,9 @@ export async function POST(request: NextRequest) {
         await query(
           `
           UPDATE agent_instances
-          SET updated_at = NOW()
+          SET
+            endpoint_id = NULL,
+            updated_at = NOW()
           WHERE agent_id = $1
             AND account_id = $2
             ${
