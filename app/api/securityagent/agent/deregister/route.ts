@@ -187,14 +187,27 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     if (resolvedAgentId) {
       if (effectiveAccountId) {
-        await query(
-          `
-          DELETE FROM agent_instances
-          WHERE agent_id = $1 AND account_id = $2
-          RETURNING id
-          `,
-          [resolvedAgentId, effectiveAccountId]
-        );
+        if (targetEndpointIds.length > 0) {
+          await query(
+            `
+            DELETE FROM agent_instances
+            WHERE agent_id = $1
+              AND account_id = $2
+              AND endpoint_id = ANY($3::uuid[])
+            RETURNING id
+            `,
+            [resolvedAgentId, effectiveAccountId, targetEndpointIds]
+          );
+        } else {
+          await query(
+            `
+            DELETE FROM agent_instances
+            WHERE agent_id = $1 AND account_id = $2
+            RETURNING id
+            `,
+            [resolvedAgentId, effectiveAccountId]
+          );
+        }
       }
     }
 

@@ -14,7 +14,7 @@ vi.mock("@/lib/auth/session", () => ({
   requireSessionUser: requireSessionUserMock,
 }));
 
-import { PATCH as patchThreat } from "@/app/api/securityagent/threats/[id]/route";
+import { GET as getThreat, PATCH as patchThreat } from "@/app/api/securityagent/threats/[id]/route";
 
 describe("threat details PATCH route", () => {
   beforeEach(() => {
@@ -188,5 +188,37 @@ describe("threat details PATCH route", () => {
     await expect(response.json()).resolves.toMatchObject({
       success: false,
     });
+  });
+
+  it("GET uses account scoping and returns orphan-safe threat payload", async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "threat-get-1",
+          hostname: "Unknown Endpoint",
+          endpoint_status: "deleted",
+        },
+      ],
+    });
+
+    const response = await getThreat(
+      new Request("http://localhost/api/securityagent/threats/threat-get-1"),
+      { params: Promise.resolve({ id: "threat-get-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      threat: {
+        id: "threat-get-1",
+        hostname: "Unknown Endpoint",
+        endpoint_status: "deleted",
+      },
+    });
+
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(queryMock.mock.calls[0][0]).toContain("LEFT JOIN endpoints");
+    expect(queryMock.mock.calls[0][0]).toContain("AND t.account_id = $2");
+    expect(queryMock.mock.calls[0][1]).toEqual(["threat-get-1", "account-1"]);
   });
 });

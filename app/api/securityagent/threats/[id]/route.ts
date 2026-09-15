@@ -146,7 +146,8 @@ export async function PATCH(
         notes,
         payload
       )
-      SELECT
+      VALUES
+      (
         $1,
         $2,
         $3,
@@ -154,13 +155,10 @@ export async function PATCH(
         'pending',
         $5,
         $6::jsonb
-      WHERE NOT EXISTS (
-        SELECT 1
-        FROM threat_action_commands
-        WHERE threat_id = $3
-          AND action = $4::threat_action_type
-          AND status IN ('pending', 'running')
       )
+      ON CONFLICT (threat_id, action)
+      WHERE status IN ('pending', 'running')
+      DO NOTHING
       RETURNING id
       `,
       [
