@@ -169,7 +169,8 @@ export async function PATCH(
       ]
     );
 
-    if (threat.file_hash) {
+    const persistForFileHash = body.persistForFileHash === true;
+    if (persistForFileHash && threat.file_hash) {
       await query(
         `
         INSERT INTO threat_action_policies
@@ -205,6 +206,7 @@ export async function PATCH(
       commandId: commandResult.rows[0]?.id ?? null,
       action,
       queued: commandResult.rows.length > 0,
+      persistForFileHash,
     });
   } catch (error) {
     console.error("Failed to queue threat action:", error);

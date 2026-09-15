@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     // 1. Update endpoints status to offline
     // -----------------------------------------
-    let targetEndpointId: string | null = resolvedEndpointId;
+    let targetEndpointIds: string[] = [];
 
     if (resolvedEndpointId) {
       const endpointResult = resolvedAccountId
@@ -77,7 +77,9 @@ export async function POST(request: NextRequest) {
             [resolvedEndpointId]
           );
 
-      targetEndpointId = endpointResult.rows[0]?.id ?? null;
+      targetEndpointIds = endpointResult.rows
+        .map((row) => row.id as string)
+        .filter(Boolean);
     } else if (resolvedAgentId) {
       const endpointResult = resolvedAccountId
         ? await query(
@@ -105,15 +107,15 @@ export async function POST(request: NextRequest) {
             [resolvedAgentId]
           );
 
-      if (endpointResult.rows.length > 0) {
-        targetEndpointId = endpointResult.rows[0].id;
-      }
+      targetEndpointIds = endpointResult.rows
+        .map((row) => row.id as string)
+        .filter(Boolean);
     }
 
     // -----------------------------------------
     // 2. Update installation_instances status
     // -----------------------------------------
-    if (targetEndpointId) {
+    if (targetEndpointIds.length > 0) {
       await query(
         `
         UPDATE installation_instances
@@ -122,9 +124,9 @@ export async function POST(request: NextRequest) {
           endpoint_id = NULL,
           uninstalled_at = NOW(),
           updated_at = NOW()
-        WHERE endpoint_id = $1
+        WHERE endpoint_id = ANY($1::uuid[])
         `,
-        [targetEndpointId]
+        [targetEndpointIds]
       );
     } else if (resolvedAgentId && resolvedAccountId) {
       await query(
@@ -146,47 +148,29 @@ export async function POST(request: NextRequest) {
     // 3. Mark agent instance as inactive
     // -----------------------------------------
     if (resolvedAgentId) {
-      const deactivatedAgent = resolvedAccountId
-        ? await query(
-            `
-            DELETE FROM agent_instances
-            WHERE agent_id = $1 AND account_id = $2
-            RETURNING id
-            `,
-            [resolvedAgentId, resolvedAccountId]
-          )
-        : await query(
-            `
-            DELETE FROM agent_instances
-            WHERE agent_id = $1
-            RETURNING id
-            `,
-            [resolvedAgentId]
-          );
-
-      if (!targetEndpointId && deactivatedAgent.rows.length > 0) {
-        const endpointResult = await query(
+      if (resolvedAccountId) {
+        await query(
           `
-          SELECT id
-          FROM endpoints
-          WHERE agent_id = $1
-          ${
-            resolvedAccountId
-              ? "AND account_id = $2"
-              : ""
-          }
-          LIMIT 1
+          DELETE FROM agent_instances
+          WHERE agent_id = $1 AND account_id = $2
+          RETURNING id
           `,
-          resolvedAccountId
-            ? [resolvedAgentId, resolvedAccountId]
-            : [resolvedAgentId]
+          [resolvedAgentId, resolvedAccountId]
         );
-        targetEndpointId = endpointResult.rows[0]?.id ?? null;
+      } else {
+        await query(
+          `
+          DELETE FROM agent_instances
+          WHERE agent_id = $1
+          RETURNING id
+          `,
+          [resolvedAgentId]
+        );
       }
     }
 
     console.info(
-      `[Agent Deregister] Successfully deregistered agent: ${resolvedAgentId || targetEndpointId}`
+      `[Agent Deregister] Successfully deregistered agent: ${resolvedAgentId || targetEndpointIds[0] || "unknown"}`
     );
 
     return NextResponse.json({
