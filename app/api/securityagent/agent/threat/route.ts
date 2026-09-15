@@ -1,6 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
+const SUPPORTED_THREAT_ACTIONS = new Set([
+  "quarantine",
+  "kill",
+  "allow",
+  "restore",
+  "delete",
+]);
+
+function normalizeThreatAction(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "block") {
+    return "kill";
+  }
+
+  return SUPPORTED_THREAT_ACTIONS.has(normalized) ? normalized : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -215,9 +240,108 @@ export async function POST(request: NextRequest) {
     const threat = threatResult.rows[0];
 
     // -----------------------------------------
-    // 6. Update endpoint threat status if exists
+    // 6. Resolve action policy and enqueue command
     // -----------------------------------------
+    let resolvedAction: string | null = null;
+    let actionSource: "admin_override" | "policy" | null = null;
+
+    if (file_hash) {
+      const overrideResult = await query(
+        `
+        SELECT action
+        FROM threat_action_policies
+        WHERE account_id = $1
+          AND file_hash = $2
+        LIMIT 1
+        `,
+        [account_id, file_hash]
+      );
+
+      resolvedAction = normalizeThreatAction(overrideResult.rows[0]?.action);
+      if (resolvedAction) {
+        actionSource = "admin_override";
+      }
+    }
+
+    if (!resolvedAction) {
+      const policyResult = await query(
+        `
+        WITH account_scope AS (
+          SELECT id, parent_account_id
+          FROM accounts
+          WHERE id = $1
+          LIMIT 1
+        )
+        SELECT
+          p.config->>'action' AS action
+        FROM policies p
+        CROSS JOIN account_scope a
+        WHERE p.account_id IN (a.id, a.parent_account_id)
+          AND p.type = 'threat_actions'::policy_type
+          AND p.status = 'active'::policy_status
+          AND p.is_active = TRUE
+          AND (
+            LOWER(COALESCE(p.config->>'threatType', 'other')) = LOWER($2)
+            OR LOWER(COALESCE(p.config->>'threatType', 'other')) = 'other'
+          )
+        ORDER BY
+          CASE WHEN p.account_id = a.id THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(COALESCE(p.config->>'threatType', '')) = LOWER($2) THEN 0 ELSE 1 END,
+          CASE WHEN p.is_default THEN 0 ELSE 1 END,
+          p.updated_at DESC
+        LIMIT 1
+        `,
+        [account_id, threat_type || "other"]
+      );
+
+      resolvedAction = normalizeThreatAction(policyResult.rows[0]?.action);
+      if (resolvedAction) {
+        actionSource = "policy";
+      }
+    }
+
     if (endpointIdToUse) {
+      if (resolvedAction) {
+        await query(
+          `
+          INSERT INTO threat_action_commands
+          (
+            account_id,
+            endpoint_id,
+            threat_id,
+            action,
+            status,
+            payload
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4::threat_action_type,
+            'pending',
+            $5::jsonb
+          )
+          ON CONFLICT DO NOTHING
+          `,
+          [
+            account_id,
+            endpointIdToUse,
+            threat.id,
+            resolvedAction,
+            JSON.stringify({
+              source: actionSource,
+              threat_type: threat_type || "unknown",
+              severity: severity.toLowerCase(),
+              file_hash: file_hash || null,
+            }),
+          ]
+        );
+      }
+
+      // -----------------------------------------
+      // 7. Update endpoint threat status if exists
+      // -----------------------------------------
       await query(
         `
         UPDATE endpoints
@@ -231,14 +355,14 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 7. Log threat event
+    // 8. Log threat event
     // -----------------------------------------
     console.info(
       `[Threat Reported] Account: ${account_id}, Threat: ${threat_name}, Severity: ${severity}`
     );
 
     // -----------------------------------------
-    // 8. Return success
+    // 9. Return success
     // -----------------------------------------
     return NextResponse.json({
       success: true,
@@ -251,6 +375,7 @@ export async function POST(request: NextRequest) {
       severity: threat.severity,
       status: threat.status,
       detectedAt: threat.detected_at,
+      action: resolvedAction,
     });
   } catch (error) {
     console.error("Threat Report Error:", error);

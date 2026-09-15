@@ -52,7 +52,14 @@ export async function getEndpointsData(
           COUNT(*) FILTER (WHERE infected = TRUE)::int AS infected,
           COUNT(*) FILTER (WHERE secured_by_kuamini = TRUE)::int AS "securedByKuamini"
       FROM endpoints
-      WHERE account_id = $1;
+      WHERE account_id = $1
+        AND EXISTS (
+          SELECT 1
+          FROM installation_instances
+          WHERE installation_instances.endpoint_id = endpoints.id
+            AND installation_instances.account_id = $1
+            AND installation_instances.status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+        );
       `,
       [accountId]
     ),
@@ -79,6 +86,13 @@ export async function getEndpointsData(
     infected
     FROM endpoints
     WHERE account_id = $1
+      AND EXISTS (
+        SELECT 1
+        FROM installation_instances
+        WHERE installation_instances.endpoint_id = endpoints.id
+          AND installation_instances.account_id = $1
+          AND installation_instances.status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+      )
   ORDER BY created_at DESC;
       `,
       [accountId]
@@ -116,7 +130,14 @@ export async function getEndpointById(
         infected
     FROM endpoints
     WHERE id = $1
-      AND account_id = $2;
+      AND account_id = $2
+      AND EXISTS (
+        SELECT 1
+        FROM installation_instances
+        WHERE installation_instances.endpoint_id = endpoints.id
+          AND installation_instances.account_id = $2
+          AND installation_instances.status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+      );
     `,
     [id, accountId]
   );

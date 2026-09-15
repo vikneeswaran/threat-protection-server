@@ -55,7 +55,14 @@ export async function getDashboardData(
           COUNT(*) FILTER (WHERE status='pending')::int AS pending,
           COUNT(*) FILTER (WHERE status='quarantined')::int AS quarantined
       FROM endpoints
-      WHERE account_id = $1;
+      WHERE account_id = $1
+        AND EXISTS (
+          SELECT 1
+          FROM installation_instances
+          WHERE installation_instances.endpoint_id = endpoints.id
+            AND installation_instances.account_id = $1
+            AND installation_instances.status IN ('PENDING', 'INSTALLED', 'ACTIVE')
+        );
       `,
       [accountId]
     ),

@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
+import { requireSessionUser } from "@/lib/auth/session";
 import { query } from "@/lib/db";
 
 // Fetch all detected threats with endpoint information.
 export async function GET() {
   try {
+    const user = await requireSessionUser();
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        },
+        { status: 401 }
+      );
+    }
+
     const result = await query(
       `
       SELECT
@@ -21,15 +33,17 @@ export async function GET() {
         t.detection_source,
         t.detected_at,
         t.resolved_at,
-        e.hostname,
+        COALESCE(e.hostname, 'Unknown Endpoint') AS hostname,
         e.ip_address,
         e.os,
-        e.status AS endpoint_status
+        COALESCE(e.status::text, 'deleted') AS endpoint_status
       FROM threats t
-      INNER JOIN endpoints e
+      LEFT JOIN endpoints e
         ON t.endpoint_id = e.id
+      WHERE t.account_id = $1
       ORDER BY t.detected_at DESC
-      `
+      `,
+      [user.account_id]
     );
 
     return NextResponse.json({
@@ -37,11 +51,11 @@ export async function GET() {
       threats: result.rows,
     });
   } catch (error) {
-  console.error("Threat API Error:", error);
+    console.error("Threat API Error:", error);
 
-  return NextResponse.json({
-    success: false,
-    message: "Failed to fetch threats."
-  });
-}
+    return NextResponse.json({
+      success: false,
+      message: "Failed to fetch threats.",
+    });
+  }
 }
