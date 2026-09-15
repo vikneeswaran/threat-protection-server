@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 [CmdletBinding()]
 param()
 
@@ -38,11 +38,30 @@ function Get-InstallerMsi {
     return $msi.FullName
 }
 
+function Get-AgentVersion {
+    param([string]$MsiPath)
+
+    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($MsiPath)
+
+    if ($fileName -notmatch '^KuaminiSecurityClient-(.+)$') {
+        Stop-Install "Unable to determine agent version from MSI filename: $fileName"
+    }
+
+    $version = $Matches[1]
+
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        Stop-Install "Unable to determine agent version from MSI filename: $fileName"
+    }
+
+    return $version
+}
+
 function Write-AgentConfig {
     param(
         [string]$Directory,
         [string]$Token,
-        [string]$AgentId
+        [string]$AgentId,
+        [string]$AgentVersion
     )
 
     New-Item -ItemType Directory -Path $Directory -Force | Out-Null
@@ -51,6 +70,7 @@ function Write-AgentConfig {
         console_url = "https://kuaminisystems.com/securityAgent"
         registration_token = $Token
         agent_id = $AgentId
+        agent_version = $AgentVersion
         auto_register = $true
         heartbeat_interval = 60
     }
@@ -58,14 +78,16 @@ function Write-AgentConfig {
     Set-Content (Join-Path $Directory "registration.token") -Value $Token -Encoding UTF8 -NoNewline
 }
 
-Write-Host "Installing Kuamini Security Client v__VERSION__" -ForegroundColor Green
 $token = Get-RegistrationToken
 $msiPath = Get-InstallerMsi
+$agentVersion = Get-AgentVersion -MsiPath $msiPath
 $agentId = [guid]::NewGuid().ToString()
 
+Write-Host "Installing Kuamini Security Client v$agentVersion" -ForegroundColor Green
+
 try {
-    Write-AgentConfig -Directory $userConfigDirectory -Token $token -AgentId $agentId
-    Write-AgentConfig -Directory $serviceConfigDirectory -Token $token -AgentId $agentId
+    Write-AgentConfig -Directory $userConfigDirectory -Token $token -AgentId $agentId -AgentVersion $agentVersion
+    Write-AgentConfig -Directory $serviceConfigDirectory -Token $token -AgentId $agentId -AgentVersion $agentVersion
 } catch {
     Stop-Install "Unable to write agent configuration: $($_.Exception.Message)"
 }
