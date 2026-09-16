@@ -78,6 +78,7 @@ export default function EndpointActions({
   return (
     <>
       <div className="relative">
+
         {/* =====================================================
             GEAR BUTTON
             ===================================================== */}
@@ -118,47 +119,13 @@ export default function EndpointActions({
 
         {open && (
           <div className="absolute right-0 top-12 z-50 w-60 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/40">
+
             {/* Menu Header */}
             <div className="border-b border-slate-800 px-4 py-3">
               <p className="text-sm font-semibold text-white">
                 Endpoint Actions
               </p>
             </div>
-
-            {/* =================================================
-                SEND HEARTBEAT
-                ================================================= */}
-
-            <button
-              type="button"
-              onClick={() => {
-                console.info(
-                  "Send heartbeat requested for endpoint:",
-                  endpointId
-                );
-
-                setOpen(false);
-
-                // Heartbeat action will be connected here.
-              }}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-slate-300 transition-colors hover:bg-slate-800 hover:text-cyan-400"
-            >
-              <span className="text-lg text-cyan-400">
-                ↻
-              </span>
-
-              <span>
-                <span className="block font-medium">
-                  Send heartbeat
-                </span>
-
-                <span className="text-xs text-slate-500">
-                  Request endpoint status
-                </span>
-              </span>
-            </button>
-
-            <div className="border-t border-slate-800" />
 
             {/* =================================================
                 DELETE ENDPOINT
@@ -204,6 +171,7 @@ export default function EndpointActions({
                 )}
               </span>
             </button>
+
           </div>
         )}
       </div>
@@ -214,6 +182,7 @@ export default function EndpointActions({
 
       {toast && (
         <div className="fixed top-6 right-6 z-[100]">
+
           <div
             className={`flex min-w-[300px] items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-md ${
               toast === "Endpoint deleted successfully."
@@ -221,8 +190,10 @@ export default function EndpointActions({
                 : "border-red-500/30 bg-red-950/90 text-red-300"
             }`}
           >
+
             {/* Icon */}
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/20">
+
               {toast === "Endpoint deleted successfully." ? (
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -230,24 +201,27 @@ export default function EndpointActions({
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                   className="h-5 w-5"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m5 12 4 4L19 6"
-                  />
+                  <path d="m5 12 4 4L19 6" />
                 </svg>
               ) : (
-                <span className="text-lg">!</span>
+                <span className="text-lg">
+                  !
+                </span>
               )}
+
             </div>
 
             {/* Message */}
             <span className="text-sm font-medium">
               {toast}
             </span>
+
           </div>
+
         </div>
       )}
     </>

@@ -48,11 +48,9 @@ export default function EndpointTable({
    * ============================================================
    */
 
-  // If the server sends a new endpoint list, update our
-  // local list as well.
   useEffect(() => {
-  setVisibleEndpoints(endpoints);
-}, [endpoints]);
+    setVisibleEndpoints(endpoints);
+  }, [endpoints]);
 
   /*
    * ============================================================
@@ -249,27 +247,6 @@ export default function EndpointTable({
 
       return next;
     });
-  };
-
-  /*
-   * ============================================================
-   * ACTIONS
-   * ============================================================
-   */
-
-  const handleSendHeartbeat = () => {
-    if (!hasSelection || deleting) {
-      return;
-    }
-
-    console.info(
-      "Send heartbeat to endpoints:",
-      selectedEndpointData.map(
-        (endpoint) => endpoint.id
-      )
-    );
-
-    setActionsOpen(false);
   };
 
   /*
@@ -494,10 +471,7 @@ export default function EndpointTable({
               "
             >
 
-              {/* ------------------------------------------------
-                  THIN OUTLINED GEAR
-                  ------------------------------------------------ */}
-
+              {/* Thin outlined gear */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
@@ -560,71 +534,6 @@ export default function EndpointTable({
                   </p>
 
                 </div>
-
-                {/* ==================================================
-                    SEND HEARTBEAT
-                    ================================================== */}
-
-                <button
-                  type="button"
-                  disabled={
-                    !hasSelection || deleting
-                  }
-                  onClick={handleSendHeartbeat}
-                  className={`
-                    flex
-                    w-full
-                    items-center
-                    gap-3
-                    px-4
-                    py-3
-                    text-left
-                    text-sm
-                    transition-colors
-                    ${
-                      hasSelection && !deleting
-                        ? "text-slate-300 hover:bg-slate-800 hover:text-cyan-400"
-                        : "cursor-not-allowed text-slate-600"
-                    }
-                  `}
-                >
-
-                  <span className="
-                    flex
-                    h-9
-                    w-9
-                    shrink-0
-                    items-center
-                    justify-center
-                    rounded-lg
-                    bg-cyan-500/10
-                    text-xl
-                    text-cyan-400
-                  ">
-                    ↻
-                  </span>
-
-                  <span className="min-w-0">
-
-                    <span className="block font-medium">
-                      Send heartbeat
-                    </span>
-
-                    <span className="mt-0.5 block text-xs text-slate-500">
-                      {hasSelection
-                        ? `Send to ${selectedCount} selected ${
-                            selectedCount === 1
-                              ? "endpoint"
-                              : "endpoints"
-                          }`
-                        : "Select endpoints first"}
-                    </span>
-
-                  </span>
-
-                </button>
-
-                <div className="border-t border-slate-800" />
 
                 {/* ==================================================
                     DELETE ENDPOINTS
@@ -750,20 +659,22 @@ export default function EndpointTable({
 
                         <div className="flex items-start gap-3">
 
-                          <span className="
-                            mt-0.5
-                            flex
-                            h-7
-                            w-7
-                            shrink-0
-                            items-center
-                            justify-center
-                            rounded-full
-                            bg-amber-500/10
-                            text-sm
-                            font-bold
-                            text-amber-400
-                          ">
+                          <span
+                            className="
+                              mt-0.5
+                              flex
+                              h-7
+                              w-7
+                              shrink-0
+                              items-center
+                              justify-center
+                              rounded-full
+                              bg-amber-500/10
+                              text-sm
+                              font-bold
+                              text-amber-400
+                            "
+                          >
                             !
                           </span>
 
@@ -820,20 +731,22 @@ export default function EndpointTable({
 
                         <div className="flex items-start gap-3">
 
-                          <span className="
-                            mt-0.5
-                            flex
-                            h-7
-                            w-7
-                            shrink-0
-                            items-center
-                            justify-center
-                            rounded-full
-                            bg-slate-800
-                            text-sm
-                            font-medium
-                            text-slate-400
-                          ">
+                          <span
+                            className="
+                              mt-0.5
+                              flex
+                              h-7
+                              w-7
+                              shrink-0
+                              items-center
+                              justify-center
+                              rounded-full
+                              bg-slate-800
+                              text-sm
+                              font-medium
+                              text-slate-400
+                            "
+                          >
                             i
                           </span>
 
@@ -1263,7 +1176,6 @@ export default function EndpointTable({
           <tbody>
 
             {filteredEndpoints.length > 0 ? (
-
               filteredEndpoints.map(
                 (endpoint) => (
 
@@ -1368,9 +1280,7 @@ export default function EndpointTable({
                             aria-hidden="true"
                           >
                             <path d="M14 5h5v5" />
-
                             <path d="M13 11l6-6" />
-
                             <path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
                           </svg>
 
@@ -1511,6 +1421,7 @@ export default function EndpointTable({
 
       {toast && (
         <div className="fixed top-6 right-6 z-[100]">
+
           <div
             className={`
               flex
@@ -1549,6 +1460,7 @@ export default function EndpointTable({
             >
 
               {toast.type === "success" ? (
+
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -1561,10 +1473,13 @@ export default function EndpointTable({
                 >
                   <path d="m5 12 4 4L19 6" />
                 </svg>
+
               ) : (
+
                 <span className="text-lg font-bold">
                   !
                 </span>
+
               )}
 
             </div>
@@ -1574,6 +1489,7 @@ export default function EndpointTable({
             </span>
 
           </div>
+
         </div>
       )}
 
