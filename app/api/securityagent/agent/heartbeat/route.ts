@@ -214,6 +214,22 @@ if (String(instance.status).toUpperCase() === "UNINSTALLED") {
     }
 
     // -----------------------------------------
+// 4b. Check installation status
+//
+// An uninstalled installation must not be
+// allowed to recreate or update an endpoint.
+// -----------------------------------------
+if (instance.status === "UNINSTALLED") {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Installation instance is uninstalled. re_registration is required.",
+    },
+    { status: 403 }
+  );
+}
+
+    // -----------------------------------------
     // 5. Check account
     // -----------------------------------------
     const accountResult = await query(

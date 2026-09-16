@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { Endpoint } from "@/lib/endpoints/endpoints.service";
@@ -9,7 +9,9 @@ type EndpointTableProps = {
   endpoints: Endpoint[];
 };
 
-export default function EndpointTable({ endpoints }: EndpointTableProps) {
+export default function EndpointTable({
+  endpoints,
+}: EndpointTableProps) {
   const [search, setSearch] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("");
@@ -26,6 +28,31 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
     useState<Set<string>>(new Set());
 
   const [actionsOpen, setActionsOpen] = useState(false);
+
+  // Local list of endpoints.
+  // This lets us remove deleted endpoints immediately
+  // without refreshing the entire page.
+  const [visibleEndpoints, setVisibleEndpoints] =
+    useState<Endpoint[]>(endpoints);
+
+  const [deleting, setDeleting] = useState(false);
+
+  const [toast, setToast] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  /*
+   * ============================================================
+   * KEEP LOCAL ENDPOINT DATA IN SYNC
+   * ============================================================
+   */
+
+  // If the server sends a new endpoint list, update our
+  // local list as well.
+  useEffect(() => {
+  setVisibleEndpoints(endpoints);
+}, [endpoints]);
 
   /*
    * ============================================================
@@ -51,7 +78,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
    */
 
   const filteredEndpoints = useMemo(() => {
-    const filtered = endpoints.filter((endpoint) => {
+    const filtered = visibleEndpoints.filter((endpoint) => {
       const searchValue = search.toLowerCase();
 
       const matchesSearch =
@@ -115,7 +142,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
 
     return filtered;
   }, [
-    endpoints,
+    visibleEndpoints,
     search,
     statusFilter,
     infectedFilter,
@@ -177,6 +204,10 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
    */
 
   const toggleEndpointSelection = (id: string) => {
+    if (deleting) {
+      return;
+    }
+
     setSelectedEndpoints((previous) => {
       const next = new Set(previous);
 
@@ -191,6 +222,10 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
   };
 
   const toggleSelectAll = () => {
+    if (deleting) {
+      return;
+    }
+
     if (allVisibleSelected) {
       setSelectedEndpoints((previous) => {
         const next = new Set(previous);
@@ -223,7 +258,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
    */
 
   const handleSendHeartbeat = () => {
-    if (!hasSelection) {
+    if (!hasSelection || deleting) {
       return;
     }
 
@@ -237,19 +272,131 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
     setActionsOpen(false);
   };
 
-  const handleDeleteEndpoints = () => {
-    if (!allSelectedOffline) {
+  /*
+   * ============================================================
+   * BULK DELETE
+   * ============================================================
+   */
+
+  const handleDeleteEndpoints = async () => {
+    if (!allSelectedOffline || deleting) {
       return;
     }
 
-    console.info(
-      "Delete endpoints:",
-      selectedEndpointData.map(
-        (endpoint) => endpoint.id
-      )
+    const endpointIds = selectedEndpointData.map(
+      (endpoint) => endpoint.id
     );
 
-    setActionsOpen(false);
+    const endpointCount = endpointIds.length;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${endpointCount} ${
+        endpointCount === 1
+          ? "endpoint"
+          : "endpoints"
+      }?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+
+      setToast(null);
+
+      const response = await fetch(
+        "/api/securityagent/endpoints/bulk",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            endpointIds,
+          }),
+        }
+      );
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Failed to delete selected endpoints."
+        );
+      }
+
+      const deletedIds: string[] =
+        Array.isArray(data?.deletedEndpointIds)
+          ? data.deletedEndpointIds
+          : endpointIds;
+
+      /*
+       * Remove deleted endpoints immediately from
+       * the local table.
+       */
+      setVisibleEndpoints((previous) =>
+        previous.filter(
+          (endpoint) =>
+            !deletedIds.includes(endpoint.id)
+        )
+      );
+
+      /*
+       * Clear selection.
+       */
+      setSelectedEndpoints(new Set());
+
+      /*
+       * Close gear menu.
+       */
+      setActionsOpen(false);
+
+      /*
+       * Success toast.
+       */
+      const deletedCount =
+        data?.deletedCount ?? deletedIds.length;
+
+      setToast({
+        type: "success",
+        message: `${deletedCount} ${
+          deletedCount === 1
+            ? "endpoint"
+            : "endpoints"
+        } deleted successfully.`,
+      });
+
+      /*
+       * Automatically hide toast after 4 seconds.
+       */
+      window.setTimeout(() => {
+        setToast(null);
+      }, 4000);
+    } catch (error) {
+      console.error(
+        "Bulk delete endpoints failed:",
+        error
+      );
+
+      setToast({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete selected endpoints.",
+      });
+
+      window.setTimeout(() => {
+        setToast(null);
+      }, 5000);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   /*
@@ -322,6 +469,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
               aria-label="Endpoint actions"
               aria-expanded={actionsOpen}
               title="Endpoint actions"
+              disabled={deleting}
               className="
                 inline-flex
                 h-14
@@ -341,6 +489,8 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                 focus:outline-none
                 focus:ring-2
                 focus:ring-cyan-500/40
+                disabled:cursor-not-allowed
+                disabled:opacity-60
               "
             >
 
@@ -417,7 +567,9 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
 
                 <button
                   type="button"
-                  disabled={!hasSelection}
+                  disabled={
+                    !hasSelection || deleting
+                  }
                   onClick={handleSendHeartbeat}
                   className={`
                     flex
@@ -430,7 +582,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                     text-sm
                     transition-colors
                     ${
-                      hasSelection
+                      hasSelection && !deleting
                         ? "text-slate-300 hover:bg-slate-800 hover:text-cyan-400"
                         : "cursor-not-allowed text-slate-600"
                     }
@@ -482,7 +634,10 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
 
                   <button
                     type="button"
-                    disabled={!allSelectedOffline}
+                    disabled={
+                      !allSelectedOffline ||
+                      deleting
+                    }
                     onClick={handleDeleteEndpoints}
                     className={`
                       flex
@@ -495,7 +650,8 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                       text-sm
                       transition-colors
                       ${
-                        allSelectedOffline
+                        allSelectedOffline &&
+                        !deleting
                           ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
                           : "cursor-not-allowed text-slate-600"
                       }
@@ -513,7 +669,8 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                         justify-center
                         rounded-lg
                         ${
-                          allSelectedOffline
+                          allSelectedOffline &&
+                          !deleting
                             ? "bg-red-500/10 text-red-400"
                             : "bg-slate-800 text-slate-600"
                         }
@@ -543,17 +700,21 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                     <span className="min-w-0">
 
                       <span className="block font-medium">
-                        Delete endpoints
+                        {deleting
+                          ? "Deleting endpoints..."
+                          : "Delete endpoints"}
                       </span>
 
                       <span className="mt-0.5 block text-xs text-slate-500">
-                        {allSelectedOffline
-                          ? `Delete ${selectedCount} selected ${
-                              selectedCount === 1
-                                ? "endpoint"
-                                : "endpoints"
-                            }`
-                          : "Only offline endpoints can be deleted"}
+                        {deleting
+                          ? "Please wait..."
+                          : allSelectedOffline
+                            ? `Delete ${selectedCount} selected ${
+                                selectedCount === 1
+                                  ? "endpoint"
+                                  : "endpoints"
+                              }`
+                            : "Only offline endpoints can be deleted"}
                       </span>
 
                     </span>
@@ -881,6 +1042,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                   }}
                   onChange={toggleSelectAll}
                   aria-label="Select all endpoints"
+                  disabled={deleting}
                   className="
                     h-4
                     w-4
@@ -890,6 +1052,8 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                     bg-slate-800
                     accent-cyan-500
                     focus:ring-cyan-500
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
                   "
                 />
 
@@ -1136,6 +1300,7 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                           )
                         }
                         aria-label={`Select ${endpoint.hostname}`}
+                        disabled={deleting}
                         className="
                           h-4
                           w-4
@@ -1145,6 +1310,8 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
                           bg-slate-800
                           accent-cyan-500
                           focus:ring-cyan-500
+                          disabled:cursor-not-allowed
+                          disabled:opacity-50
                         "
                       />
 
@@ -1333,8 +1500,83 @@ export default function EndpointTable({ endpoints }: EndpointTableProps) {
             )}
 
           </tbody>
+
         </table>
+
       </div>
+
+      {/* ==========================================================
+          TOAST
+          ========================================================== */}
+
+      {toast && (
+        <div className="fixed top-6 right-6 z-[100]">
+          <div
+            className={`
+              flex
+              min-w-[320px]
+              items-center
+              gap-3
+              rounded-xl
+              border
+              px-4
+              py-3
+              shadow-2xl
+              backdrop-blur-md
+              ${
+                toast.type === "success"
+                  ? "border-emerald-500/30 bg-emerald-950/95 text-emerald-300"
+                  : "border-red-500/30 bg-red-950/95 text-red-300"
+              }
+            `}
+          >
+
+            <div
+              className={`
+                flex
+                h-8
+                w-8
+                shrink-0
+                items-center
+                justify-center
+                rounded-full
+                ${
+                  toast.type === "success"
+                    ? "bg-emerald-500/10"
+                    : "bg-red-500/10"
+                }
+              `}
+            >
+
+              {toast.type === "success" ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="m5 12 4 4L19 6" />
+                </svg>
+              ) : (
+                <span className="text-lg font-bold">
+                  !
+                </span>
+              )}
+
+            </div>
+
+            <span className="text-sm font-medium">
+              {toast.message}
+            </span>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
