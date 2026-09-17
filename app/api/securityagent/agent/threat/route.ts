@@ -148,7 +148,6 @@ export async function POST(request: NextRequest) {
       (
         account_id,
         endpoint_id,
-        agent_id,
         name,
         description,
         type,
@@ -177,9 +176,8 @@ export async function POST(request: NextRequest) {
         $9,
         $10,
         $11,
-        $12,
         'agent',
-        $13,
+        $12,
         'detected',
         NOW(),
         NOW()
@@ -188,7 +186,6 @@ export async function POST(request: NextRequest) {
         id,
         account_id,
         endpoint_id,
-        agent_id,
         name,
         severity,
         status,
@@ -198,7 +195,6 @@ export async function POST(request: NextRequest) {
       [
         account_id,
         endpointIdToUse || null,
-        agent_id,
         threat_name,
         descriptionText,
         threat_type || "unknown",
