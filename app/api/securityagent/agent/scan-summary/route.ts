@@ -122,82 +122,63 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------
     // 4. Parse severity breakdown
     // -----------------------------------------
-    const critical = severity_breakdown?.critical || 0;
-    const high = severity_breakdown?.high || 0;
-    const medium = severity_breakdown?.medium || 0;
-    const low = severity_breakdown?.low || 0;
+    
 
     // -----------------------------------------
     // 5. Insert scan summary record
     // -----------------------------------------
     const scanResult = await query(
-      `
-      INSERT INTO scan_summaries
-      (
-        account_id,
-        endpoint_id,
-        agent_id,
-        scan_id,
-        scan_type,
-        start_time,
-        end_time,
-        total_threats,
-        critical_count,
-        high_count,
-        medium_count,
-        low_count,
-        status,
-        created_at,
-        updated_at
-      )
-      VALUES
-      (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        $8,
-        $9,
-        $10,
-        $11,
-        $12,
-        'completed',
-        NOW(),
-        NOW()
-      )
-      RETURNING
-        id,
-        account_id,
-        endpoint_id,
-        scan_id,
-        scan_type,
-        total_threats,
-        critical_count,
-        high_count,
-        medium_count,
-        low_count,
-        status,
-        created_at
-      `,
-      [
-        account_id,
-        endpointIdToUse || null,
-        agent_id || null,
-        scan_id,
-        scan_type,
-        start_time || new Date().toISOString(),
-        end_time || new Date().toISOString(),
-        total_threats,
-        critical,
-        high,
-        medium,
-        low,
-      ]
-    );
-
+  `
+  INSERT INTO scan_summaries
+  (
+    account_id,
+    endpoint_id,
+    scan_id,
+    scan_type,
+    start_time,
+    end_time,
+    total_threats,
+    severity_breakdown,
+    status,
+    created_at,
+    updated_at
+  )
+  VALUES
+  (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    'completed',
+    NOW(),
+    NOW()
+  )
+  RETURNING
+    id,
+    account_id,
+    endpoint_id,
+    scan_id,
+    scan_type,
+    total_threats,
+    severity_breakdown,
+    status,
+    created_at
+  `,
+  [
+    account_id,
+    endpointIdToUse || null,
+    scan_id,
+    scan_type,
+    start_time || new Date().toISOString(),
+    end_time || new Date().toISOString(),
+    total_threats,
+    JSON.stringify(severity_breakdown || {}),
+  ]
+);
     const scan = scanResult.rows[0];
 
     // -----------------------------------------
@@ -233,12 +214,7 @@ export async function POST(request: NextRequest) {
       accountId: scan.account_id,
       scanType: scan.scan_type,
       totalThreats: scan.total_threats,
-      severityBreakdown: {
-        critical: scan.critical_count,
-        high: scan.high_count,
-        medium: scan.medium_count,
-        low: scan.low_count,
-      },
+     severityBreakdown: scan.severity_breakdown || {},
       status: scan.status,
       createdAt: scan.created_at,
     });
@@ -255,3 +231,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
