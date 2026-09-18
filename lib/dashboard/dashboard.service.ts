@@ -49,13 +49,42 @@ export async function getDashboardData(
       `
       SELECT
           COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE status='online')::int AS online,
-          COUNT(*) FILTER (WHERE status='offline')::int AS offline,
-          COUNT(*) FILTER (WHERE status='disconnected')::int AS disconnected,
-          COUNT(*) FILTER (WHERE status='pending')::int AS pending,
-          COUNT(*) FILTER (WHERE status='quarantined')::int AS quarantined
-      FROM endpoints
-      WHERE account_id = $1;
+
+          COUNT(*) FILTER (
+            WHERE e.last_seen_at IS NOT NULL
+              AND e.last_seen_at >= NOW() - INTERVAL '2 minutes'
+          )::int AS online,
+
+          COUNT(*) FILTER (
+            WHERE e.last_seen_at IS NULL
+               OR e.last_seen_at < NOW() - INTERVAL '2 minutes'
+          )::int AS offline,
+
+          COUNT(*) FILTER (
+            WHERE e.status = 'disconnected'
+          )::int AS disconnected,
+
+          COUNT(*) FILTER (
+            WHERE e.status = 'pending'
+          )::int AS pending,
+
+          COUNT(*) FILTER (
+            WHERE e.status = 'quarantined'
+          )::int AS quarantined
+
+      FROM endpoints e
+
+      LEFT JOIN LATERAL (
+        SELECT ii.status
+        FROM installation_instances ii
+        WHERE ii.endpoint_id = e.id
+          AND ii.account_id = $1
+        ORDER BY ii.created_at DESC
+        LIMIT 1
+      ) ii ON TRUE
+
+      WHERE e.account_id = $1
+        AND COALESCE(ii.status, '') <> 'UNINSTALLED';
       `,
       [accountId]
     ),
@@ -113,8 +142,9 @@ export async function getDashboardData(
   //
   // These values are read directly from the database.
   //
-  // The 50% child-allocation rule is NOT applied here.
-  // It is handled when creating a child account.
+  // UNINSTALLED installations should not consume a license.
+  // The installation/license update logic should maintain
+  // these account values when an agent is uninstalled.
   // --------------------------------------------------
 
   const totalLicenses =
