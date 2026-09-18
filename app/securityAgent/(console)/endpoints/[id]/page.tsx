@@ -40,12 +40,29 @@ function DetailCard({
  *
  * 24 hours or more:
  *   Offline for 3 days
+ *
+ * If last_seen_at is unavailable:
+ *   Last seen unavailable
  */
-function getOfflineDuration(lastSeenAt: string | Date) {
+function getOfflineDuration(
+  lastSeenAt: string | Date | null
+) {
+  if (!lastSeenAt) {
+    return "Last seen unavailable";
+  }
+
   const lastSeen = new Date(lastSeenAt).getTime();
+
+  if (Number.isNaN(lastSeen)) {
+    return "Last seen unavailable";
+  }
+
   const now = Date.now();
 
-  const differenceMs = Math.max(0, now - lastSeen);
+  const differenceMs = Math.max(
+    0,
+    now - lastSeen
+  );
 
   const hours = Math.floor(
     differenceMs / (1000 * 60 * 60)
@@ -84,7 +101,15 @@ export default async function EndpointDetailsPage({
     notFound();
   }
 
-  const isOffline = endpoint.status !== "online";
+  /*
+   * IMPORTANT:
+   * Do not use endpoint.status here.
+   *
+   * effective_status is calculated from last_seen_at
+   * by endpoints.service.ts.
+   */
+  const isOffline =
+    endpoint.effective_status !== "online";
 
   return (
     <section className="space-y-8">
@@ -130,12 +155,12 @@ export default async function EndpointDetailsPage({
 
               <span
                 className={`inline-flex rounded-full px-4 py-2 text-sm font-medium ${
-                  endpoint.status === "online"
+                  endpoint.effective_status === "online"
                     ? "bg-emerald-500/20 text-emerald-400"
                     : "bg-red-500/20 text-red-400"
                 }`}
               >
-                {endpoint.status}
+                {endpoint.effective_status}
               </span>
 
               {/* Offline Duration */}
@@ -236,9 +261,13 @@ export default async function EndpointDetailsPage({
 
         <DetailCard
           title="Last Seen"
-          value={new Date(
+          value={
             endpoint.last_seen_at
-          ).toLocaleString()}
+              ? new Date(
+                  endpoint.last_seen_at
+                ).toLocaleString()
+              : "-"
+          }
         />
 
         <DetailCard

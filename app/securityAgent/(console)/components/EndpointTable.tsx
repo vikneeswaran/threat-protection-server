@@ -99,7 +99,7 @@ export default function EndpointTable({
       const matchesStatus =
         statusFilter === "" ||
         statusFilter === "all" ||
-        endpoint.status === statusFilter;
+        endpoint.effective_status === statusFilter;
 
       const matchesInfected =
         infectedFilter === "" ||
@@ -164,11 +164,11 @@ export default function EndpointTable({
   const hasSelection = selectedCount > 0;
 
   const hasOnlineSelected = selectedEndpointData.some(
-    (endpoint) => endpoint.status === "online"
+    (endpoint) => endpoint.effective_status === "online"
   );
 
   const hasOfflineSelected = selectedEndpointData.some(
-    (endpoint) => endpoint.status !== "online"
+    (endpoint) => endpoint.effective_status !== "online"
   );
 
   /*
@@ -1101,7 +1101,7 @@ export default function EndpointTable({
               {/* Status */}
               <th
                 onClick={() =>
-                  handleSort("status")
+                  handleSort("effective_status")
                 }
                 className="
                   cursor-pointer
@@ -1115,7 +1115,7 @@ export default function EndpointTable({
               >
                 <div className="flex items-center justify-center gap-2">
                   Status
-                  {renderSortArrow("status")}
+                  {renderSortArrow("effective_status")}
                 </div>
               </th>
 
@@ -1327,14 +1327,14 @@ export default function EndpointTable({
                           text-sm
                           font-medium
                           ${
-                            endpoint.status ===
+                            endpoint.effective_status ===
                             "online"
                               ? "bg-emerald-500/20 text-emerald-400"
                               : "bg-red-500/20 text-red-400"
                           }
                         `}
                       >
-                        {endpoint.status}
+                        {endpoint.effective_status}
                       </span>
 
                     </td>
