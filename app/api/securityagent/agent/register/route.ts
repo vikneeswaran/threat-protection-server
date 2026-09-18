@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { getPool, query } from "@/lib/db";
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
     // JWT, Base64 JSON, or legacy DB token
     // -----------------------------------------
     let accountId: string | null = null;
+
     let tokenRecord: Record<string, unknown> | null =
       null;
 
@@ -288,383 +289,533 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------------------
-    // 5. Check whether this agent already has
-    //    an active installation
+    // 5-12.
     //
-    // Only these statuses consume a license:
+    // IMPORTANT:
     //
-    // PENDING
-    // INSTALLED
-    // ACTIVE
+    // Everything from checking the existing
+    // installation through creating/updating
+    // the installation and endpoint is performed
+    // inside ONE transaction.
+    //
+    // The account row is locked with FOR UPDATE.
+    //
+    // This prevents:
+    //
+    // Request A:
+    //   check -> no installation
+    //
+    // Request B:
+    //   check -> no installation
+    //
+    // from both creating installations and
+    // consuming two licenses for the same agent.
     // -----------------------------------------
-    const existingInstanceResult =
-      resolvedAgentId
-        ? await query(
-            `
-            SELECT
-              i.*
-            FROM installation_instances i
-            INNER JOIN endpoints e
-              ON e.id = i.endpoint_id
-            WHERE i.account_id::text = $1
-              AND e.agent_id = $2
-              AND i.status IN (
-                'PENDING',
-                'INSTALLED',
-                'ACTIVE'
-              )
-            ORDER BY i.created_at DESC
-            LIMIT 1
-            `,
-            [
-              accountId,
-              resolvedAgentId,
-            ]
-          )
-        : { rows: [] };
 
-    const existingInstance =
-      existingInstanceResult.rows[0] as
-        | Record<string, unknown>
-        | undefined;
+    const pool = getPool();
+    const client = await pool.connect();
 
-    // -----------------------------------------
-    // 6. Check license availability
-    //
-    // Only performed for a NEW installation.
-    //
-    // UNINSTALLED installations do NOT consume
-    // a license.
-    // -----------------------------------------
-    if (!existingInstance) {
-      const activeInstancesResult =
-        await query(
+    let transactionStarted = false;
+
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+
+      // -----------------------------------------
+      // Lock account row
+      //
+      // This serializes registrations for this
+      // account while the transaction is running.
+      // -----------------------------------------
+      const lockedAccountResult =
+        await client.query(
           `
           SELECT
-            COUNT(*)::int AS count
-          FROM installation_instances
-          WHERE account_id::text = $1
-            AND status IN (
-              'PENDING',
-              'INSTALLED',
-              'ACTIVE'
-            )
+            id,
+            total_licenses,
+            allocated_licenses,
+            used_licenses,
+            is_active
+          FROM accounts
+          WHERE id::text = $1
+          LIMIT 1
+          FOR UPDATE
           `,
           [accountId]
         );
 
-      const activeInstances =
-        (
-          activeInstancesResult.rows[0] as Record<
-            string,
-            number
-          >
-        ).count;
-
-      const totalLicenses =
-        Number(account.total_licenses);
-
       if (
-        activeInstances >= totalLicenses
+        lockedAccountResult.rows.length === 0
       ) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
         return NextResponse.json(
           {
             success: false,
-            message:
-              "No available licenses for this account.",
+            message: "Account not found.",
+          },
+          { status: 404 }
+        );
+      }
+
+      const lockedAccount =
+        lockedAccountResult.rows[0] as Record<
+          string,
+          unknown
+        >;
+
+      // Re-check account status after acquiring
+      // the lock.
+      if (!lockedAccount.is_active) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Account is inactive.",
           },
           { status: 403 }
         );
       }
-    }
 
-    // -----------------------------------------
-    // 7. Create or reuse installation instance
-    // -----------------------------------------
-    const isNewInstallation =
-      !existingInstance;
+      // -----------------------------------------
+      // 5. Check whether this agent already has
+      //    an active installation
+      //
+      // ONLY these statuses consume a license:
+      //
+      // PENDING
+      // INSTALLED
+      // ACTIVE
+      //
+      // UNINSTALLED is deliberately NOT included.
+      //
+      // Therefore:
+      //
+      // Existing ACTIVE installation
+      //     -> reuse
+      //     -> no new license
+      //
+      // Existing UNINSTALLED installation
+      //     -> ignore
+      //     -> create NEW installation
+      //     -> consume one license
+      // -----------------------------------------
+      const existingInstanceResult =
+        resolvedAgentId
+          ? await client.query(
+              `
+              SELECT
+                i.*
+              FROM installation_instances i
+              INNER JOIN endpoints e
+                ON e.id = i.endpoint_id
+              WHERE i.account_id::text = $1
+                AND e.agent_id = $2
+                AND i.status IN (
+                  'PENDING',
+                  'INSTALLED',
+                  'ACTIVE'
+                )
+              ORDER BY i.created_at DESC
+              LIMIT 1
+              `,
+              [
+                accountId,
+                resolvedAgentId,
+              ]
+            )
+          : { rows: [] };
 
-    const instance =
-      existingInstance ??
-      (
-        await query(
-          `
-          INSERT INTO installation_instances
-          (
-            account_id,
-            installation_token,
-            installer_version,
-            platform,
-            status,
-            expires_at,
-            installation_token_id
-          )
-          VALUES
-          (
-            $1::uuid,
-            $2,
-            $3,
-            $4,
-            'PENDING',
-            $5,
-            $6::uuid
-          )
-          RETURNING
-            id,
-            account_id,
-            installer_version,
-            platform,
-            status,
-            expires_at,
-            created_at,
-            installation_token_id
-          `,
-          [
-            accountId,
-            token,
-            resolvedInstallerVersion,
-            resolvedPlatform,
-            tokenRecord
-              ? tokenRecord.expires_at
-              : new Date(
-                  Date.now() +
-                    30 *
-                      24 *
-                      60 *
-                      60 *
-                      1000
-                ),
-            tokenRecord
-              ? tokenRecord.id
-              : null,
-          ]
-        )
-      ).rows[0] as Record<
-        string,
-        unknown
-      >;
+      const existingInstance =
+        existingInstanceResult.rows[0] as
+          | Record<string, unknown>
+          | undefined;
 
-    // -----------------------------------------
-    // 8. Consume one license for a NEW
-    //    installation
-    //
-    // IMPORTANT:
-    // available_licenses is a GENERATED column.
-    //
-    // Therefore we update ONLY used_licenses.
-    //
-    // PostgreSQL automatically recalculates:
-    //
-    // available_licenses =
-    // allocated_licenses - used_licenses
-    // -----------------------------------------
-    if (isNewInstallation) {
-      await query(
-        `
-        UPDATE accounts
-        SET
-          used_licenses = used_licenses + 1
-        WHERE id = $1
-        `,
-        [accountId]
-      );
+      const isNewInstallation =
+        !existingInstance;
 
-      console.info(
-        `[Agent Register] Consumed 1 license for account ${accountId}`
-      );
-    }
-
-    // -----------------------------------------
-    // 9. Resolve operating system
-    // -----------------------------------------
-    const resolvedOs = String(
-      os || resolvedPlatform
-    ).toLowerCase();
-
-    // -----------------------------------------
-    // 10. Find existing endpoint
-    // -----------------------------------------
-    const existingEndpoint =
-      resolvedAgentId
-        ? await query(
+      // -----------------------------------------
+      // 6. Check license availability
+      //
+      // Only performed for a NEW installation.
+      //
+      // UNINSTALLED installations do NOT consume
+      // a license and are ignored here.
+      // -----------------------------------------
+      if (isNewInstallation) {
+        const activeInstancesResult =
+          await client.query(
             `
             SELECT
-              id
-            FROM endpoints
+              COUNT(*)::int AS count
+            FROM installation_instances
             WHERE account_id::text = $1
-              AND agent_id = $2
-            LIMIT 1
+              AND status IN (
+                'PENDING',
+                'INSTALLED',
+                'ACTIVE'
+              )
             `,
-            [
-              accountId,
-              resolvedAgentId,
-            ]
-          )
-        : { rows: [] };
+            [accountId]
+          );
 
-    // -----------------------------------------
-    // 11. Update or create endpoint
-    // -----------------------------------------
-    const endpointResult =
-      existingEndpoint.rows[0]
-        ? await query(
+        const activeInstances =
+          (
+            activeInstancesResult.rows[0] as Record<
+              string,
+              number
+            >
+          ).count;
+
+        const totalLicenses =
+          Number(
+            lockedAccount.total_licenses
+          );
+
+        if (
+          activeInstances >= totalLicenses
+        ) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+
+          return NextResponse.json(
+            {
+              success: false,
+              message:
+                "No available licenses for this account.",
+            },
+            { status: 403 }
+          );
+        }
+      }
+
+      // -----------------------------------------
+      // 7. Create or reuse installation instance
+      //
+      // IMPORTANT:
+      //
+      // existingInstance only comes from:
+      //
+      // PENDING
+      // INSTALLED
+      // ACTIVE
+      //
+      // UNINSTALLED is NEVER reused.
+      //
+      // If the previous installation was
+      // UNINSTALLED, a new row is inserted.
+      // -----------------------------------------
+      const instance =
+        existingInstance ??
+        (
+          await client.query(
             `
-            UPDATE endpoints
-            SET
-              hostname = $1,
-              os = $2::endpoint_os,
-              os_version = $3,
-              agent_version = $4,
-              ip_address = $5,
-              mac_address = $6,
-              public_ip = $7,
-              status = 'online'::endpoint_status,
-              last_seen_at = NOW(),
-              updated_at = NOW()
-            WHERE id::text = $8
-            RETURNING id
-            `,
-            [
-              hostname || "Unknown",
-              resolvedOs,
-              osVersion ||
-                os_version ||
-                null,
-              agentVersion ||
-                agent_version ||
-                resolvedInstallerVersion,
-              ipAddress ||
-                ip_address ||
-                local_ip ||
-                null,
-              macAddress ||
-                mac_address ||
-                null,
-              publicIp ||
-                public_ip ||
-                null,
-              existingEndpoint.rows[0]
-                .id,
-            ]
-          )
-        : await query(
-            `
-            INSERT INTO endpoints
+            INSERT INTO installation_instances
             (
               account_id,
-              hostname,
-              os,
-              os_version,
-              agent_version,
-              ip_address,
-              mac_address,
+              installation_token,
+              installer_version,
+              platform,
               status,
-              last_seen_at,
-              registered_at,
-              agent_id,
-              public_ip,
-              secured_by_kuamini,
-              infected
+              expires_at,
+              installation_token_id
             )
             VALUES
             (
               $1::uuid,
               $2,
-              $3::endpoint_os,
+              $3,
               $4,
+              'PENDING',
               $5,
-              $6,
-              $7,
-              'online'::endpoint_status,
-              NOW(),
-              NOW(),
-              $8,
-              $9,
-              true,
-              false
+              $6::uuid
             )
-            RETURNING id
+            RETURNING
+              id,
+              account_id,
+              installer_version,
+              platform,
+              status,
+              expires_at,
+              created_at,
+              installation_token_id
             `,
             [
               accountId,
-              hostname || "Unknown",
-              resolvedOs,
-              osVersion ||
-                os_version ||
-                null,
-              agentVersion ||
-                agent_version ||
-                resolvedInstallerVersion,
-              ipAddress ||
-                ip_address ||
-                local_ip ||
-                null,
-              macAddress ||
-                mac_address ||
-                null,
-              resolvedAgentId || null,
-              publicIp ||
-                public_ip ||
-                null,
+              token,
+              resolvedInstallerVersion,
+              resolvedPlatform,
+              tokenRecord
+                ? tokenRecord.expires_at
+                : new Date(
+                    Date.now() +
+                      30 *
+                        24 *
+                        60 *
+                        60 *
+                        1000
+                  ),
+              tokenRecord
+                ? tokenRecord.id
+                : null,
             ]
-          );
+          )
+        ).rows[0] as Record<
+          string,
+          unknown
+        >;
 
-    const endpointId =
-      endpointResult.rows[0].id;
+      // -----------------------------------------
+      // 8. Consume ONE license for a NEW
+      //    installation
+      //
+      // IMPORTANT:
+      //
+      // available_licenses is GENERATED.
+      //
+      // Therefore ONLY used_licenses is updated.
+      //
+      // Existing active installation:
+      //     NO increment
+      //
+      // New installation:
+      //     +1
+      //
+      // Reinstall after UNINSTALLED:
+      //     +1
+      // -----------------------------------------
+      if (isNewInstallation) {
+        await client.query(
+          `
+          UPDATE accounts
+          SET
+            used_licenses = used_licenses + 1
+          WHERE id = $1
+          `,
+          [accountId]
+        );
 
-    // -----------------------------------------
-    // 12. Link installation instance to endpoint
-    // -----------------------------------------
-    await query(
-      `
-      UPDATE installation_instances
-      SET
-        endpoint_id = $1::uuid,
-        updated_at = NOW()
-      WHERE id::text = $2
-      `,
-      [
-        endpointId,
-        instance.id,
-      ]
-    );
+        console.info(
+          `[Agent Register] Consumed 1 license for account ${accountId}`
+        );
+      }
 
-    // -----------------------------------------
-    // 13. Logging
-    // -----------------------------------------
-    console.info(
-      "[Agent Register] Registration accepted",
-      {
+      // -----------------------------------------
+      // 9. Resolve operating system
+      // -----------------------------------------
+      const resolvedOs = String(
+        os || resolvedPlatform
+      ).toLowerCase();
+
+      // -----------------------------------------
+      // 10. Find existing endpoint
+      // -----------------------------------------
+      const existingEndpoint =
+        resolvedAgentId
+          ? await client.query(
+              `
+              SELECT
+                id
+              FROM endpoints
+              WHERE account_id::text = $1
+                AND agent_id = $2
+              LIMIT 1
+              `,
+              [
+                accountId,
+                resolvedAgentId,
+              ]
+            )
+          : { rows: [] };
+
+      // -----------------------------------------
+      // 11. Update or create endpoint
+      // -----------------------------------------
+      const endpointResult =
+        existingEndpoint.rows[0]
+          ? await client.query(
+              `
+              UPDATE endpoints
+              SET
+                hostname = $1,
+                os = $2::endpoint_os,
+                os_version = $3,
+                agent_version = $4,
+                ip_address = $5,
+                mac_address = $6,
+                public_ip = $7,
+                status = 'online'::endpoint_status,
+                last_seen_at = NOW(),
+                updated_at = NOW()
+              WHERE id::text = $8
+              RETURNING id
+              `,
+              [
+                hostname || "Unknown",
+                resolvedOs,
+                osVersion ||
+                  os_version ||
+                  null,
+                agentVersion ||
+                  agent_version ||
+                  resolvedInstallerVersion,
+                ipAddress ||
+                  ip_address ||
+                  local_ip ||
+                  null,
+                macAddress ||
+                  mac_address ||
+                  null,
+                publicIp ||
+                  public_ip ||
+                  null,
+                existingEndpoint.rows[0]
+                  .id,
+              ]
+            )
+          : await client.query(
+              `
+              INSERT INTO endpoints
+              (
+                account_id,
+                hostname,
+                os,
+                os_version,
+                agent_version,
+                ip_address,
+                mac_address,
+                status,
+                last_seen_at,
+                registered_at,
+                agent_id,
+                public_ip,
+                secured_by_kuamini,
+                infected
+              )
+              VALUES
+              (
+                $1::uuid,
+                $2,
+                $3::endpoint_os,
+                $4,
+                $5,
+                $6,
+                $7,
+                'online'::endpoint_status,
+                NOW(),
+                NOW(),
+                $8,
+                $9,
+                true,
+                false
+              )
+              RETURNING id
+              `,
+              [
+                accountId,
+                hostname || "Unknown",
+                resolvedOs,
+                osVersion ||
+                  os_version ||
+                  null,
+                agentVersion ||
+                  agent_version ||
+                  resolvedInstallerVersion,
+                ipAddress ||
+                  ip_address ||
+                  local_ip ||
+                  null,
+                macAddress ||
+                  mac_address ||
+                  null,
+                resolvedAgentId || null,
+                publicIp ||
+                  public_ip ||
+                  null,
+              ]
+            );
+
+      const endpointId =
+        endpointResult.rows[0].id;
+
+      // -----------------------------------------
+      // 12. Link installation instance to endpoint
+      // -----------------------------------------
+      await client.query(
+        `
+        UPDATE installation_instances
+        SET
+          endpoint_id = $1::uuid,
+          updated_at = NOW()
+        WHERE id::text = $2
+        `,
+        [
+          endpointId,
+          instance.id,
+        ]
+      );
+
+      // -----------------------------------------
+      // Commit transaction
+      // -----------------------------------------
+      await client.query("COMMIT");
+      transactionStarted = false;
+
+      // -----------------------------------------
+      // 13. Logging
+      // -----------------------------------------
+      console.info(
+        "[Agent Register] Registration accepted",
+        {
+          accountId,
+          agentId: resolvedAgentId,
+          endpointId,
+          installationInstanceId:
+            instance.id,
+          newInstallation:
+            isNewInstallation,
+        }
+      );
+
+      // -----------------------------------------
+      // 14. Response
+      // -----------------------------------------
+      return NextResponse.json({
+        success: true,
+        message:
+          "Agent registration successful.",
         accountId,
-        agentId: resolvedAgentId,
-        endpointId,
         installationInstanceId:
           instance.id,
-        newInstallation:
-          isNewInstallation,
+        agent_id: resolvedAgentId,
+        account_id: accountId,
+        endpoint_id: endpointId,
+        installation_instance_id:
+          instance.id,
+        installerVersion:
+          instance.installer_version,
+        platform: instance.platform,
+        status: instance.status,
+      });
+    } catch (transactionError) {
+      if (transactionStarted) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rollbackError) {
+          console.error(
+            "[Agent Register] Rollback failed:",
+            rollbackError
+          );
+        }
       }
-    );
 
-    // -----------------------------------------
-    // 14. Response
-    // -----------------------------------------
-    return NextResponse.json({
-      success: true,
-      message:
-        "Agent registration successful.",
-      accountId,
-      installationInstanceId:
-        instance.id,
-      agent_id: resolvedAgentId,
-      account_id: accountId,
-      endpoint_id: endpointId,
-      installation_instance_id:
-        instance.id,
-      installerVersion:
-        instance.installer_version,
-      platform: instance.platform,
-      status: instance.status,
-    });
+      throw transactionError;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error(
       "Agent Registration Error:",
