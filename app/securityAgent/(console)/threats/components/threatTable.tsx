@@ -16,6 +16,15 @@ interface Threat {
   status: string;
 }
 
+// Shared classes so every header cell has identical padding/alignment
+const thBase = "cursor-pointer select-none whitespace-nowrap px-2 py-3";
+
+// Shared classes for text cells: one line, cut off with "..." if too long
+const tdText = "truncate px-2 py-2.5";
+
+// Show only the first part of a long UUID (full ID is shown on hover)
+const shortId = (id: string) => (id.length > 8 ? `${id.slice(0, 8)}…` : id);
+
 export default function ThreatTable() {
   // Stores all threats received from the API
   const [threats, setThreats] = useState<Threat[]>([]);
@@ -51,7 +60,7 @@ export default function ThreatTable() {
   );
 
   // Number of threats displayed per page
-  const pageSize = 50;
+  const pageSize = 10;
 
   // Fetch threats once when component loads
   useEffect(() => {
@@ -221,35 +230,6 @@ export default function ThreatTable() {
     });
   };
 
-  // Check/uncheck all threats on current page
-  const handleSelectAll = () => {
-    const currentPageIds = paginatedThreats.map(
-      (threat) => threat.id
-    );
-
-    const allSelected = currentPageIds.every((id) =>
-      selectedThreatIds.includes(id)
-    );
-
-    if (allSelected) {
-      setSelectedThreatIds((previous) =>
-        previous.filter(
-          (id) => !currentPageIds.includes(id)
-        )
-      );
-    } else {
-      setSelectedThreatIds((previous) => [
-        ...new Set([...previous, ...currentPageIds]),
-      ]);
-    }
-  };
-
-  const allCurrentPageSelected =
-    paginatedThreats.length > 0 &&
-    paginatedThreats.every((threat) =>
-      selectedThreatIds.includes(threat.id)
-    );
-
   // --------------------------------------------------
   // GEAR ACTION FUNCTIONS
   // --------------------------------------------------
@@ -310,7 +290,7 @@ export default function ThreatTable() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-[#111827] p-5">
+    <div className="rounded-xl border border-slate-800 bg-[#111827] p-4">
 
       {/* Search and filter controls */}
       <ThreatFilter
@@ -366,84 +346,78 @@ export default function ThreatTable() {
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div>
 
-        {/* Threat data table */}
-        <table className="w-full border-collapse text-left">
+        {/* Threat data table
+            table-fixed + percentage widths make the columns always fit the
+            available width, so there is no horizontal scrollbar. */}
+        <table className="w-full table-fixed border-collapse text-left text-sm">
 
           {/* Table headers */}
           <thead className="border-b border-slate-700 text-slate-400">
             <tr>
 
-              {/* SELECT ALL CHECKBOX */}
-              <th className="w-[50px] px-3 py-4">
-                <input
-                  type="checkbox"
-                  checked={allCurrentPageSelected}
-                  onChange={handleSelectAll}
-                  className="h-4 w-4 cursor-pointer rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500"
-                  aria-label="Select all threats"
-                />
-              </th>
+              {/* Empty header cell above the row checkboxes */}
+              <th className="w-[4%] px-2 py-3" />
 
               <th
                 onClick={() => handleSort("id")}
-                className="w-[180px] cursor-pointer select-none px-3"
+                className={`${thBase} w-[10%]`}
               >
                 Threat ID {getSortIcon("id")}
               </th>
 
               <th
                 onClick={() => handleSort("name")}
-                className="w-[220px] cursor-pointer select-none px-3"
+                className={`${thBase} w-[12%]`}
               >
                 Threat Name {getSortIcon("name")}
               </th>
 
               <th
                 onClick={() => handleSort("endpoint")}
-                className="w-[150px] cursor-pointer px-3 py-4"
+                className={`${thBase} w-[11%]`}
               >
                 Endpoint {getSortIcon("endpoint")}
               </th>
 
               <th
                 onClick={() => handleSort("threatType")}
-                className="w-[150px] cursor-pointer px-3 py-4"
+                className={`${thBase} w-[14%]`}
               >
                 Threat Type {getSortIcon("threatType")}
               </th>
 
               <th
                 onClick={() => handleSort("detectedBy")}
-                className="w-[150px] cursor-pointer px-3 py-4"
+                className={`${thBase} w-[11%]`}
               >
                 Detected By {getSortIcon("detectedBy")}
               </th>
 
               <th
                 onClick={() => handleSort("severity")}
-                className="w-[120px] cursor-pointer px-3 py-4"
+                className={`${thBase} w-[9%]`}
               >
                 Severity {getSortIcon("severity")}
               </th>
 
               <th
                 onClick={() => handleSort("detected")}
-                className="w-[180px] cursor-pointer px-3 py-4"
+                className={`${thBase} w-[16%]`}
               >
                 Detected {getSortIcon("detected")}
               </th>
 
               <th
                 onClick={() => handleSort("status")}
-                className="w-[120px] cursor-pointer px-3 py-4"
+                className={`${thBase} w-[9%]`}
               >
                 Status {getSortIcon("status")}
               </th>
 
               {/* ACTION HEADER */}
-              <th className="w-[70px] px-3 py-4 text-center">
+              <th className="w-[4%] whitespace-nowrap px-2 py-3 text-center">
                 Action
               </th>
 
@@ -459,7 +433,7 @@ export default function ThreatTable() {
               >
 
                 {/* ROW CHECKBOX */}
-                <td className="px-3 py-4">
+                <td className="px-2 py-2.5">
                   <input
                     type="checkbox"
                     checked={selectedThreatIds.includes(t.id)}
@@ -471,42 +445,45 @@ export default function ThreatTable() {
                   />
                 </td>
 
-                {/* THREAT ID */}
-                <td className="px-3 py-4">
+                {/* THREAT ID
+                    Short version in the table, full ID appears on mouse hover
+                    (title tooltip). */}
+                <td className="px-2 py-2.5">
                   <Link
                     href={`/securityAgent/threats/${t.id}`}
-                    className="font-medium text-indigo-400 hover:text-indigo-300 hover:underline"
+                    title={t.id}
+                    className="block whitespace-nowrap font-medium text-indigo-400 hover:text-indigo-300 hover:underline"
                   >
-                    {t.id}
+                    {shortId(t.id)}
                   </Link>
                 </td>
 
                 {/* THREAT NAME */}
-                <td className="px-3 py-4">
+                <td className={tdText} title={t.name}>
                   {t.name}
                 </td>
 
                 {/* ENDPOINT */}
-                <td className="px-3 py-4">
+                <td className={tdText} title={t.endpoint}>
                   {t.endpoint}
                 </td>
 
                 {/* THREAT TYPE */}
-                <td className="px-3 py-4">
-                  <span className="inline-flex min-w-[90px] items-center justify-center rounded-full bg-slate-700 px-3 py-1 text-xs">
+                <td className="px-2 py-2.5">
+                  <span className="inline-flex min-w-[80px] items-center justify-center whitespace-nowrap rounded-full bg-slate-700 px-3 py-1 text-xs">
                     {t.threatType}
                   </span>
                 </td>
 
                 {/* DETECTED BY */}
-                <td className="px-3 py-4">
+                <td className={tdText} title={t.detectedBy}>
                   {t.detectedBy}
                 </td>
 
                 {/* SEVERITY */}
-                <td className="px-3 py-4">
+                <td className="px-2 py-2.5">
                   <span
-                    className={`inline-flex min-w-[90px] justify-center rounded-full px-3 py-1 text-xs font-medium ${
+                    className={`inline-flex min-w-[80px] justify-center rounded-full px-3 py-1 text-xs font-medium ${
                       t.severity === "Critical"
                         ? "bg-rose-500/15 text-rose-300 shadow-[0_0_10px_rgba(244,63,94,0.35)]"
                         : t.severity === "High"
@@ -521,14 +498,14 @@ export default function ThreatTable() {
                 </td>
 
                 {/* DETECTED */}
-                <td className="px-3 py-4">
+                <td className="whitespace-nowrap px-2 py-2.5">
                   {t.detected}
                 </td>
 
                 {/* STATUS */}
-                <td className="px-3 py-4">
+                <td className="px-2 py-2.5">
                   <span
-                    className={`inline-flex min-w-[90px] justify-center rounded-full px-3 py-1 text-xs font-medium ${
+                    className={`inline-flex min-w-[80px] justify-center rounded-full px-3 py-1 text-xs font-medium ${
                       t.status === "Resolved"
                         ? "bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]"
                         : t.status === "Contained"
@@ -541,7 +518,7 @@ export default function ThreatTable() {
                 </td>
 
                 {/* GEAR ACTION */}
-                <td className="relative px-3 py-4 text-center">
+                <td className="relative px-2 py-2.5 text-center">
 
                   <button
                     type="button"
@@ -664,7 +641,7 @@ export default function ThreatTable() {
         </table>
 
         {/* Pagination */}
-        <div className="mt-5 flex items-center justify-between">
+        <div className="mt-4 flex items-center justify-between">
 
           <p className="text-sm text-slate-400">
             Showing{" "}
@@ -689,7 +666,7 @@ export default function ThreatTable() {
                 )
               }
               disabled={currentPage === 1}
-              className="rounded-lg border border-slate-700 px-4 py-2 disabled:opacity-50"
+              className="rounded-lg border border-slate-700 px-4 py-1.5 disabled:opacity-50"
             >
               Previous
             </button>
@@ -708,7 +685,7 @@ export default function ThreatTable() {
                 currentPage === totalPages ||
                 totalPages === 0
               }
-              className="rounded-lg border border-slate-700 px-4 py-2 disabled:opacity-50"
+              className="rounded-lg border border-slate-700 px-4 py-1.5 disabled:opacity-50"
             >
               Next
             </button>
