@@ -578,6 +578,33 @@ SUPPORT:
     );
 
     // --------------------------------------------------
+// 7b. Create Quarantine directory
+// --------------------------------------------------
+
+console.info("[Windows Package] Creating Quarantine directory...");
+
+const quarantineDirectory = path.join(
+  packageDirectory,
+  "Quarantine"
+);
+
+await fs.mkdir(quarantineDirectory, {
+  recursive: true,
+});
+
+// Keep the directory inside the ZIP even when it is empty.
+// The file will not be used by the agent.
+await fs.writeFile(
+  path.join(quarantineDirectory, ".keep"),
+  "",
+  "utf8"
+);
+
+console.info(
+  "[Windows Package] Created Quarantine directory"
+);
+
+    // --------------------------------------------------
     // 8. Integrity checks before ZIP creation
     // --------------------------------------------------
 

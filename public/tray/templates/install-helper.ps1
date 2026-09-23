@@ -92,6 +92,21 @@ try {
     Stop-Install "Unable to write agent configuration: $($_.Exception.Message)"
 }
 
+# --------------------------------------------------
+# Create permanent quarantine directory
+# --------------------------------------------------
+
+$quarantineDirectory = Join-Path $serviceConfigDirectory "Quarantine"
+
+try {
+    New-Item -ItemType Directory -Path $quarantineDirectory -Force | Out-Null
+
+    Write-Host "Quarantine directory created:" -ForegroundColor Green
+    Write-Host "  $quarantineDirectory"
+} catch {
+    Stop-Install "Unable to create quarantine directory: $($_.Exception.Message)"
+}
+
 $msiLog = Join-Path $env:TEMP "kuamini-install-$([guid]::NewGuid()).log"
 $msiArguments = @("/i", "`"$msiPath`"", "REGISTRATIONTOKEN=`"$token`"", "/passive", "/norestart", "/L*V", "`"$msiLog`"")
 $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArguments -PassThru -Wait
