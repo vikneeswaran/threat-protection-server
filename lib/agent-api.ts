@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/db";
+import { requireSessionUser } from "@/lib/auth/session";
 
 type JsonObject = Record<string, unknown>;
 
@@ -258,6 +259,185 @@ export async function completeScanCommand(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
+export async function createThreatActionCommand(request: Request) {
+  const body = await bodyFor(request);
+
+  if (body instanceof NextResponse) {
+    return body;
+  }
+
+  const user = await requireSessionUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const accountId = uuid(user.account_id);
+  const threatId = uuid(body.threat_id);
+  const action = text(body.action);
+
+  if (!accountId || !threatId || !action) {
+    return NextResponse.json(
+      {
+        error:
+          "account_id, threat_id and action are required",
+      },
+      { status: 400 }
+    );
+  }
+
+  const allowedActions = [
+    "quarantine",
+    "kill",
+    "allow",
+    "restore",
+    "delete",
+  ];
+
+  if (!allowedActions.includes(action)) {
+    return NextResponse.json(
+      {
+        error: `Unsupported threat action: ${action}`,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Make sure the threat belongs to this account
+  // and obtain the endpoint that owns the threat.
+  const threatResult = await query(
+    `
+      SELECT
+        id,
+        endpoint_id,
+        file_path,
+        process_id,
+        file_hash
+      FROM threats
+      WHERE id = $1
+        AND account_id = $2
+      LIMIT 1
+    `,
+    [threatId, accountId]
+  );
+
+  const threat = threatResult.rows[0];
+
+  if (!threat) {
+    return NextResponse.json(
+      { error: "Threat not found" },
+      { status: 404 }
+    );
+  }
+
+  if (!threat.endpoint_id) {
+    return NextResponse.json(
+      {
+        error:
+          "Threat is not associated with an endpoint",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Quarantine and Delete require the original file path.
+  if (
+    ["quarantine", "delete"].includes(action) &&
+    !threat.file_path
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Threat does not contain a file path",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Kill requires the process ID reported by the agent.
+  if (
+    action === "kill" &&
+    threat.process_id === null
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Threat does not contain a process ID",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Verify that the endpoint also belongs to this account.
+  const endpointResult = await query(
+    `
+      SELECT id
+      FROM endpoints
+      WHERE id = $1
+        AND account_id = $2
+      LIMIT 1
+    `,
+    [threat.endpoint_id, accountId]
+  );
+
+  if (!endpointResult.rows[0]) {
+    return NextResponse.json(
+      { error: "Endpoint not found" },
+      { status: 404 }
+    );
+  }
+
+  // Send all information required by the agent.
+  // Delete uses file_path.
+  // Kill uses process_id.
+  // file_hash is included for the existing Allow functionality.
+  const payload = {
+    file_path: threat.file_path ?? null,
+    process_id: threat.process_id ?? null,
+    file_hash: threat.file_hash ?? null,
+  };
+
+  const commandResult = await query(
+    `
+      INSERT INTO threat_action_commands (
+        account_id,
+        endpoint_id,
+        threat_id,
+        action,
+        status,
+        payload
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4::threat_action_type,
+        'pending',
+        $5::jsonb
+      )
+      RETURNING id, action, status, payload, created_at
+    `,
+    [
+      accountId,
+      threat.endpoint_id,
+      threatId,
+      action,
+      JSON.stringify(payload),
+    ]
+  );
+
+  return NextResponse.json(
+    {
+      ok: true,
+      command: commandResult.rows[0],
+    },
+    { status: 201 }
+  );
+}
+
 export async function getThreatActionCommand(request: Request) {
   const url = new URL(request.url);
   const accountId = uuid(url.searchParams.get("account_id"));
@@ -272,13 +452,148 @@ export async function getThreatActionCommand(request: Request) {
 
 export async function completeThreatActionCommand(request: Request) {
   const body = await bodyFor(request);
+
   if (body instanceof NextResponse) {
     return body;
   }
+
   const commandId = uuid(body.command_id);
+
   if (!commandId) {
-    return NextResponse.json({ error: "command_id is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "command_id is required" },
+      { status: 400 }
+    );
   }
-  await query("UPDATE threat_action_commands SET status = $1, error_message = $2, result_details = $3::jsonb, completed_at = NOW(), updated_at = NOW() WHERE id = $4", [text(body.status) ?? "completed", text(body.error_message), JSON.stringify(asObject(body.result_details)), commandId]);
-  return NextResponse.json({ ok: true });
+
+  const commandStatus = text(body.status) ?? "completed";
+  const errorMessage = text(body.error_message);
+  const resultDetails = asObject(body.result_details);
+
+  console.info("[ThreatAction] Completion received:", {
+    commandId,
+    commandStatus,
+    errorMessage,
+    resultDetails,
+  });
+
+  /*
+   * Update the command first and retrieve the associated
+   * threat and action in the same operation.
+   */
+  const commandResult = await query<{
+    id: string;
+    threat_id: string;
+    action: string;
+    status: string;
+  }>(
+    `UPDATE threat_action_commands
+     SET status = $1,
+         error_message = $2,
+         result_details = $3::jsonb,
+         completed_at = NOW(),
+         updated_at = NOW()
+     WHERE id = $4
+     RETURNING id, threat_id, action, status`,
+    [
+      commandStatus,
+      errorMessage,
+      JSON.stringify(resultDetails),
+      commandId,
+    ]
+  );
+
+  const command = commandResult.rows[0];
+
+  if (!command) {
+    console.warn("[ThreatAction] Command not found:", {
+      commandId,
+    });
+
+    return NextResponse.json(
+      { error: "Threat action command not found" },
+      { status: 404 }
+    );
+  }
+
+  console.info("[ThreatAction] Command updated:", {
+    commandId: command.id,
+    threatId: command.threat_id,
+    action: command.action,
+    status: command.status,
+  });
+
+  /*
+   * Only update the threat when the agent successfully
+   * completed the requested action.
+   */
+  if (commandStatus === "completed" && command.threat_id) {
+    const statusMap: Record<string, string> = {
+      quarantine: "quarantined",
+      kill: "killed",
+      allow: "allowed",
+      restore: "resolved",
+      delete: "resolved",
+    };
+
+    const action = String(command.action).toLowerCase();
+    const threatStatus = statusMap[action];
+
+    if (threatStatus) {
+      console.info("[ThreatAction] Updating threat status:", {
+        commandId,
+        threatId: command.threat_id,
+        action,
+        threatStatus,
+      });
+
+      const threatResult = await query<{
+        id: string;
+        status: string;
+        resolved_at: string | null;
+      }>(
+        `UPDATE threats
+         SET status = $1::threat_status,
+             resolved_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, status, resolved_at`,
+        [
+          threatStatus,
+          command.threat_id,
+        ]
+      );
+
+      const updatedThreat = threatResult.rows[0];
+
+      if (!updatedThreat) {
+        console.warn("[ThreatAction] Threat not found:", {
+          commandId,
+          threatId: command.threat_id,
+        });
+
+        return NextResponse.json(
+          {
+            error: "Command completed but threat was not found",
+          },
+          { status: 404 }
+        );
+      }
+
+      console.info("[ThreatAction] Threat status updated:", {
+        threatId: updatedThreat.id,
+        status: updatedThreat.status,
+        resolvedAt: updatedThreat.resolved_at,
+      });
+    } else {
+      console.info(
+        "[ThreatAction] No status mapping for action:",
+        action
+      );
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+  });
 }

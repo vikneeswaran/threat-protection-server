@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import ThreatFilter from "./threatFilters";
 import { getThreats } from "@/app/services/threatService";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface Threat {
   id: string;
@@ -17,6 +18,7 @@ interface Threat {
 }
 
 export default function ThreatTable() {
+  const router = useRouter();
   // Stores all threats received from the API
   const [threats, setThreats] = useState<Threat[]>([]);
 
@@ -254,7 +256,7 @@ export default function ThreatTable() {
   // GEAR ACTION FUNCTIONS
   // --------------------------------------------------
 
-  const handleThreatAction = (
+  const handleThreatAction = async (
     action: string,
     threat: Threat
   ) => {
@@ -265,19 +267,79 @@ export default function ThreatTable() {
       threatId: threat.id,
     });
 
-    // API calls can be added here later.
-    //
-    // Example:
-    //
-    // if (action === "quarantine") {
-    //   await quarantineThreat(threat.id);
-    // }
+   const supportedActions = [
+  "quarantine",
+  "kill",
+  "block",
+  "allow",
+  "delete",
+];
+
+    if (!supportedActions.includes(action)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "/api/securityagent/agent/threat-action-commands",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            threat_id: threat.id,
+            action,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error(
+          `${action} command failed:`,
+          data
+        );
+
+        alert(
+          data.error ||
+            `Failed to create ${action} command.`
+        );
+
+        return;
+      }
+
+      console.log(
+        `${action} command created:`,
+        data
+      );
+
+      const actionLabel =
+        action.charAt(0).toUpperCase() +
+        action.slice(1);
+
+      alert(
+        `${actionLabel} command sent to the endpoint.`
+      );
+    } catch (error) {
+      console.error(
+        `${action} request failed:`,
+        error
+      );
+
+      alert(
+        `Failed to send ${action} command.`
+      );
+    }
   };
 
   // Export
   const handleExport = () => {
     console.log("Export Incidents");
   };
+  
 
   // Loading
   if (loading) {
@@ -582,19 +644,20 @@ export default function ThreatTable() {
                   {/* ACTION DROPDOWN */}
                   {openActionMenu === t.id && (
                     <div className="absolute right-3 top-14 z-50 w-44 overflow-hidden rounded-lg border border-slate-700 bg-[#111827] shadow-xl">
-
-                      {/* View */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenActionMenu(null);
-                        }}
-                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
-                      >
-                        <span>👁</span>
-                        View Details
-                      </button>
-
+                     
+                    {/* View */}
+<button
+  type="button"
+  onClick={() => {
+    setOpenActionMenu(null);
+    router.push(`/securityAgent/threats/${t.id}`);
+  }}
+  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
+>
+  <span>👁</span>
+  View Details
+</button>
+                  
                       {/* Quarantine */}
                       <button
                         type="button"
@@ -610,35 +673,68 @@ export default function ThreatTable() {
                         Quarantine
                       </button>
 
-                      {/* Resolve */}
+                      {/* Kill */}
                       <button
                         type="button"
                         onClick={() =>
                           handleThreatAction(
-                            "resolve",
+                            "kill",
                             t
                           )
                         }
-                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-green-300 hover:bg-slate-800"
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-300 hover:bg-slate-800"
                       >
-                        <span>✓</span>
-                        Resolve
+                        <span>⚡</span>
+                        Kill
                       </button>
 
-                      {/* Ignore */}
+                      {/* Delete */}
                       <button
                         type="button"
                         onClick={() =>
                           handleThreatAction(
-                            "ignore",
+                            "delete",
                             t
                           )
                         }
-                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-400 hover:bg-slate-800 hover:text-white"
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-400 hover:bg-slate-800"
                       >
-                        <span>⊘</span>
-                        Ignore
+                        <span>🗑</span>
+                        Delete
                       </button>
+
+                      
+                     
+
+                      {/* Block */}
+<button
+  type="button"
+  onClick={() =>
+    handleThreatAction(
+      "block",
+      t
+    )
+  }
+  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-300 hover:bg-slate-800"
+>
+  <span>🚫</span>
+  Block
+</button>
+
+{/* Allow */}
+<button
+  type="button"
+  onClick={() =>
+    handleThreatAction(
+      "allow",
+      t
+    )
+  }
+  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-green-300 hover:bg-slate-800"
+>
+  <span>✓</span>
+  Allow
+</button>
 
                     </div>
                   )}
