@@ -2,16 +2,17 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/session";
 import { query } from "@/lib/db";
 
-// Fetch detected threats belonging only to endpoints
+// Fetch threats belonging only to endpoints
 // of the currently logged-in account.
 export async function GET() {
   try {
     const user = await requireSessionUser();
+
     console.log("THREATS API USER:", {
-  id: user?.id,
-  email: user?.email,
-  account_id: user?.account_id,
-});
+      id: user?.id,
+      email: user?.email,
+      account_id: user?.account_id,
+    });
 
     if (!user) {
       return NextResponse.json(
@@ -37,14 +38,36 @@ export async function GET() {
         t.detection_source,
         t.detected_at,
         t.resolved_at,
+
         e.hostname,
         e.ip_address,
         e.os,
-        e.status AS endpoint_status
+        e.status AS endpoint_status,
+
+        tac.action AS latest_action,
+        tac.status AS latest_action_status,
+        tac.error_message AS latest_action_error
+
       FROM threats t
+
       INNER JOIN endpoints e
         ON t.endpoint_id = e.id
+
+      LEFT JOIN LATERAL (
+        SELECT
+          action,
+          status,
+          error_message,
+          created_at
+        FROM threat_action_commands
+        WHERE threat_id = t.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) tac
+        ON TRUE
+
       WHERE e.account_id = $1
+
       ORDER BY t.detected_at DESC
       `,
       [user.account_id]

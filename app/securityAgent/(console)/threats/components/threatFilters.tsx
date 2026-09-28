@@ -46,6 +46,17 @@ export default function ThreatFilter({
         <option value="">All Status</option>
         <option value="detected">Detected</option>
         <option value="unknown">Unknown</option>
+        <option value="quarantined">Quarantined</option>
+        <option value="killed">Killed</option>
+        <option value="allowed">Allowed</option>
+        <option value="blocked">Blocked</option>
+        <option value="deleted">Deleted</option>
+        <option value="quarantine failed">Quarantine Failed</option>
+        <option value="kill failed">Kill Failed</option>
+        <option value="block failed">Block Failed</option>
+        <option value="allow failed">Allow Failed</option>
+        <option value="delete failed">Delete Failed</option>
+        <option value="restore failed">Restore Failed</option>
       </select>
 
       <button

@@ -31,8 +31,8 @@ export async function GET() {
           WHERE t.status = 'detected'
         ) AS open_incidents,
 
-        COUNT(*) FILTER (
-          WHERE DATE(t.resolved_at) = CURRENT_DATE
+         COUNT(*) FILTER (
+         WHERE t.resolved_at IS NOT NULL
         ) AS resolved
 
       FROM threats t

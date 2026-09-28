@@ -156,6 +156,8 @@ export async function POST(request: NextRequest) {
     const supportedActions = [
       "quarantine",
       "kill",
+      "allow",
+      "delete",
     ];
 
     if (!supportedActions.includes(action)) {
@@ -274,20 +276,37 @@ if (endpoints.length === 0) {
       // Validate required data for the action
       // ----------------------------------------------
       if (
-        action === "quarantine" &&
-        !threat.file_path
-      ) {
-        skippedThreatCount++;
-        continue;
-      }
+  action === "quarantine" &&
+  !threat.file_path
+) {
+  skippedThreatCount++;
+  continue;
+}
 
-      if (
-        action === "kill" &&
-        !threat.process_id
-      ) {
-        skippedThreatCount++;
-        continue;
-      }
+if (
+  action === "kill" &&
+  !threat.process_id
+) {
+  skippedThreatCount++;
+  continue;
+}
+
+if (
+  action === "allow" &&
+  !threat.file_hash &&
+  !threat.file_path
+) {
+  skippedThreatCount++;
+  continue;
+}
+
+if (
+  action === "delete" &&
+  !threat.file_path
+) {
+  skippedThreatCount++;
+  continue;
+}
 
       // ----------------------------------------------
       // Create the same command structure used by the
