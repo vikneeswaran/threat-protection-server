@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/session";
+import { getPool } from "@/lib/db";
+
 
 export async function GET() {
   try {
@@ -12,17 +14,28 @@ export async function GET() {
       );
     }
 
-    // Threat types supported by the current agent detection engine.
-    const threatTypes = [
-      "ransomware",
-      "trojan",
-      "pup",
-      "worm",
-      "rootkit",
-      "suspicious",
-      "resource_abuse",
-      "process_anomaly",
-    ];
+     const pool = getPool();
+       const result = await pool.query(
+
+      `
+        SELECT DISTINCT
+          type
+        FROM public.threats
+        WHERE type IS NOT NULL
+          AND TRIM(type) <> ''
+        ORDER BY type ASC
+      `
+    );
+
+    const threatTypes = result.rows.map(
+      (row) => row.type as string
+    );
+
+    // Add optional "Other" option.
+    // It does not need to exist in threat_master.
+    if (!threatTypes.includes("Other")) {
+      threatTypes.push("Other");
+    }
 
     return NextResponse.json(threatTypes);
   } catch (error) {
