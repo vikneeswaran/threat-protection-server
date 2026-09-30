@@ -1,31 +1,7 @@
-import { NextResponse } from "next/server";
-import { requireSessionUser } from "@/lib/auth/session";
-import { getInstallerData } from "@/lib/installers/installer.service";
+import { downloadUnixInstaller } from "@/lib/installers/unix-download";
 
-export async function GET() {
-  try {
-    const user = await requireSessionUser();
+export const runtime = "nodejs";
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const data = await getInstallerData(user.account_id, "Linux");
-
-    return NextResponse.json({
-      success: true,
-      license: data.license,
-      installer: data.installer,
-    });
-  } catch (error) {
-    console.error(error);
-
-    return NextResponse.json(
-      { error: "Failed to load Linux installer." },
-      { status: 500 }
-    );
-  }
+export async function GET(request: Request) {
+  return downloadUnixInstaller(request, "linux");
 }
