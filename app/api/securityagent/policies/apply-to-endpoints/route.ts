@@ -24,7 +24,11 @@ export async function POST(request: NextRequest) {
     // --------------------------------------------------
     const body = await request.json();
 
-    const { policyId, accountId } = body;
+    const {
+      policyId,
+      accountId,
+      mode = "apply",
+    } = body;
 
     if (!policyId) {
       return NextResponse.json(
@@ -85,7 +89,179 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // 5. Make sure the policy is active
+    // 5. Handle Disable mode
+    //
+    // Disable is intentionally handled before the active-policy
+    // check because a policy must be allowed to transition from
+    // active -> disabled.
+    // --------------------------------------------------
+    if (mode === "disable") {
+      // Remove this policy from all endpoints belonging to
+      // the policy's account.
+      const removedAssignmentsResult = await query(
+        `
+        DELETE FROM public.endpoint_policies
+        WHERE policy_id = $1
+          AND endpoint_id IN (
+            SELECT id
+            FROM public.endpoints
+            WHERE account_id = $2
+          )
+        RETURNING id
+        `,
+        [policyId, policyAccountId]
+      );
+
+      const removedCount =
+        removedAssignmentsResult.rows.length;
+
+      // Cancel any pending threat-action commands created by
+      // this policy.
+      //
+      // Commands from other policies or manually-created
+      // commands are not affected.
+      await query(
+        `
+        UPDATE public.threat_action_commands
+        SET
+          status = 'failed',
+          error_message = 'Policy disabled before command execution',
+          completed_at = NOW(),
+          updated_at = NOW()
+        WHERE policy_id = $1
+          AND status = 'pending'
+        `,
+        [policyId]
+      );
+
+      // Disable the policy itself.
+      const disabledPolicyResult = await query(
+        `
+        UPDATE public.policies
+        SET
+          status = 'disabled'::policy_status,
+          is_active = FALSE,
+          updated_at = NOW()
+        WHERE id = $1
+          AND account_id = $2
+        RETURNING id, status, is_active
+        `,
+        [policyId, policyAccountId]
+      );
+
+      if (disabledPolicyResult.rows.length === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Policy could not be disabled.",
+          },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        updatedCount: removedCount,
+        commandCreatedCount: 0,
+        message:
+          `Policy "${policy.name}" was disabled and removed from ` +
+          `${removedCount} endpoint assignment${
+            removedCount === 1 ? "" : "s"
+          }.`,
+      });
+    }
+
+    // --------------------------------------------------
+    // 6. Handle Enable mode
+    //
+    // Enable must be handled BEFORE the inactive-policy
+    // check because a disabled policy has is_active = false.
+    // --------------------------------------------------
+    if (mode === "enable") {
+      // Reactivate the policy.
+      const enabledPolicyResult = await query(
+        `
+        UPDATE public.policies
+        SET
+          status = 'active'::policy_status,
+          is_active = TRUE,
+          updated_at = NOW()
+        WHERE id = $1
+          AND account_id = $2
+        RETURNING id, status, is_active
+        `,
+        [policyId, policyAccountId]
+      );
+
+      if (enabledPolicyResult.rows.length === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Policy could not be enabled.",
+          },
+          { status: 404 }
+        );
+      }
+
+      // Get all endpoints belonging to this account.
+      const endpointResult = await query(
+        `
+        SELECT id
+        FROM public.endpoints
+        WHERE account_id = $1
+        `,
+        [policyAccountId]
+      );
+
+      let updatedCount = 0;
+
+      // Assign the enabled policy to every endpoint.
+      for (const endpoint of endpointResult.rows) {
+        const result = await query(
+          `
+          INSERT INTO public.endpoint_policies
+          (
+            endpoint_id,
+            policy_id,
+            assigned_by
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3
+          )
+          ON CONFLICT (endpoint_id, policy_id)
+          DO UPDATE SET
+            assigned_at = NOW(),
+            assigned_by = EXCLUDED.assigned_by
+          RETURNING id
+          `,
+          [
+            endpoint.id,
+            policyId,
+            user.id,
+          ]
+        );
+
+        if (result.rows.length > 0) {
+          updatedCount++;
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        updatedCount,
+        message:
+          `Policy "${policy.name}" was enabled and applied to ` +
+          `${updatedCount} endpoint${
+            updatedCount === 1 ? "" : "s"
+          }.`,
+      });
+    }
+
+    // --------------------------------------------------
+    // 7. Make sure the policy is active for normal Apply
     // --------------------------------------------------
     if (policy.is_active === false) {
       return NextResponse.json(
@@ -98,7 +274,7 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // 6. Read threat policy configuration
+    // 8. Read threat policy configuration
     // --------------------------------------------------
     const policyConfig =
       typeof policy.config === "string"
@@ -136,7 +312,7 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // 7. Normalize policy action
+    // 9. Normalize policy action
     //
     // Existing agent behavior:
     // block -> kill
@@ -146,8 +322,8 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // 8. Only use actions supported by the existing
-    //    threat-action command infrastructure.
+    // 10. Only use actions supported by the existing
+    //     threat-action command infrastructure.
     //
     // Allow is intentionally excluded for now because
     // the installed agent whitelist path still needs
@@ -171,7 +347,7 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // 9. Get all endpoints belonging to this account
+    // 11. Get all endpoints belonging to this account
     // --------------------------------------------------
     const endpointResult = await query(
       `
@@ -185,18 +361,18 @@ export async function POST(request: NextRequest) {
     const endpoints = endpointResult.rows;
 
     // --------------------------------------------------
-// 10. No endpoints found
-// --------------------------------------------------
-if (endpoints.length === 0) {
-  return NextResponse.json({
-    success: true,
-    updatedCount: 0,
-    message: "No endpoints were found for this account.",
-  });
-}
+    // 12. No endpoints found
+    // --------------------------------------------------
+    if (endpoints.length === 0) {
+      return NextResponse.json({
+        success: true,
+        updatedCount: 0,
+        message: "No endpoints were found for this account.",
+      });
+    }
 
     // --------------------------------------------------
-    // 11. Assign policy to every endpoint
+    // 13. Assign policy to every endpoint
     // --------------------------------------------------
     let updatedCount = 0;
 
@@ -233,9 +409,8 @@ if (endpoints.length === 0) {
       }
     }
 
-
     // --------------------------------------------------
-    // 12. Find existing matching threats
+    // 14. Find existing matching threats
     //
     // Only "detected" threats are processed.
     // Already handled threats will not be processed again.
@@ -250,8 +425,8 @@ if (endpoints.length === 0) {
         file_hash
       FROM threats
       WHERE account_id = $1
-      AND status = 'detected'
-      AND LOWER(type) = LOWER($2)
+        AND status = 'detected'
+        AND LOWER(type) = LOWER($2)
       ORDER BY detected_at ASC
       `,
       [
@@ -263,7 +438,7 @@ if (endpoints.length === 0) {
     const threats = threatResult.rows;
 
     // --------------------------------------------------
-    // 13. Create threat-action commands
+    // 15. Create threat-action commands
     // --------------------------------------------------
     let matchedThreatCount = 0;
     let commandCreatedCount = 0;
@@ -276,41 +451,45 @@ if (endpoints.length === 0) {
       // Validate required data for the action
       // ----------------------------------------------
       if (
-  action === "quarantine" &&
-  !threat.file_path
-) {
-  skippedThreatCount++;
-  continue;
-}
+        action === "quarantine" &&
+        !threat.file_path
+      ) {
+        skippedThreatCount++;
+        continue;
+      }
 
-if (
-  action === "kill" &&
-  !threat.process_id
-) {
-  skippedThreatCount++;
-  continue;
-}
+      if (
+        action === "kill" &&
+        !threat.process_id
+      ) {
+        skippedThreatCount++;
+        continue;
+      }
 
-if (
-  action === "allow" &&
-  !threat.file_hash &&
-  !threat.file_path
-) {
-  skippedThreatCount++;
-  continue;
-}
+      if (
+        action === "allow" &&
+        !threat.file_hash &&
+        !threat.file_path
+      ) {
+        skippedThreatCount++;
+        continue;
+      }
 
-if (
-  action === "delete" &&
-  !threat.file_path
-) {
-  skippedThreatCount++;
-  continue;
-}
+      if (
+        action === "delete" &&
+        !threat.file_path
+      ) {
+        skippedThreatCount++;
+        continue;
+      }
 
       // ----------------------------------------------
       // Create the same command structure used by the
       // existing manual threat-action functionality.
+      //
+      // policy_id links this command to the policy that
+      // created it so pending commands can be cancelled
+      // when that policy is disabled.
       // ----------------------------------------------
       const commandResult = await query(
         `
@@ -319,6 +498,7 @@ if (
           account_id,
           endpoint_id,
           threat_id,
+          policy_id,
           action,
           status,
           payload
@@ -328,9 +508,10 @@ if (
           $1,
           $2,
           $3,
-          $4::threat_action_type,
+          $4,
+          $5::threat_action_type,
           'pending',
-          $5::jsonb
+          $6::jsonb
         )
         RETURNING id
         `,
@@ -338,6 +519,7 @@ if (
           policyAccountId,
           threat.endpoint_id,
           threat.id,
+          policyId,
           action,
           JSON.stringify({
             file_path: threat.file_path ?? null,
@@ -353,7 +535,7 @@ if (
     }
 
     // --------------------------------------------------
-    // 14. Return result
+    // 16. Return result
     // --------------------------------------------------
     return NextResponse.json({
       success: true,

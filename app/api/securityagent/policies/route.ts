@@ -113,6 +113,21 @@ export async function GET() {
           p.created_at,
           p.updated_at,
           p.status,
+          (
+            NOT EXISTS (
+              SELECT 1
+              FROM public.endpoints e
+              WHERE e.account_id = p.account_id
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM public.endpoint_policies ep
+                  WHERE ep.endpoint_id = e.id
+                    AND ep.policy_id = p.id
+                )
+            )
+            AND p.status = 'active'::policy_status
+            AND p.is_active = TRUE
+          ) AS is_applied,
           a.name AS account_name
         FROM public.policies p
         LEFT JOIN public.accounts a
@@ -189,6 +204,21 @@ export async function GET() {
             p.created_at,
             p.updated_at,
             p.status,
+            (
+              NOT EXISTS (
+                SELECT 1
+                FROM public.endpoints e
+                WHERE e.account_id = p.account_id
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM public.endpoint_policies ep
+                    WHERE ep.endpoint_id = e.id
+                      AND ep.policy_id = p.id
+                  )
+              )
+              AND p.status = 'active'::policy_status
+              AND p.is_active = TRUE
+            ) AS is_applied,
             a.name AS account_name
           FROM public.policies p
           INNER JOIN public.accounts a
@@ -249,15 +279,16 @@ export async function GET() {
       /*
        * Check parent setting.
        */
-      const parentSettingsResult = await query(
-        `
-          SELECT
-            allow_child_overrides
-          FROM public.account_policy_settings
-          WHERE account_id = $1
-        `,
-        [account.parent_account_id]
-      );
+      const parentSettingsResult =
+        await query(
+          `
+            SELECT
+              allow_child_overrides
+            FROM public.account_policy_settings
+            WHERE account_id = $1
+          `,
+          [account.parent_account_id]
+        );
 
       const parentAllowsChildOverrides =
         parentSettingsResult.rows.length > 0
@@ -305,6 +336,21 @@ export async function GET() {
               p.created_at,
               p.updated_at,
               p.status,
+              (
+                NOT EXISTS (
+                  SELECT 1
+                  FROM public.endpoints e
+                  WHERE e.account_id = $2
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM public.endpoint_policies ep
+                      WHERE ep.endpoint_id = e.id
+                        AND ep.policy_id = p.id
+                    )
+                )
+                AND p.status = 'active'::policy_status
+                AND p.is_active = TRUE
+              ) AS is_applied,
               a.name AS account_name
             FROM public.policies p
             LEFT JOIN public.accounts a
@@ -1211,6 +1257,42 @@ export async function DELETE(request: Request) {
       policy.account_id ===
       user.account_id
     ) {
+      /*
+       * Cancel any pending threat-action commands created by
+       * this policy before deleting the policy.
+       *
+       * Commands from other policies or manually-created
+       * commands are not affected.
+       *
+       * Commands that are already running or completed
+       * are not affected.
+       */
+      await query(
+        `
+          UPDATE public.threat_action_commands
+          SET
+            status = 'failed',
+            error_message = 'Policy deleted before command execution',
+            completed_at = NOW(),
+            updated_at = NOW()
+          WHERE policy_id = $1
+            AND status = 'pending'
+        `,
+        [policyId]
+      );
+
+      /*
+       * Remove the policy from all endpoint assignments
+       * before deleting the policy itself.
+       */
+      await query(
+        `
+          DELETE FROM public.endpoint_policies
+          WHERE policy_id = $1
+        `,
+        [policyId]
+      );
+
       const result = await query(
         `
           DELETE FROM public.policies
@@ -1258,6 +1340,42 @@ export async function DELETE(request: Request) {
       );
 
       if (childResult.rows.length > 0) {
+        /*
+         * Cancel any pending threat-action commands created by
+         * this policy before deleting the policy.
+         *
+         * Commands from other policies or manually-created
+         * commands are not affected.
+         *
+         * Commands that are already running or completed
+         * are not affected.
+         */
+        await query(
+          `
+            UPDATE public.threat_action_commands
+            SET
+              status = 'failed',
+              error_message = 'Policy deleted before command execution',
+              completed_at = NOW(),
+              updated_at = NOW()
+            WHERE policy_id = $1
+              AND status = 'pending'
+          `,
+          [policyId]
+        );
+
+        /*
+         * Remove the policy from all endpoint assignments
+         * before deleting the policy itself.
+         */
+        await query(
+          `
+            DELETE FROM public.endpoint_policies
+            WHERE policy_id = $1
+          `,
+          [policyId]
+        );
+
         const result = await query(
           `
             DELETE FROM public.policies
