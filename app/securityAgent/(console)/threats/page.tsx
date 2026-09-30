@@ -2,7 +2,7 @@
 import ThreatSummaryCards from "@/app/securityAgent/(console)/threats/components/threatSummaryCards";
 import ThreatTable from "@/app/securityAgent/(console)/threats/components/threatTable";
 import ResponseQueue from "@/app/securityAgent/(console)/threats/components/responseQueue";
-import PolicyRecommendation from "@/app/securityAgent/(console)/threats/components/policyRecommendation";
+// import PolicyRecommendation from "@/app/securityAgent/(console)/threats/components/policyRecommendation";
 
 // Main page component for displaying threat monitoring information
 export default function ThreatsPage() {
@@ -112,7 +112,7 @@ export default function ThreatsPage() {
           {/* Shows pending response actions for detected threats */}
           <ResponseQueue />
           {/* Displays recommended security policies based on threats */}
-          <PolicyRecommendation />
+          {/* <PolicyRecommendation /> */}
         </div>
 
         {/* Bottom breathing room so decorative lighting remains visible */}
