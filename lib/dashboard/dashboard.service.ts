@@ -94,7 +94,7 @@ export async function getDashboardData(
       SELECT
           COUNT(*)::int AS total,
           COUNT(*) FILTER (WHERE status='detected')::int AS detected,
-          COUNT(*) FILTER (WHERE status='resolved')::int AS resolved,
+         COUNT(*) FILTER (WHERE resolved_at IS NOT NULL)::int AS resolved,
           COUNT(*) FILTER (WHERE status='quarantined')::int AS quarantined,
           COUNT(*) FILTER (WHERE status='killed')::int AS killed,
           COUNT(*) FILTER (WHERE status='allowed')::int AS allowed

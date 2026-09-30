@@ -218,7 +218,20 @@ export async function updateThreatStatus(request: Request, threatId: string) {
   if (!status) {
     return NextResponse.json({ error: "status is required" }, { status: 400 });
   }
-  const result = await query<{ id: string }>("UPDATE threats SET status = $1, resolved_at = CASE WHEN $1 IN ('resolved', 'quarantined', 'killed', 'allowed') THEN NOW() ELSE resolved_at END WHERE id = $2 RETURNING id", [status, threatId]);
+  console.log("[Resolve] Updating threat:", {
+  threatId,
+  status,
+});
+  const result = await query<{ id: string }>(
+  "UPDATE threats SET status = $1::threat_status, resolved_at = CASE WHEN $1::threat_status IN ('resolved', 'quarantined', 'killed', 'allowed') THEN NOW() ELSE resolved_at END WHERE id = $2 RETURNING id",
+  [status, threatId]
+);
+
+console.log("[Resolve] DB update result:", {
+  threatId,
+  status,
+  rows: result.rows,
+});
   if (!result.rows[0]) {
     return NextResponse.json({ error: "Threat not found" }, { status: 404 });
   }

@@ -384,6 +384,99 @@ const filterThreats = () => {
     }
   };
 
+  const handleBulkThreatAction = async (action: "quarantine" | "resolve") => {
+    console.log("[Bulk Action] clicked:", action, selectedThreatIds);
+  if (selectedThreatIds.length === 0) {
+    return;
+  }
+
+  const selectedThreats = threats.filter((threat) =>
+    selectedThreatIds.includes(threat.id)
+  );
+
+  if (selectedThreats.length === 0) {
+    alert("No selected threats found.");
+    return;
+  }
+
+  let successCount = 0;
+  let failedCount = 0;
+
+  for (const threat of selectedThreats) {
+    try {
+      let response: Response;
+
+      if (action === "quarantine") {
+        response = await fetch(
+          "/api/securityagent/agent/threat-action-commands",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              threat_id: threat.id,
+              action: "quarantine",
+            }),
+          }
+        );
+      } else {
+        console.log("[Bulk Resolve] Sending request:", threat.id);
+        response = await fetch(
+          `/api/securityagent/agent/threat/${threat.id}/status`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              status: "resolved",
+            }),
+          }
+        );
+      }
+
+      if (response.ok) {
+        successCount++;
+      } else {
+        failedCount++;
+
+        const errorText = await response.text();
+        console.error(
+          `Bulk ${action} failed for threat ${threat.id}:`,
+          errorText
+        );
+      }
+    } catch (error) {
+      failedCount++;
+
+      console.error(
+        `Bulk ${action} request failed for threat ${threat.id}:`,
+        error
+      );
+    }
+  }
+
+  setSelectedThreatIds([]);
+
+  const actionLabel =
+    action.charAt(0).toUpperCase() + action.slice(1);
+
+  if (failedCount === 0) {
+    alert(
+      `${actionLabel} completed successfully for ${successCount} threat${
+        successCount !== 1 ? "s" : ""
+      }.`
+    );
+  } else {
+    alert(
+      `${actionLabel} completed: ${successCount} succeeded, ${failedCount} failed.`
+    );
+  }
+};
+
   // Export
   const handleExport = () => {
     console.log("Export Incidents");
@@ -446,24 +539,14 @@ const filterThreats = () => {
 
           <div className="flex gap-2">
             <button
-              onClick={() =>
-                console.log(
-                  "Bulk Quarantine:",
-                  selectedThreatIds
-                )
-              }
+              onClick={() => handleBulkThreatAction("quarantine")}
               className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
             >
               Quarantine
             </button>
 
             <button
-              onClick={() =>
-                console.log(
-                  "Bulk Resolve:",
-                  selectedThreatIds
-                )
-              }
+              onClick={() => handleBulkThreatAction("resolve")}
               className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
             >
               Resolve
