@@ -32,6 +32,9 @@ type Policy = {
   updated_at: string;
   status: string;
 
+  // UI-only state
+  is_applied?: boolean;
+
   // True when inherited from parent
   is_inherited?: boolean;
 
@@ -60,6 +63,17 @@ export default function PoliciesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+
+
+  // Policy action menu / pending Disable selection
+  const [pendingDisablePolicyId, setPendingDisablePolicyId] =
+  useState<string | null>(null);
+  const [pendingEnablePolicyId, setPendingEnablePolicyId] =
+  useState<string | null>(null);
+
+
+  const [openActionMenuPolicyId, setOpenActionMenuPolicyId] =
+  useState<string | null>(null);
 
   // ---------------------------------------------------------
   // Policy form
@@ -533,9 +547,18 @@ const handleApplyToEndpoints = async (
     return;
   }
 
+  const isDisablePending =
+    pendingDisablePolicyId === policy.id;
+  const isEnablePending =
+  pendingEnablePolicyId === policy.id;
+
   const confirmed = window.confirm(
-    `Are you sure you want to apply "${policy.name}" to all endpoints belonging to this account?`
-  );
+  isDisablePending
+    ? `Are you sure you want to disable "${policy.name}" for all endpoints belonging to this account?`
+    : isEnablePending
+      ? `Are you sure you want to enable "${policy.name}" for all endpoints belonging to this account?`
+      : `Are you sure you want to apply "${policy.name}" to all endpoints belonging to this account?`
+);
 
   if (!confirmed) {
     return;
@@ -544,66 +567,100 @@ const handleApplyToEndpoints = async (
   try {
     setSaving(true);
 
-   
+    const response = await fetch(
+      "/api/securityagent/policies/apply-to-endpoints",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          policyId: policy.id,
+          accountId: policy.applies_to_account_id,
+         mode: isDisablePending
+  ? "disable"
+  : isEnablePending
+    ? "enable"
+    : "apply",
+        }),
+      }
+    );
 
-   const response = await fetch(
-  "/api/securityagent/policies/apply-to-endpoints",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      policyId: policy.id,
-      accountId: policy.applies_to_account_id,
-    }),
-  }
-);
+    const data = await response.json();
 
-const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Failed to apply policy"
+      );
+    }
+if (isDisablePending) {
+  setPendingDisablePolicyId(null);
 
-console.log(
-  "Apply policy API status:",
-  response.status
-);
+  setPolicies((currentPolicies) =>
+    currentPolicies.map((currentPolicy) =>
+      currentPolicy.id === policy.id
+        ? {
+            ...currentPolicy,
+            status: "disabled",
+            is_active: false,
+            is_applied: false,
+          }
+        : currentPolicy
+    )
+  );
 
-console.log(
-  "Apply policy API response:",
-  responseText
-);
-
-if (!response.ok) {
-  throw new Error(
-    `API error ${response.status}: ${responseText}`
+  toast.success(
+    data.message ||
+      "Policy disabled successfully"
   );
 }
+else if (isEnablePending) {
+  setPendingEnablePolicyId(null);
 
-let data;
+  setPolicies((currentPolicies) =>
+    currentPolicies.map((currentPolicy) =>
+      currentPolicy.id === policy.id
+        ? {
+            ...currentPolicy,
+            status: "active",
+            is_active: true,
+            is_applied: true,
+          }
+        : currentPolicy
+    )
+  );
 
-try {
-  data = JSON.parse(responseText);
-} catch {
-  throw new Error(
-    "The API returned an invalid response. Check the backend route."
+  toast.success(
+    data.message ||
+      "Policy enabled successfully"
+  );
+} else {
+  setPolicies((currentPolicies) =>
+    currentPolicies.map((currentPolicy) =>
+      currentPolicy.id === policy.id
+        ? {
+            ...currentPolicy,
+            is_applied: true,
+          }
+        : currentPolicy
+    )
+  );
+
+  toast.success(
+    data.message ||
+      "Policy applied to all endpoints successfully"
   );
 }
-
-toast.success(
-  data.message ||
-    "Policy applied to all endpoints successfully"
-);
-
-    
   } catch (error) {
     console.error(
-      "Failed to apply policy to endpoints:",
+      "Error applying policy:",
       error
     );
 
     toast.error(
       error instanceof Error
         ? error.message
-        : "Failed to apply policy to endpoints"
+        : "Failed to apply policy"
     );
   } finally {
     setSaving(false);
@@ -1794,36 +1851,124 @@ const isPolicyForSelectedChild = (policy: Policy) => {
   </button>
 
   {/* APPLY TO ENDPOINTS */}
+{/* APPLY TO ENDPOINTS */}
 
+<button
+  type="button"
+  onClick={() => handleApplyToEndpoints(policy)}
+ disabled={
+  policy.is_inherited ||
+  (policy.status === "disabled" &&
+    pendingEnablePolicyId !== policy.id) ||
+  (policy.is_applied === true &&
+    pendingDisablePolicyId !== policy.id &&
+    pendingEnablePolicyId !== policy.id)
+}
+  title={
+    policy.is_applied
+      ? "This policy has already been applied to all endpoints"
+      : policy.status === "disabled"
+        ? "This policy is disabled"
+        : policy.is_inherited
+          ? "Inherited policies cannot be directly applied"
+          : "Apply this policy to all endpoints in this account"
+  }
+
+className="flex w-[174px] min-w-[174px] shrink-0 items-center justify-center rounded-md border border-green-900/60 px-3 py-1.5 text-xs font-medium text-green-400 transition hover:bg-green-950/40 hover:text-green-300 disabled:cursor-not-allowed disabled:opacity-40">
+{pendingDisablePolicyId === policy.id ||
+ pendingEnablePolicyId === policy.id
+  ? "Apply to Endpoints"
+  : policy.is_applied
+    ? "Applied to Endpoints"
+    : policy.status === "disabled"
+      ? "Disabled"
+      : "Apply to Endpoints"}
+</button>
+ 
+{/* ACTIONS */}
+
+<div className="relative">
   <button
     type="button"
-    onClick={() => handleApplyToEndpoints(policy)}
-    disabled={policy.is_inherited}
-    title={
-      policy.is_inherited
-        ? "Inherited policies cannot be directly applied"
-        : "Apply this policy to all endpoints in this account"
+    onClick={() =>
+      setOpenActionMenuPolicyId((current) =>
+        current === policy.id ? null : policy.id
+      )
     }
-    className="rounded-md border border-green-900/60 px-3 py-1.5 text-xs font-medium text-green-400 transition hover:bg-green-950/40 hover:text-green-300 disabled:cursor-not-allowed disabled:opacity-40"
-  >
-    Apply to Endpoints
-  </button>
-
-  {/* DELETE */}
-
-  <button
-    type="button"
-    onClick={() => handleDelete(policy)}
     disabled={!canDelete}
     title={
       policy.is_inherited
-        ? "Inherited policies cannot be deleted"
-        : "Delete policy"
+        ? "Inherited policies cannot be modified"
+        : "Policy actions"
     }
-    className="rounded-md border border-red-900/60 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-950/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+    className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
   >
-    Delete
+    Actions
+    <span
+      className={`text-[10px] transition-transform ${
+        openActionMenuPolicyId === policy.id
+          ? "rotate-180"
+          : ""
+      }`}
+    >
+      ▼
+    </span>
   </button>
+
+  {openActionMenuPolicyId === policy.id && (
+    <div className="absolute right-0 z-50 mt-2 w-36 overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+
+      {/* DELETE */}
+      <button
+        type="button"
+        onClick={() => {
+          setOpenActionMenuPolicyId(null);
+          handleDelete(policy);
+        }}
+        disabled={!canDelete}
+        className="block w-full px-4 py-2.5 text-left text-xs font-medium text-red-400 transition hover:bg-red-950/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Delete
+      </button>
+
+      {/* DISABLE */}
+      {policy.status === "disabled" ? (
+  <button
+    type="button"
+    onClick={() => {
+      setOpenActionMenuPolicyId(null);
+      setPendingEnablePolicyId(policy.id);
+
+      toast.success(
+        `Enable selected for "${policy.name}". Click Apply to Endpoints to confirm.`
+      );
+    }}
+    disabled={!canDelete}
+    className="block w-full px-4 py-2.5 text-left text-xs font-medium text-green-400 transition hover:bg-green-950/40 hover:text-green-300 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    Enable
+  </button>
+) : (
+  <button
+    type="button"
+    onClick={() => {
+      setOpenActionMenuPolicyId(null);
+      setPendingDisablePolicyId(policy.id);
+
+      toast.success(
+        `Disable selected for "${policy.name}". Click Apply to Endpoints to confirm.`
+      );
+    }}
+    disabled={!canDelete}
+    className="block w-full px-4 py-2.5 text-left text-xs font-medium text-yellow-400 transition hover:bg-yellow-950/40 hover:text-yellow-300 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    Disable
+  </button>
+)}
+
+    </div>
+  )}
+</div>
 
 </div>
 
