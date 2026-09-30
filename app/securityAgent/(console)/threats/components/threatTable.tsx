@@ -14,6 +14,7 @@ interface Threat {
   detectedBy: string;
   severity: string;
   detected: string;
+  detectedAt: string; // raw ISO timestamp, used for CSV export
   status: string;
 
   latestAction?: string | null;
@@ -30,6 +31,39 @@ const tdText = "truncate px-2 py-2.5";
 // Show only the first part of a long UUID (full ID is shown on hover)
 const shortId = (id: string) =>
   id.length > 8 ? `${id.slice(0, 8)}…` : id;
+
+/*
+ * The actual database threat status remains unchanged.
+ *
+ * Example:
+ *   threat.status = detected
+ *   latest action = quarantine
+ *   latest action status = failed
+ *
+ * The UI displays "Quarantine Failed".
+ */
+const getDisplayStatus = (t: Threat) => {
+  const latestAction = (t.latestAction || "").toLowerCase();
+  const latestActionStatus = (
+    t.latestActionStatus || ""
+  ).toLowerCase();
+
+  return latestActionStatus === "failed" && latestAction
+    ? `${latestAction.charAt(0).toUpperCase()}${latestAction.slice(1)} Failed`
+    : t.status;
+};
+
+// Escape one value for CSV
+const csvCell = (value: unknown) => {
+  let text = value === null || value === undefined ? "" : String(value);
+
+  // Prevent spreadsheet formula injection (=, +, -, @, tab, CR)
+  if (/^[=+\-@\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
+
+  return `"${text.replace(/"/g, '""')}"`;
+};
 
 export default function ThreatTable() {
   const router = useRouter();
@@ -109,6 +143,9 @@ export default function ThreatTable() {
             item.detected_at
           ).toLocaleString(),
 
+          // Raw timestamp for CSV export
+          detectedAt: item.detected_at ?? "",
+
           status:
             item.status?.charAt(0).toUpperCase() +
             item.status?.slice(1).toLowerCase(),
@@ -181,71 +218,61 @@ export default function ThreatTable() {
     return sortDirection === "asc" ? "▲" : "▼";
   };
 
- // Filter threats
-const filterThreats = () => {
-  let filtered = [...threats];
+  // Filter threats
+  const filterThreats = () => {
+    let filtered = [...threats];
 
-  // Search
-  if (search) {
-    const searchText = search.toLowerCase();
+    // Search
+    if (search) {
+      const searchText = search.toLowerCase();
 
-    filtered = filtered.filter((item) =>
-      (item.name || "")
-        .toLowerCase()
-        .includes(searchText) ||
-      (item.endpoint || "")
-        .toLowerCase()
-        .includes(searchText) ||
-      (item.threatType || "")
-        .toLowerCase()
-        .includes(searchText) ||
-      (item.detectedBy || "")
-        .toLowerCase()
-        .includes(searchText)
-    );
-  }
+      filtered = filtered.filter(
+        (item) =>
+          (item.name || "")
+            .toLowerCase()
+            .includes(searchText) ||
+          (item.endpoint || "")
+            .toLowerCase()
+            .includes(searchText) ||
+          (item.threatType || "")
+            .toLowerCase()
+            .includes(searchText) ||
+          (item.detectedBy || "")
+            .toLowerCase()
+            .includes(searchText)
+      );
+    }
 
-  // Severity
-  if (severity) {
-    filtered = filtered.filter(
-      (item) =>
-        (item.severity || "").toLowerCase() ===
-        severity.toLowerCase()
-    );
-  }
+    // Severity
+    if (severity) {
+      filtered = filtered.filter(
+        (item) =>
+          (item.severity || "").toLowerCase() ===
+          severity.toLowerCase()
+      );
+    }
 
-  // Status
-  if (status) {
-    filtered = filtered.filter((item) => {
-      const latestAction = (
-        item.latestAction || ""
-      ).toLowerCase();
+    // Status (matches what the user sees, e.g. "quarantine failed")
+    if (status) {
+      filtered = filtered.filter(
+        (item) =>
+          getDisplayStatus(item).toLowerCase() ===
+          status.toLowerCase()
+      );
+    }
 
-      const latestActionStatus = (
-        item.latestActionStatus || ""
-      ).toLowerCase();
+    // Sorting
+    if (sortColumn) {
+      filtered = sortThreats(
+        filtered,
+        sortColumn,
+        sortDirection
+      );
+    }
 
-      const displayStatus =
-        latestActionStatus === "failed" && latestAction
-          ? `${latestAction} failed`
-          : (item.status || "").toLowerCase();
-
-      return displayStatus === status.toLowerCase();
-    });
-  }
-
-  // Sorting
-  if (sortColumn) {
-    filtered = sortThreats(
-      filtered,
-      sortColumn,
-      sortDirection
-    );
-  }
-
-  setFilteredThreats(filtered);
-  setCurrentPage(1);
-};
+    setFilteredThreats(filtered);
+    setCurrentPage(1);
+  };
 
   // Current page data
   const totalPages = Math.ceil(
@@ -335,21 +362,17 @@ const filterThreats = () => {
           );
 
           data = {
-            error:
-              `Server returned an invalid response (${response.status}).`,
+            error: `Server returned an invalid response (${response.status}).`,
           };
         }
       }
 
       if (!response.ok) {
-        console.error(
-          `${action} command failed:`,
-          {
-            status: response.status,
-            statusText: response.statusText,
-            data,
-          }
-        );
+        console.error(`${action} command failed:`, {
+          status: response.status,
+          statusText: response.statusText,
+          data,
+        });
 
         alert(
           data.error ||
@@ -360,10 +383,7 @@ const filterThreats = () => {
         return;
       }
 
-      console.log(
-        `${action} command created:`,
-        data
-      );
+      console.log(`${action} command created:`, data);
 
       const actionLabel =
         action.charAt(0).toUpperCase() +
@@ -373,113 +393,76 @@ const filterThreats = () => {
         `${actionLabel} command sent to the endpoint.`
       );
     } catch (error) {
-      console.error(
-        `${action} request failed:`,
-        error
-      );
+      console.error(`${action} request failed:`, error);
 
-      alert(
-        `Failed to send ${action} command.`
-      );
+      alert(`Failed to send ${action} command.`);
     }
   };
 
-  const handleBulkThreatAction = async (action: "quarantine" | "resolve") => {
-    console.log("[Bulk Action] clicked:", action, selectedThreatIds);
-  if (selectedThreatIds.length === 0) {
-    return;
-  }
+  // --------------------------------------------------
+  // CSV EXPORT
+  // --------------------------------------------------
 
-  const selectedThreats = threats.filter((threat) =>
-    selectedThreatIds.includes(threat.id)
-  );
-
-  if (selectedThreats.length === 0) {
-    alert("No selected threats found.");
-    return;
-  }
-
-  let successCount = 0;
-  let failedCount = 0;
-
-  for (const threat of selectedThreats) {
-    try {
-      let response: Response;
-
-      if (action === "quarantine") {
-        response = await fetch(
-          "/api/securityagent/agent/threat-action-commands",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              threat_id: threat.id,
-              action: "quarantine",
-            }),
-          }
-        );
-      } else {
-        console.log("[Bulk Resolve] Sending request:", threat.id);
-        response = await fetch(
-          `/api/securityagent/agent/threat/${threat.id}/status`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              status: "resolved",
-            }),
-          }
-        );
-      }
-
-      if (response.ok) {
-        successCount++;
-      } else {
-        failedCount++;
-
-        const errorText = await response.text();
-        console.error(
-          `Bulk ${action} failed for threat ${threat.id}:`,
-          errorText
-        );
-      }
-    } catch (error) {
-      failedCount++;
-
-      console.error(
-        `Bulk ${action} request failed for threat ${threat.id}:`,
-        error
-      );
-    }
-  }
-
-  setSelectedThreatIds([]);
-
-  const actionLabel =
-    action.charAt(0).toUpperCase() + action.slice(1);
-
-  if (failedCount === 0) {
-    alert(
-      `${actionLabel} completed successfully for ${successCount} threat${
-        successCount !== 1 ? "s" : ""
-      }.`
-    );
-  } else {
-    alert(
-      `${actionLabel} completed: ${successCount} succeeded, ${failedCount} failed.`
-    );
-  }
-};
-
-  // Export
+  // Export selected threats, or all filtered threats if none selected
   const handleExport = () => {
-    console.log("Export Incidents");
+    const rowsToExport =
+      selectedThreatIds.length > 0
+        ? filteredThreats.filter((t) =>
+            selectedThreatIds.includes(t.id)
+          )
+        : filteredThreats;
+
+    if (rowsToExport.length === 0) {
+      alert("There are no threats to export.");
+      return;
+    }
+
+    const headers = [
+      "Threat ID",
+      "Threat Name",
+      "Endpoint",
+      "Threat Type",
+      "Detected By",
+      "Severity",
+      "Detected At",
+      "Status",
+      "Last Action Error",
+    ];
+
+    const rows = rowsToExport.map((t) => [
+      t.id,
+      t.name,
+      t.endpoint,
+      t.threatType,
+      t.detectedBy,
+      t.severity,
+      t.detectedAt,
+      getDisplayStatus(t),
+      t.latestActionError ?? "",
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map(csvCell).join(","))
+      .join("\r\n");
+
+    // BOM makes Excel read the file as UTF-8
+    const blob = new Blob(["\uFEFF" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `threats-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
   };
 
   // Loading
@@ -531,31 +514,37 @@ const filterThreats = () => {
         <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-4 py-3">
           <span className="text-sm text-slate-300">
             {selectedThreatIds.length} threat
-            {selectedThreatIds.length !== 1
-              ? "s"
-              : ""}{" "}
+            {selectedThreatIds.length !== 1 ? "s" : ""}{" "}
             selected
           </span>
 
           <div className="flex gap-2">
             <button
-              onClick={() => handleBulkThreatAction("quarantine")}
+              onClick={() =>
+                console.log(
+                  "Bulk Quarantine:",
+                  selectedThreatIds
+                )
+              }
               className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
             >
               Quarantine
             </button>
 
             <button
-              onClick={() => handleBulkThreatAction("resolve")}
+              onClick={() =>
+                console.log(
+                  "Bulk Resolve:",
+                  selectedThreatIds
+                )
+              }
               className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
             >
               Resolve
             </button>
 
             <button
-              onClick={() =>
-                setSelectedThreatIds([])
-              }
+              onClick={() => setSelectedThreatIds([])}
               className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-700"
             >
               Clear
@@ -598,43 +587,31 @@ const filterThreats = () => {
               </th>
 
               <th
-                onClick={() =>
-                  handleSort("threatType")
-                }
+                onClick={() => handleSort("threatType")}
                 className={`${thBase} w-[14%]`}
               >
-                Threat Type{" "}
-                {getSortIcon("threatType")}
+                Threat Type {getSortIcon("threatType")}
               </th>
 
               <th
-                onClick={() =>
-                  handleSort("detectedBy")
-                }
+                onClick={() => handleSort("detectedBy")}
                 className={`${thBase} w-[11%]`}
               >
-                Detected By{" "}
-                {getSortIcon("detectedBy")}
+                Detected By {getSortIcon("detectedBy")}
               </th>
 
               <th
-                onClick={() =>
-                  handleSort("severity")
-                }
+                onClick={() => handleSort("severity")}
                 className={`${thBase} w-[9%]`}
               >
-                Severity{" "}
-                {getSortIcon("severity")}
+                Severity {getSortIcon("severity")}
               </th>
 
               <th
-                onClick={() =>
-                  handleSort("detected")
-                }
+                onClick={() => handleSort("detected")}
                 className={`${thBase} w-[16%]`}
               >
-                Detected{" "}
-                {getSortIcon("detected")}
+                Detected {getSortIcon("detected")}
               </th>
 
               <th
@@ -654,29 +631,7 @@ const filterThreats = () => {
 
           <tbody>
             {paginatedThreats.map((t) => {
-
-              /*
-               * The actual database threat status remains unchanged.
-               *
-               * Example:
-               *   threat.status = detected
-               *   latest action = quarantine
-               *   latest action status = failed
-               *
-               * The UI displays "Quarantine Failed".
-               */
-              const latestAction = (
-                t.latestAction || ""
-              ).toLowerCase();
-
-              const latestActionStatus = (
-                t.latestActionStatus || ""
-              ).toLowerCase();
-
-              const displayStatus =
-                latestActionStatus === "failed" && latestAction
-                  ? `${latestAction.charAt(0).toUpperCase()}${latestAction.slice(1)} Failed`
-                  : t.status;
+              const displayStatus = getDisplayStatus(t);
 
               return (
                 <tr
@@ -711,18 +666,12 @@ const filterThreats = () => {
                   </td>
 
                   {/* THREAT NAME */}
-                  <td
-                    className={tdText}
-                    title={t.name}
-                  >
+                  <td className={tdText} title={t.name}>
                     {t.name}
                   </td>
 
                   {/* ENDPOINT */}
-                  <td
-                    className={tdText}
-                    title={t.endpoint}
-                  >
+                  <td className={tdText} title={t.endpoint}>
                     {t.endpoint}
                   </td>
 
@@ -734,10 +683,7 @@ const filterThreats = () => {
                   </td>
 
                   {/* DETECTED BY */}
-                  <td
-                    className={tdText}
-                    title={t.detectedBy}
-                  >
+                  <td className={tdText} title={t.detectedBy}>
                     {t.detectedBy}
                   </td>
 
@@ -817,11 +763,7 @@ const filterThreats = () => {
                           d="M10.5 3h3l.6 2.1a7.9 7.9 0 0 1 1.8.75l2-1.05 2.1 2.1-1.05 2a7.9 7.9 0 0 1 .75 1.8L21 11.5v3l-2.1.6a7.9 7.9 0 0 1-.75 1.8l1.05 2-2.1 2.1-2-1.05a7.9 7.9 0 0 1-1.8.75L13.5 21h-3l-.6-2.1a7.9 7.9 0 0 1-1.8-.75l-2 1.05-2.1-2.1 1.05-2a7.9 7.9 0 0 1-.75-1.8L2 14.5v-3l2.1-.6a7.9 7.9 0 0 1 .75-1.8l-1.05-2L5.9 5l2 1.05a7.9 7.9 0 0 1 1.8-.75L10.5 3Z"
                         />
 
-                        <circle
-                          cx="12"
-                          cy="13"
-                          r="2.5"
-                        />
+                        <circle cx="12" cy="13" r="2.5" />
                       </svg>
                     </button>
 
@@ -848,10 +790,7 @@ const filterThreats = () => {
                         <button
                           type="button"
                           onClick={() =>
-                            handleThreatAction(
-                              "quarantine",
-                              t
-                            )
+                            handleThreatAction("quarantine", t)
                           }
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-orange-300 hover:bg-slate-800"
                         >
@@ -863,10 +802,7 @@ const filterThreats = () => {
                         <button
                           type="button"
                           onClick={() =>
-                            handleThreatAction(
-                              "kill",
-                              t
-                            )
+                            handleThreatAction("kill", t)
                           }
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-300 hover:bg-slate-800"
                         >
@@ -878,10 +814,7 @@ const filterThreats = () => {
                         <button
                           type="button"
                           onClick={() =>
-                            handleThreatAction(
-                              "delete",
-                              t
-                            )
+                            handleThreatAction("delete", t)
                           }
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-400 hover:bg-slate-800"
                         >
@@ -893,10 +826,7 @@ const filterThreats = () => {
                         <button
                           type="button"
                           onClick={() =>
-                            handleThreatAction(
-                              "block",
-                              t
-                            )
+                            handleThreatAction("block", t)
                           }
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-300 hover:bg-slate-800"
                         >
@@ -908,10 +838,7 @@ const filterThreats = () => {
                         <button
                           type="button"
                           onClick={() =>
-                            handleThreatAction(
-                              "allow",
-                              t
-                            )
+                            handleThreatAction("allow", t)
                           }
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-green-300 hover:bg-slate-800"
                         >
@@ -964,9 +891,7 @@ const filterThreats = () => {
 
             <button
               onClick={() =>
-                setCurrentPage((p) =>
-                  Math.max(p - 1, 1)
-                )
+                setCurrentPage((p) => Math.max(p - 1, 1))
               }
               disabled={currentPage === 1}
               className="rounded-lg border border-slate-700 px-4 py-1.5 disabled:opacity-50"
@@ -975,8 +900,7 @@ const filterThreats = () => {
             </button>
 
             <span className="flex items-center px-3 text-sm">
-              Page {currentPage} of{" "}
-              {totalPages || 1}
+              Page {currentPage} of {totalPages || 1}
             </span>
 
             <button
